@@ -278,13 +278,32 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 
 ### 6.1c 圖形安裝介面（本計劃新增）
 
+> **這一節曾經整段是假的綠燈。** 6.1c.1 原本寫著「已驗：MSI 內含 `JtSettingsDlg`、
+> 15 個控制項、18 個 UI 序列動作」。那句話每個字都對，而且完全沒有驗到重點：
+> 它證明的是**對話框存在於 MSI 裡**，不是**精靈走得到它**。
+> 0.9.2 到 0.9.4 連續三版的 GUI 安裝都是壞的，而這張表一直是綠的。
+>
+> 三個缺陷的共同點是：WiX 原始碼看起來完全正常，而建出來的 MSI 表格一目了然。
+> 教訓是**驗產物，不要驗來源**。現在的做法是直接讀 MSI 的
+> `LaunchCondition`、`ControlEvent`、`Property` 三張表。
+
 | # | 項目 | 狀態 |
 |---|---|---|
-| 6.1c.1 | 雙擊 MSI 出現設定畫面，可填入管理網段與 community | **[已驗]** MSI 內含 `JtSettingsDlg`、15 個控制項、18 個 UI 序列動作 |
-| 6.1c.2 | 管理網段未填時不允許繼續 | **[已實作]** `JtNeedNetworksDlg`；[待驗] 需人工操作 GUI |
-| 6.1c.3 | 無訊息安裝不受 UI 影響 | **[已驗]** `/qn` 下 UI 序列不執行，屬性照舊生效 |
-| 6.1c.4 | 「加入或移除程式」顯示圖示 | **[已驗]** `DisplayIcon` 指向已安裝的執行檔 |
-| 6.1c.5 | 無法決定 community 時給出可行動的錯誤 | **[已實作]** 安裝程式在健康檢查之前就中止；[待驗] 需無內建 SNMP 的乾淨機器 |
+| 6.1c.1 | 雙擊 MSI 後精靈**走得到**設定畫面 | **[已驗]** 讀建出的 MSI `ControlEvent` 表：`JtSettingsDlg` 在 Order 5，壓過 WixUI 的 `VerifyReadyDlg`（Order 4）；0.9.5 實機五頁逐頁確認 |
+| 6.1c.2 | 啟動條件不得在 GUI 收集到值之前就擋下安裝 | **[已驗]** `MANAGEMENTNETWORKS OR REMOVE OR UILevel > 4`；CI 讀 `LaunchCondition` 表 |
+| 6.1c.3 | 管理網段未填時不允許繼續 | **[已實作]** `JtNeedNetworksDlg`，且 `SpawnDialog` 排在 `NewDialog` 之前；[待驗] 需人工操作 GUI |
+| 6.1c.4 | 無訊息安裝不受 UI 影響 | **[已驗]** `/qn` 下 UI 序列不執行，屬性照舊生效 |
+| 6.1c.5 | 選用核取方塊預設未勾選，且標示與行為一致 | **[已驗]** `KEEPMSSNMP` 不在 `Property` 表中（非空值會讓方塊顯示為已勾選）；CI 讀 `Property` 表 |
+| 6.1c.6 | 授權頁顯示本專案的 LICENSE，不是佔位文字 | **[已驗]** GPL-3.0 全文；CI 檢查沒有 `Lorem ipsum` |
+| 6.1c.7 | 精靈美術為本專案的，且與產生器輸出一致 | **[已驗]** CI 重新產生後比對雜湊 |
+| 6.1c.8 | 標題列在整個精靈中一致 | **[已驗]** 所有對話框皆為 `JT SNMP Agent Setup` |
+| 6.1c.9 | 「加入或移除程式」顯示圖示 | **[已驗]** `DisplayIcon` 指向已安裝的執行檔 |
+| 6.1c.10 | 無法決定 community 時給出可行動的錯誤 | **[已實作]** 安裝程式在健康檢查之前就中止；[待驗] 需無內建 SNMP 的乾淨機器 |
+| 6.1c.11 | **端對端 GUI 安裝**（真的按下 Install 並完成） | [待驗] 需一台可犧牲的機器；`.154` 受正式 LibreNMS 監控，不能拿來跑 |
+
+**仍然沒有覆蓋的**：整套生命週期自動化（`tests/lifecycle.ps1`）從頭到尾都走
+`msiexec /qn`，所以任何只在 GUI 路徑上出現的問題，自動化一律抓不到。
+6.1c.11 要補上這個缺口，需要一台不在正式監控中的 Windows 機器。
 
 ---
 
