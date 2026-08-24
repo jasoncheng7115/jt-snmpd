@@ -253,7 +253,7 @@ def test_engine_time_is_clamped_to_int32():
 
 def test_engine_boots_is_persisted():
     """(boots, time) 這組值永不重複是 RFC 3414 的要求。
-    重開機後 time 歸零，boots 就必須加一，因此得持久化。"""
+    重開機後 time 歸零，boots 就必須加一，因此得保存。"""
     fn = next(n for n in ast.walk(ast.parse(AGENT_SRC))
               if isinstance(n, ast.FunctionDef) and n.name == "_engine_boots")
     body = ast.unparse(fn)
@@ -311,7 +311,7 @@ def test_agent_persists_observed_max_and_only_writes_on_increase():
     fn = next(n for n in ast.walk(ast.parse(AGENT_SRC))
               if isinstance(n, ast.FunctionDef) and n.name == "observed_max_temp")
     body = ast.unparse(fn)
-    assert "MAXTEMP_FILE" in body and "os.replace" in body, "必須原子寫入並持久化"
+    assert "MAXTEMP_FILE" in body and "os.replace" in body, "必須原子寫入並保存"
     assert "current <= prev" in body, "只有上升時才可以寫檔"
     assert "0 < current < 150" in body, "必須擋掉不合理的溫度值"
 
@@ -417,4 +417,4 @@ def test_disk_health_states_are_conservative():
     i = AGENT_SRC.find("jtDiskHealthTable: per-disk health")
     block = AGENT_SRC[i:i + 2200]
     assert "DISK_STATE_UNKNOWN" in block, "問不到時必須標為 unknown"
-    assert "(5, 197, 198)" in block, "重新配置／待處理／無法修正磁區應降級為 warning"
+    assert "(5, 197, 198)" in block, "重新配置 / 待處理 / 無法修正磁區應降級為 warning"

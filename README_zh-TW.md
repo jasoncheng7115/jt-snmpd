@@ -48,7 +48,7 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 | LibreNMS 頁面 | 資料來源 | 狀態 |
 |---|---|---|
 | OS 偵測（Hardware / Version / Features）| 模仿 Microsoft 格式的 `sysDescr` / `sysObjectID` | ✅ |
-| 連接埠 | IF-MIB `ifTable` + `ifXTable`（64-bit 計數器），持久化 `ifIndex` | ✅ |
+| 連接埠 | IF-MIB `ifTable` + `ifXTable`（64-bit 計數器），保存 `ifIndex` | ✅ |
 | Processor | `hrProcessorTable`，來源 `NtQuerySystemInformation` | ✅ |
 | Memory | `hrStorage` —— 實體、虛擬、快取、分頁檔 | ✅ |
 | Disk Usage | `hrStorage` 固定磁碟，含真實磁碟區標籤 | ✅ |
@@ -75,7 +75,7 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 
 我們在一台仍使用 Windows 內建 SNMP Service 的 Windows 10 主機上做了逐項量測對照，
 **包含 jt-snmpd 刻意回報「更少」的地方與原因**，見
-[`docs/comparison-vs-builtin-snmp.md`](docs/comparison-vs-builtin-snmp.md)。
+[`docs/comparison-vs-builtin-snmp_zh-TW.md`](docs/comparison-vs-builtin-snmp_zh-TW.md)。
 
 摘要：內建服務暴露 6,507 個 OID、jt-snmpd 為 776，但這個差距中有 3,175 個
 屬於預設關閉的資訊揭露（已安裝軟體、執行中程序、連線表、ARP），
@@ -111,9 +111,9 @@ SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`——
 
 #### 連接埠
 
-內建服務把每一個 NDIS 過濾驅動都當成獨立介面輸出，這台就有九個，
+內建服務把每一個 NDIS 篩選器驅動程式都當成獨立介面輸出，這台就有九個，
 全是自動命名、看不出用途的項目。jt-snmpd 只輸出實體網路介面，
-並以持久的 `NET_LUID` 配發 `ifIndex`，更新驅動不會讓歷史資料變成孤兒。
+並以持久的 `NET_LUID` 配發 `ifIndex`，更新驅動不會讓歷史資料失去對應。
 
 ![連接埠對照](docs/images/ports-zh-TW.png)
 
@@ -191,7 +191,7 @@ pysnmp（只負責 message / USM / VACM / transport）
 | 打包 | 只用 PyInstaller **one-folder**。one-file 會先解壓到 `%TEMP%` 再執行，那是已知的 DLL 劫持路徑 |
 | 回應大小 | 上限 1400 位元組，回應永不分片 |
 | 資訊揭露 | 已安裝軟體、執行中程序、ARP 表、監聽埠一律預設停用 |
-| 掃描 | Bandit / Semgrep / Ruff-S / pip-audit / CycloneDX SBOM，加上協定層 fuzzing 與 Windows 專屬檢查——見 [`docs/security-scanning.md`](docs/security-scanning.md) |
+| 掃描 | Bandit / Semgrep / Ruff-S / pip-audit / CycloneDX SBOM，加上協定層 fuzzing 與 Windows 專屬檢查——見 [`docs/security-scanning_zh-TW.md`](docs/security-scanning_zh-TW.md) |
 
 ## 技術組成
 
@@ -243,7 +243,7 @@ agent 不接受監聽 `Any/Any`。
 
 預設保留設定與狀態是刻意的：管理員常以「移除再重裝」來排除問題，
 若把介面索引映射一起清掉，LibreNMS 會重新 discovery 每一個 port，
-舊的歷史 RRD 全部變成孤兒。
+舊的歷史 RRD 全部失去對應。
 
 ## 路徑
 
@@ -285,7 +285,7 @@ jt-snmpd/
 | SNMPv3（SHA-256 + AES-128）| ⛔ 未實作 |
 | VACM 檢視預設集 | ⛔ 未實作 |
 | 供 GPO / Intune / SCCM 使用的 MSI | ⛔ 未實作 |
-| Authenticode 簽章 | ⛔ 待 SignPath |
+| Authenticode 簽章 | ⛔ 不申請 —— 見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | Windows Server、Server Core、網域控制站 | ⛔ 尚未驗證 |
 | 多網路卡來源位址選擇 | ⛔ 尚未驗證 |
 

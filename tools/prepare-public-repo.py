@@ -41,7 +41,9 @@ NEVER_PUBLISH_DIRS = {"reports", "state", "logs", ".venv", "build", "dist",
 NEVER_PUBLISH_SUFFIX = {".log", ".msi", ".exe", ".pem", ".key", ".pfx",
                         ".walk", ".snmpwalk", ".rrd"}
 
-# 這些目錄要保留，但只留 README（說明用途，產物不進版控）
+# 這些目錄要保留，但只留 README（說明用途，產物不進版控）。
+# 比對的是「檔名以 README 開頭」而非等於 README.md——原本寫死 README.md，
+# 結果 dist/README_zh-TW.md 從來沒被發佈過，公開 repo 裡的 dist 只有英文版。
 KEEP_README_ONLY = {"build", "dist"}
 
 
@@ -52,7 +54,7 @@ def should_skip(rel: Path) -> str | None:
         return f"副檔名排除：{rel.suffix}"
     for part in rel.parts:
         if part in NEVER_PUBLISH_DIRS:
-            if part in KEEP_README_ONLY and rel.name == "README.md":
+            if part in KEEP_README_ONLY and rel.name.startswith("README"):
                 return None
             return f"目錄排除：{part}/"
     return None

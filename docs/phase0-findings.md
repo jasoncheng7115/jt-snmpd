@@ -9,7 +9,7 @@
 | A — 多網路卡 UDP 來源位址 | ⛔ 無法驗（Win11 測試機為單網路卡；需多網路卡環境） |
 | B — sysDescr / sysObjectID 與 LibreNMS OS 偵測 | ✅ **GO**（已用真實 LibreNMS 26.8.1 + Win11 內建 SNMP 驗證，見 §1.4） |
 | C — PySNMP 可行性與效能 | ✅ **GO**（架構達標，BER 瓶頸有對策，見 §2.6） |
-| D — 打包、EDR 與程式碼簽章 | ✅ **GO**（PyInstaller exe 服務已重開機驗證，見 §4.1）；HVCI/WDAC、簽章待驗 |
+| D — 打包、EDR 與程式碼簽章 | ✅ **GO**（PyInstaller exe 服務已重開機驗證，見 §4.1）；HVCI/WDAC 待驗，簽章確定不做 |
 | E — Net-SNMP 對照評估（ADR-0001） | ⛔ 未開始 |
 
 > 環境：開發機 Ubuntu 24.04（Python 3.12.3、pysnmp 7.1.29）；
@@ -57,7 +57,7 @@ spec §1.2 要求確認的四個旗標，實際值：
 |---|---|---|
 | `bad_hrSystemUptime` | **`true`** | LibreNMS **忽略 hrSystemUptime，只用 sysUpTime**。§2.6 的 497 天 TimeTicks 回捲風險因此全部集中在 sysUpTime 一個 OID 上，`jtAgentUptimeWrapCount` 的重要性提高 |
 | `processor_stacked` | **`true`** | CPU 圖表為堆疊呈現，每核心一列 |
-| `ifname` | **`true`** | **port 標籤使用 ifName**。ifName 必須是有意義的名稱，直接綁住 §2.4 介面過濾的設計——過濾掉的介面不會有 port，留下的介面 ifName 必須可讀 |
+| `ifname` | **`true`** | **port 標籤使用 ifName**。ifName 必須是有意義的名稱，直接綁住 §2.4 介面篩選的設計——篩選掉的介面不會有 port，留下的介面 ifName 必須可讀 |
 | `bad_ifXEntry` | **檔案中未出現** → 預設 `false` | LibreNMS 會正常使用 ifXTable 的 64-bit counters，v1.0 必須提供 |
 
 ### 1.2 OS 偵測的實際條件
@@ -156,7 +156,7 @@ class AbstractMibInstrumController:
 instrum controller 的。**代表 VACM 要不要在 walk 路徑上生效，完全取決於
 自訂 controller 有沒有呼叫它。**
 
-§3.5 警告的「典型漏洞是 GET 有過濾但 walk 直接跨過去」在這個架構下
+§3.5 警告的「典型漏洞是 GET 有篩選但 walk 直接跨過去」在這個架構下
 就是一行程式碼的差距。而且被 VACM 拒絕的項目必須**繼續往下找**而非回傳錯誤，
 否則 walk 會在該處中斷。已在原型中實作，L4-5.4 需專項測試。
 
@@ -284,7 +284,7 @@ Windows 上須覆測絕對數字後才能作為正式驗收依據（Windows 的 
 | 項目 | 阻塞原因 | 風險 |
 |---|---|---|
 | 閘門 A 全部 | 無多網路卡（≥3 IP、跨網段）主機 | **高**——多網路卡回應來源 IP 錯誤會造成間歇性 timeout 且極難除錯，且客戶端幾乎都是管理/業務網段分離 |
-| 閘門 D 全部 | 無 Windows 存取；無 HVCI/WDAC 端點 | **高**——無簽章在 WDAC 環境完全無法部署 |
+| 閘門 D 全部 | 無 Windows 存取；無 HVCI/WDAC 端點 | **高**——未簽章時 WDAC 需改用雜湊規則放行 |
 | 閘門 B 的 Windows 端 | Win11 SSH 未授權 | 中 |
 | sysObjectID 的 server / DC 分支 | 僅有 Win11 工作站 | 中——兩個分支無法驗 |
 | Server Core、Server 2016/2019/2022/2025 | 無環境 | **高**——§9.3 的平台 DoD 無法達成 |
@@ -357,13 +357,13 @@ spec §1.4 硬性規則「服務主程式必須是自己的 exe」已達成。
 #### 待驗（需其他環境）
 
 - [ ] Defender + HVCI/WDAC 端點上 exe 不被隔離、可存活（無此環境）
-- [ ] Authenticode 簽章後行為（需 SignPath）
+- [ ] WDAC 強制模式下以雜湊規則放行的行為
 
 ## 4. 已送件事項（附錄 B）
 
 | 項目 | 狀態 |
 |---|---|
 | IANA Private Enterprise Number | ⛔ 未送件 |
-| SignPath Foundation 程式碼簽章 | ⛔ 未送件（需先有公開 repo） |
+| 程式碼簽章 | ⛔ 不申請憑證；改以公布 SHA-256 建立完整性 |
 
 兩者皆有外部審核等待期，spec 附錄 B 要求 Phase 0 第一天送出。

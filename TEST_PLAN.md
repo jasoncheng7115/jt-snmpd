@@ -1,7 +1,7 @@
 # JT Windows SNMP Agent — 測試計劃
 
 > 對應規格：`spec.md`
-> 狀態標記：`[已實作]` 測試已存在且會跑 ／ `[待實作]` 已定義但尚未寫 ／ `[阻塞]` 缺環境
+> 狀態標記：`[已實作]` 測試已存在且會跑 / `[待實作]` 已定義但尚未寫 / `[阻塞]` 缺環境
 
 ---
 
@@ -34,7 +34,7 @@
 | 1.4 | ifIndex 配發：同一 LUID 永遠取得同一 index；介面消失後 index 不得重用 | §2.5 | [待實作] |
 | 1.5 | hrDeviceIndex 共用：hrProcessor / hrDiskStorage / hrNetwork 的 index 必須來自同一組 | §2.3 | [待實作] |
 | 1.6 | TimeTicks 回捲：497 天邊界自然回捲，wrap count 正確遞增 | §2.6 | [待實作] |
-| 1.7 | 介面過濾：Hyper-V host 的 40～80 個介面，僅硬體介面通過 | §2.4 | [待實作] |
+| 1.7 | 介面篩選：Hyper-V host 的 40～80 個介面，僅硬體介面通過 | §2.4 | [待實作] |
 | 1.8 | 快取失效語意：新鮮 / stale 內 / 超過 stale threshold（整列移除，不得捏造值） | §6.9 | [待實作] |
 | 1.9 | 狀態檔原子寫入：temp → fsync → ReplaceFileW；主檔損毀時讀 .bak | §6.6 | [待實作] |
 | 1.10 | schema_version 遷移：舊版 index-map / engine-state 能正確升級 | §6.6 | [待實作] |
@@ -66,7 +66,7 @@
 | 2.7 | 走到 MIB 結尾時不得用 endOfMibView 塞滿回應 | §36 | **[已實作]** |
 | 2.8 | GET 命中 / noSuchInstance / noSuchObject 三種語意正確 | §36 | **[已實作]** |
 | 2.9 | GETNEXT 在首筆之前、末筆之後的邊界行為 | §36 | **[已實作]** |
-| 2.10 | 唯讀：SET 一律回 noSuchObject／notWritable，任何 OID 皆不可寫 | §2.12 | [待實作] |
+| 2.10 | 唯讀：SET 一律回 noSuchObject / notWritable，任何 OID 皆不可寫 | §2.12 | [待實作] |
 | 2.11 | 走訪中途快照換手：整趟 walk 必須讀同一份 snapshot，不得出現列數變動 | §4.3③ | [待實作] |
 | 2.12 | 型別正確性：Counter64 用於 ifXTable、Gauge32 不得回負值、TimeTicks 單位為 1/100 秒 | §36 | [待實作] |
 | 2.13 | Golden `.snmprec` fixture 比對：各 Windows 版本一份，回歸時逐筆對照 | §9.3 | [待實作] |
@@ -138,7 +138,7 @@
 | 5.6 | Pre-auth gate：來源 IP 不在白名單者零解析即丟棄 | 斷言未進入 BER decoder | **[已實作]** `tests/test_preauth_gate.py`（32 例）+ 真機驗證 |
 | 5.6.1 | 閘門掛點正確性（覆寫不存在的方法會讓整個閘門無聲失效） | 突變測試證實可攔截 | **[已實作]** `tests/test_gate_hookpoint.py`（6 例）|
 | 5.6.2 | loopback 永遠放行（否則安裝程式健康檢查必定失敗） | 斷言 | **[已實作]** |
-| 5.6.3 | SAST / SCA / SBOM 基線 | Bandit HIGH=0、相依 CVE=0 | **[已實作]** 見 `docs/security-scanning.md` |
+| 5.6.3 | SAST / SCA / SBOM 基線 | Bandit HIGH=0、相依 CVE=0 | **[已實作]** 見 `docs/security-scanning_zh-TW.md` |
 | 5.7 | 深度巢狀 SEQUENCE 不得造成 RecursionError 逃逸到事件迴圈 | §3.2 | [待實作] |
 | 5.8 | 速率限制在 USM 密碼學處理**之前**生效 | 斷言呼叫順序 | [待實作] |
 | 5.9 | 所有 HMAC 比對使用 `compare_digest` | 靜態檢查 + code review checklist | [待實作] |
@@ -147,7 +147,7 @@
 | 5.12 | localized key 以 DPAPI machine scope 儲存，passphrase 不落盤 | §3.4③ | [待實作] |
 | 5.13 | 回應大小驗證：所有回應 < 1400 bytes，無 IP 分片 | §4.4 | **[已實作]** L1-2.5 |
 | 5.14 | 依賴弱點掃描 + SBOM 產出 | 零 High | [待實作] |
-| 5.15 | 二進位檔 Authenticode 簽章驗證 | 有效 | [阻塞] 需 SignPath |
+| 5.15 | 未簽章檔案在 WDAC 強制模式下可用雜湊規則放行 | 服務可啟動 | [阻塞] 缺 WDAC 端點 |
 | 5.16 | ProgramData ACL：攻擊者搶先建目錄的情境必須被偵測並重設 ACL | §3.7 | [待實作] |
 | 5.17 | 服務 ImagePath 加引號（unquoted service path） | 斷言 | [待實作] |
 | 5.18 | `SO_EXCLUSIVEADDRUSE` 已設定，他人無法綁同一 port 劫持流量 | §6.8 | [待實作] |
@@ -175,7 +175,7 @@
 
 | # | 情境 | 風險 | 狀態 |
 |---|---|---|---|
-| 5.5.6 | **Hyper-V host**：`GetIfTable2()` 回 40～80 個介面 | 全部輸出會產生大量無用 port 與孤兒 RRD | [待驗] 過濾邏輯已實作，未在真 Hyper-V 上驗 |
+| 5.5.6 | **Hyper-V host**：`GetIfTable2()` 回 40～80 個介面 | 全部輸出會產生大量無用 port 與無主的 RRD | [待驗] 篩選邏輯已實作，未在真 Hyper-V 上驗 |
 | 5.5.7 | **NIC teaming / SET** | team 成員與 team 介面都會出現，需決定輸出哪個 | [待實作] |
 | 5.5.8 | **多網路卡跨網段**（管理網與業務網分離） | 回應來源 IP 可能錯誤 → 間歇性 timeout（閘門 A） | [阻塞] 無環境 |
 | 5.5.9 | **iSCSI / FC / 多路徑磁碟** | `PhysicalDriveN` 可能重複出現同一顆 LUN | [待實作] |
@@ -275,7 +275,7 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 | 6.1b.3 | `build-msi.ps1`：`wix build` 的結束碼 | 缺 WiX 擴充導致建置失敗，卻取到上一顆 MSI 並以舊版本號回報成功 | **[已驗]** 實測攔下 |
 | 6.1b.4 | `build-msi.ps1`：MSI 必須是本次產出 | 殘留檔案冒充本次建置的成果 | **[已驗]** |
 | 6.1b.5 | `build-msi.ps1`：執行檔必須比原始碼新 | 忘了先跑 build-exe，修正沒進 MSI，但版本號、SHA-256、歸檔目錄全是新的 | **[已驗]** 實測攔下 |
-| 6.1b.6 | BUILDINFO 記錄 configure／wxs／agent 三份來源指紋 | 同一台機器上有兩份 `msi-configure.ps1`，改到不被用的那份 | **[已驗]** |
+| 6.1b.6 | BUILDINFO 記錄 configure / wxs / agent 三份來源指紋 | 同一台機器上有兩份 `msi-configure.ps1`，改到不被用的那份 | **[已驗]** |
 
 ### 6.1c 圖形安裝介面（本計劃新增）
 
@@ -380,7 +380,7 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 □ L5 MS SNMP 移轉 10 個情境全數通過
 □ L6 生命週期全數通過；major 版本另需 30 天穩定性驗證
 □ L7 LibreNMS 端對端六個頁面全滿，且不需任何 LibreNMS patch
-□ 二進位檔已簽章且驗章通過
+□ 已公布 SHA-256，且下載後核對相符
 □ 「未驗證項目與風險」清單已更新並隨版本發布
 □ CHANGELOG 已列出所有行為變更與需要人工介入的升級步驟
 ```

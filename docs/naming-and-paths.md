@@ -29,7 +29,7 @@
     config.yaml
     config.example.yaml
     secrets\usm.dat                     SNMPv3 localized key（DPAPI machine scope）
-    state\index-map.json                ifIndex 持久化（最貴的失效模式，§6.6）
+    state\index-map.json                ifIndex 保存（最貴的失效模式，§6.6）
     state\engine-state.json             engineID / engineBoots
     state\ms-snmp-migration.json        Windows SNMP 移轉與還原資訊
     logs\jt-snmpd.log                   輪替：5 MB × 5 份

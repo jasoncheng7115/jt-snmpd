@@ -104,7 +104,7 @@ Check "防火牆規則已移除" ((FwRules) -eq 0) "(得到 $(FwRules))"
 Check "程式目錄已移除" (-not (Test-Path "$PROG\jt-snmpd.exe"))
 Check "已離開加入或移除程式" ((Arp) -eq $null)
 Check "資料目錄保留（刻意）" (Test-Path $DATA)
-Check "index-map 保留（避免 RRD 變孤兒）" (Test-Path $IDX)
+Check "index-map 保留（避免 RRD 失去對應）" (Test-Path $IDX)
 Check "不需重新開機" ($true)
 
 if ($msExists) {

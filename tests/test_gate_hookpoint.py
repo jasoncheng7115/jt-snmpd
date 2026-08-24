@@ -117,5 +117,5 @@ def test_gate_is_instantiated_and_assigned_to_module_global():
     否則 datagram_received 裡的 `if gate is not None` 永遠為 None，
     等於整個閘門被短路。"""
     src = AGENT.read_text(encoding="utf-8")
-    assert "_gate = PreAuthGate(" in src, "必須建立 PreAuthGate 實例並指派給 _gate"
+    assert "_gate = PreAuthGate(" in src, "必須建立 PreAuthGate 執行個體並指派給 _gate"
     assert "global _gate" in src, "指派前需宣告 global，否則只是區域變數"

@@ -43,9 +43,10 @@ nav .brand .wordmark{color:inherit}
 nav .brand .wordmark span{color:var(--accent)}
 nav a.navlink{color:var(--dim);font-size:14.5px}
 nav a.navlink:hover{color:var(--fg);text-decoration:none}
-/* <a class="btn"> 與 <button class="btn"> 的高度由不同規則決定：按鈕有自己的
-   預設行高與字型，錨點沒有。用 inline-flex 加固定高度讓兩者一致——
-   單純給相同的 padding 是不夠的。 */
+/* <a class="btn"> and <button class="btn"> get their height from different
+   rules: a button carries its own default line-height and font, an anchor does
+   not. inline-flex plus a fixed height makes them agree -- matching padding
+   alone is not enough. */
 .btn{display:inline-flex;align-items:center;justify-content:center;
   height:34px;padding:0 14px;border:1px solid var(--line);background:#f6f8fa;
   color:var(--fg);border-radius:7px;font-size:14px;line-height:1;
@@ -66,7 +67,8 @@ header.hero .lead{font-size:19px;color:var(--dim);max-width:760px;margin:0 0 28p
 .cta .btn{height:40px;padding:0 18px;font-size:15px}
 
 section{padding:64px 0;border-bottom:1px solid var(--line)}
-/* 交錯底色：全站同一個白會讓長頁面失去節奏，區塊之間也分不出來 */
+/* Alternating section backgrounds: one flat white across the whole page loses
+   all rhythm and the sections stop reading as separate. */
 section:nth-of-type(even){background:#f7f9fb}
 section h2{font-size:28px;margin:0 0 12px;letter-spacing:-.35px;
   padding-left:14px;border-left:4px solid var(--accent);line-height:1.3}
@@ -97,14 +99,27 @@ figure img{width:100%;border:1px solid var(--line);border-radius:10px;display:bl
   cursor:zoom-in;box-shadow:0 1px 3px rgba(31,35,40,.08)}
 figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 .shots{margin-top:34px}
-/* 四張全部往下排，不用頁籤。切換式的版面看起來乾淨，
-   但沒有人知道要去點——第一版就是這樣，實際上只有第一張被看到。 */
+/* All four stack vertically rather than sitting behind tabs. A tabbed layout
+   looks tidier, but nobody knows to click -- that was the first version, and in
+   practice only the first image was ever seen. */
 .shots figure{margin:0 0 40px}
 .shots figure h3{font-size:17px;margin:0 0 12px;color:var(--fg);
   display:flex;align-items:center;gap:9px}
 .shots figure h3::before{content:"";width:6px;height:18px;border-radius:3px;
   background:var(--accent);display:inline-block}
 
+/* Download row: the buttons and the trailing note share a baseline, and the note
+   wraps onto its own line on a narrow screen rather than squeezing the buttons. */
+.dl{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0 0 22px}
+.dl .btn{height:40px;padding:0 18px;font-size:15px}
+.dl-note{color:var(--dim);font-size:14px}
+.note{border:1px solid var(--line);border-left:4px solid var(--warn);background:#fffaf0;
+  border-radius:8px;padding:14px 18px;margin:0 0 30px;color:var(--dim);font-size:14.5px;
+  line-height:1.75;max-width:860px}
+.note b{color:var(--fg)}
+h3.way{font-size:18px;margin:34px 0 10px;display:flex;align-items:center;gap:9px}
+h3.way::before{content:"";width:6px;height:18px;border-radius:3px;
+  background:var(--accent);display:inline-block;flex:none}
 .steps{margin:0 0 26px;padding-left:22px;color:var(--dim);max-width:800px}
 .steps li{margin:0 0 9px;line-height:1.75}
 .steps b{color:var(--fg)}
@@ -121,10 +136,12 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 </head>
 <body class="lang-en">
 <script>
-  // 在 body 開頭就決定語言，避免切換時閃爍
-  // 預設英文：<body> 已帶 lang-en，這裡只在該顯示中文時把它拿掉。
-  // 順序是「網址參數 > 使用者先前的選擇 > 英文」——不看瀏覽器語言，
-  // 因為未指定時一律英文是刻意的決定，而不是猜使用者想看什麼。
+  // Settle the language at the very top of <body> so the page never flashes the
+  // wrong one. English is the default: <body> already carries lang-en, and this
+  // only removes it when Chinese should be shown. The order is URL parameter >
+  // the visitor's previous choice > English. Browser language is deliberately
+  // ignored: defaulting to English when nothing was asked for is a decision,
+  // not a guess about what the visitor wants.
   (function(){
     var KEY='jtsnmpd-doc-lang', p=new URLSearchParams(location.search).get('lang'), v=null;
     if(p) v = /^en/i.test(p) ? 'en' : 'zh';
@@ -178,7 +195,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 <section id="why"><div class="wrap">
   <h2><span class="zh">為什麼要有它</span><span class="en">Why it exists</span></h2>
   <p class="sub">
-    <span class="zh">Microsoft 已標記內建 SNMP Service 為停止支援。它支援 SET、把每一個 NDIS 過濾驅動都當成獨立介面輸出、
+    <span class="zh">Microsoft 已標記內建 SNMP Service 為停止支援。它支援 SET、把每一個 NDIS 篩選器驅動程式都當成獨立介面輸出、
       沒有速率限制，而且來源檢查發生在封包解析<b>之後</b>。</span>
     <span class="en">Microsoft has deprecated the built-in SNMP Service. It supports SET, publishes every NDIS
       filter driver as a separate interface, has no rate limiting, and applies its source check
@@ -217,8 +234,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
     </div>
     <div class="card">
       <h3><span class="zh">ifIndex 跨重新開機穩定</span><span class="en">ifIndex survives reboots</span></h3>
-      <p><span class="zh">以 NET_LUID 為主鍵持久化配發。Windows 原生索引在換驅動、拔插網路卡後會重編號，
-        那會讓 LibreNMS 的歷史 RRD 全部變成孤兒。</span>
+      <p><span class="zh">以 NET_LUID 為主鍵長期保存的配發。Windows 原生索引在換驅動、拔插網路卡後會重編號，
+        那會讓 LibreNMS 的歷史 RRD 全部失去對應。</span>
         <span class="en">Indices are assigned from the persistent NET_LUID. Windows' native numbering changes when a
           driver is updated or a NIC is replaced, which orphans every historical RRD in LibreNMS.</span></p>
     </div>
@@ -266,7 +283,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <tr><td><span class="zh">記憶體集區</span><span class="en">Memory pools</span></td><td class="num mid">2</td><td class="num yes">4</td>
         <td><span class="zh">另加 Cached 與 Swap</span><span class="en">Adds cached memory and swap</span></td></tr>
       <tr><td><span class="zh">連接埠</span><span class="en">Ports</span></td><td class="num mid">9</td><td class="num yes">2</td>
-        <td><span class="zh"><b>刻意較少</b>：只輸出實體介面，不輸出 NDIS 過濾驅動</span>
+        <td><span class="zh"><b>刻意較少</b>：只輸出實體介面，不輸出 NDIS 篩選器驅動程式</span>
             <span class="en"><b>Deliberately fewer</b>: hardware interfaces only, no NDIS filter drivers</span></td></tr>
       <tr><td><span class="zh">OID 總數</span><span class="en">Total OIDs</span></td><td class="num">6,507</td><td class="num">776</td>
         <td><span class="zh"><b>刻意較少</b>：3,175 個屬於預設關閉的資訊揭露（已安裝軟體、執行中處理程序、連線表、ARP）</span>
@@ -299,8 +316,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <h3><span class="zh">連接埠對照圖</span><span class="en">Ports — side by side</span></h3>
       <img data-shot="ports" src="images/ports-en.png" alt="">
       <figcaption>
-        <span class="zh">內建服務把每一個 NDIS 過濾驅動都當成獨立介面；jt-snmpd 只輸出實體網路卡，
-          並以持久的 NET_LUID 配發 ifIndex，更新驅動不會讓歷史資料變成孤兒。</span>
+        <span class="zh">內建服務把每一個 NDIS 篩選器驅動程式都當成獨立介面；jt-snmpd 只輸出實體網路卡，
+          並以持久的 NET_LUID 配發 ifIndex，更新驅動不會讓歷史資料失去對應。</span>
         <span class="en">The built-in service publishes every NDIS filter driver as its own interface.
           jt-snmpd publishes hardware interfaces only, with ifIndex assigned from the persistent NET_LUID
           so a driver update does not orphan the history.</span>
@@ -322,16 +339,78 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   <h2><span class="zh">安裝</span><span class="en">Install</span></h2>
   <p class="sub">
     <span class="zh">MSI 完全自包含——安裝時不上網抓任何東西。安裝程式會偵測內建 SNMP Service，
-      沿用它的 community 與 sysContact／sysLocation，然後停用它（<b>停用，不移除</b>），
+      沿用它的 community 與 sysContact / sysLocation，然後停用它（<b>停用，不移除</b>），
       解除安裝時自動還原。</span>
     <span class="en">The MSI is fully self-contained — it downloads nothing during installation. It detects the
       built-in SNMP Service, carries over its community and sysContact/sysLocation, then disables it
       (<b>disabled, not removed</b>) and restores it on uninstall.</span>
   </p>
+
+  <div class="dl">
+    <a class="btn btn-primary"
+       href="https://github.com/jasoncheng7115/jt-snmpd/releases/latest"
+       target="_blank" rel="noopener">
+      <span class="zh">下載最新版 MSI</span><span class="en">Download the latest MSI</span></a>
+    <a class="btn"
+       href="https://github.com/jasoncheng7115/jt-snmpd/releases"
+       target="_blank" rel="noopener">
+      <span class="zh">所有版本</span><span class="en">All releases</span></a>
+    <span class="dl-note">
+      <span class="zh">每個版本都附 <code>.sha256</code>，安裝前請先核對。</span>
+      <span class="en">Every release ships a <code>.sha256</code>; verify it before installing.</span>
+    </span>
+  </div>
+
+  <p class="note">
+    <span class="zh"><b>本安裝檔未經 Authenticode 簽章</b>，目前沒有申請憑證的計畫。點兩下安裝時
+      SmartScreen 會出現警告，UAC 提示的發行者會顯示為「不明」。完整性請改以 <code>.sha256</code>
+      驗證；WDAC / AppLocker 環境的處理方式（雜湊規則、自行簽章）見
+      <a href="code-signing_zh-TW.html">程式碼簽章</a>。</span>
+    <span class="en"><b>This installer is not Authenticode signed</b>, and no certificate is planned.
+      SmartScreen warns on a double-click and the UAC prompt shows an unknown publisher. Verify the
+      <code>.sha256</code> instead; for WDAC and AppLocker environments see
+      <a href="code-signing.html">Code signing</a> for the hash-rule and sign-it-yourself routes.</span>
+  </p>
+
+  <h3 class="way">
+    <span class="zh">方式一：點兩下安裝（圖形介面）</span>
+    <span class="en">Option 1 — double-click (graphical)</span>
+  </h3>
+  <p class="sub">
+    <span class="zh">安裝程式會逐步詢問安裝路徑與監控設定。兩個必填的設定是<b>管理網段</b>與
+      <b>community</b>——它們決定誰查得到這台主機。事後也可以編輯
+      <code>C:\ProgramData\JT-SNMP\config.json</code> 再重新啟動服務。</span>
+    <span class="en">The installer asks for the install location and the monitoring settings.
+      The two required values are the <b>management networks</b> and the <b>community string</b> —
+      together they decide who may query this host. Both can be changed afterwards by editing
+      <code>C:\ProgramData\JT-SNMP\config.json</code> and restarting the service.</span>
+  </p>
+
+  <h3 class="way">
+    <span class="zh">方式二：命令列與 GPO 派送</span>
+    <span class="en">Option 2 — command line and GPO deployment</span>
+  </h3>
+  <p class="sub">
+    <span class="zh">下面這道指令是<b>命令列 / 無人值守</b>安裝用的，<code>/qn</code> 表示不顯示任何介面。
+      同一顆 MSI 與同一組屬性也直接適用於<b>群組原則（GPO）軟體派送</b>：以
+      <code>msiexec /qn</code> 的形式派送，安裝過程以 SYSTEM 身分執行，不會有任何提示。</span>
+    <span class="en">This is the <b>command-line / unattended</b> form; <code>/qn</code> means no
+      interface at all. The same MSI and the same properties are what you use for
+      <b>Group Policy software deployment</b>: deployed in this form the installation runs as SYSTEM
+      with no prompts.</span>
+  </p>
 <pre><code>msiexec /i jt-snmpd-0.9.2-x64.msi /qn ^
   MANAGEMENTNETWORKS=10.0.0.0/24 ^
   COMMUNITY=your-community</code></pre>
-  <h3 style="font-size:18px;margin:34px 0 10px">
+  <p class="sub">
+    <span class="zh">以 GPO 派送時，請把 MSI 放在網域內的共用資料夾，
+      並確保電腦帳戶對該資料夾有讀取權限。從內部共用資料夾安裝也不會帶 Mark of the Web，
+      因此不會遇到 SmartScreen。</span>
+    <span class="en">For GPO, place the MSI on a domain file share and make sure computer accounts can
+      read it. Installing from an internal share also avoids the Mark of the Web, so SmartScreen
+      never appears.</span>
+  </p>
+  <h3 class="way">
     <span class="zh">在 LibreNMS 啟用 SMART</span>
     <span class="en">Enabling SMART in LibreNMS</span>
   </h3>
@@ -373,23 +452,33 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 <section id="docs"><div class="wrap">
   <h2><span class="zh">文件</span><span class="en">Documentation</span></h2>
   <div class="grid">
-    <div class="card"><h3><a href="attack-surface.html">
-      <span class="zh">攻擊面分析</span><span class="en">Attack surface</span></a></h3>
-      <p><span class="zh">實測放大倍率、權杖權限剝除、未緩解風險的誠實清單</span>
+    <div class="card"><h3><a data-doc="attack-surface" href="attack-surface.html">
+      <span class="zh">安全性評估</span><span class="en">Security assessment</span></a></h3>
+      <p><span class="zh">實測放大倍率、權杖權限剝除，以及未緩解風險的誠實清單</span>
          <span class="en">Measured amplification factor, privilege stripping, and an honest list of what is
            <em>not</em> mitigated</span></p></div>
-    <div class="card"><h3><a href="comparison-vs-builtin-snmp.html">
+    <div class="card"><h3><a data-doc="comparison-vs-builtin-snmp" href="comparison-vs-builtin-snmp.html">
       <span class="zh">與內建 SNMP 逐項對照</span><span class="en">Full comparison</span></a></h3>
       <p><span class="zh">包含 jt-snmpd 刻意回報「更少」的地方與原因</span>
          <span class="en">Including every place jt-snmpd deliberately reports <em>less</em>, and why</span></p></div>
-    <div class="card"><h3><a href="release-checklist.html">
+    <div class="card"><h3><a data-doc="code-signing" href="code-signing.html">
+      <span class="zh">程式碼簽章</span><span class="en">Code signing</span></a></h3>
+      <p><span class="zh">安裝檔未簽章：安裝時會看到什麼，以及 WDAC / AppLocker 環境怎麼處理</span>
+         <span class="en">The installer is unsigned: what you will see at install time, and how to handle
+           WDAC and AppLocker environments</span></p></div>
+    <div class="card"><h3><a data-doc="security-scanning" href="security-scanning.html">
+      <span class="zh">資安檢測工具鏈</span><span class="en">Security scanning</span></a></h3>
+      <p><span class="zh">Bandit / Semgrep / pip-audit / SBOM，以及可提交的報告格式</span>
+         <span class="en">Bandit, Semgrep, pip-audit and SBOM, plus the report format a security review
+           will accept</span></p></div>
+    <div class="card"><h3><a data-doc="release-checklist" href="release-checklist.html">
       <span class="zh">發版檢查清單</span><span class="en">Release checklist</span></a></h3>
-      <p><span class="zh">個資／機密掃描、圖片人工審閱、不公開內容清單</span>
+      <p><span class="zh">個資 / 機密掃描、圖片人工審閱、不公開內容清單</span>
          <span class="en">Privacy scanning, image review, and what never gets published</span></p></div>
     <div class="card"><h3><a href="https://github.com/jasoncheng7115/jt-snmpd/blob/main/TEST_PLAN.md">
       <span class="zh">測試計劃</span><span class="en">Test plan</span></a></h3>
-      <p><span class="zh">L0–L7 分層、769 項自動測試、40 項實機生命週期檢查</span>
-         <span class="en">L0–L7 levels, 769 automated tests, 40 on-hardware lifecycle assertions</span></p></div>
+      <p><span class="zh">L0–L7 分層、797 項自動測試、40 項實機生命週期檢查</span>
+         <span class="en">L0–L7 levels, 797 automated tests, 40 on-hardware lifecycle assertions</span></p></div>
   </div>
 </div></section>
 
@@ -413,7 +502,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 (function(){
   var KEY='jtsnmpd-doc-lang', btn=document.getElementById('langBtn');
   function isEn(){ return document.body.classList.contains('lang-en'); }
-  // 按鈕顯示「要切換過去」的語言，而不是目前語言
+  // The button names the language you would switch *to*, not the current one
   function setBtn(){ btn.textContent = isEn() ? '繁體中文' : 'English'; }
   setBtn();
   btn.addEventListener('click', function(){
@@ -423,10 +512,10 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
     try{ localStorage.setItem(KEY, en ? 'en' : 'zh'); }catch(e){}
     try{ var u=new URL(location.href); u.searchParams.set('lang', en?'en':'zh-TW');
          history.replaceState(null,'',u); }catch(e){}
-    setBtn(); swapShot();
+    setBtn(); swapShot(); swapDoc();
   });
 
-  // 截圖跟著語言走：中文版顯示中文介面的截圖
+  // Screenshots follow the language: the Chinese page shows the Chinese UI
   function swapShot(){
     var lang = isEn() ? 'en' : 'zh-TW';
     document.querySelectorAll('img[data-shot]').forEach(function(im){
@@ -434,6 +523,17 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
     });
   }
   swapShot();
+
+  // Documentation links follow the language too. Sending a reader who is on the
+  // Chinese page to an English document is the same failure as an untranslated
+  // page -- the toggle has to carry through to what it links to.
+  function swapDoc(){
+    var en = isEn();
+    document.querySelectorAll('a[data-doc]').forEach(function(a){
+      a.href = a.dataset.doc + (en ? '' : '_zh-TW') + '.html';
+    });
+  }
+  swapDoc();
 
   var lb=document.getElementById('lightbox'), lbi=document.getElementById('lightbox-img');
   document.querySelectorAll('img[data-shot]').forEach(function(im){

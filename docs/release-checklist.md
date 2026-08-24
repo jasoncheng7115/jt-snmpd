@@ -1,25 +1,31 @@
 ---
 layout: default
-title: 發版檢查清單
-description: Release checklist
+title: Release Checklist
+description: What must be true before anything is pushed or published
 ---
 
-# 發版與推送公開 repo 的檢查清單
+[← All documentation](https://jasoncheng7115.github.io/jt-snmpd/) ·
+**English** | [繁體中文](https://jasoncheng7115.github.io/jt-snmpd/release-checklist_zh-TW.html)
 
-公開 repo：<https://github.com/jasoncheng7115/jt-snmpd>
+# Release and publication checklist
 
-> **推上 GitHub 之後無法收回。** GitHub 會保留 fork、快取與 Git 歷史；
-> 事後刪除只是把它從畫面上拿掉，內容仍可取得。因此每一項都要在推送**之前**完成。
+Public repository: <https://github.com/jasoncheng7115/jt-snmpd>
+
+> **Once it is on GitHub it cannot be taken back.** GitHub retains forks, caches
+> and Git history; deleting something afterwards removes it from the display, not
+> from reach. Everything here therefore has to be done **before** the push.
 
 ---
 
-## 0. 一次性：公開 repo 的歷史起點
+## 0. One-off: where the public repository's history starts
 
-本專案的開發歷史裡含有 `spec.md`（內部規格書，不對外）。**即使現在把它移除，
-推送既有歷史仍會把內容帶上去。** 因此公開 repo 以**全新歷史**起始：
+This project's development history contains `spec.md`, an internal specification
+that is not published. **Removing it now would not help — pushing the existing
+history would carry its contents along.** The public repository therefore starts
+from a **fresh history**:
 
 ```bash
-# 在乾淨的暫存目錄產生只含公開內容的 repo
+# Build a repository containing only publishable content, in a clean temp dir
 python3 tools/prepare-public-repo.py /tmp/jt-snmpd-public
 cd /tmp/jt-snmpd-public
 git init -b main
@@ -29,112 +35,131 @@ git remote add origin git@github.com:jasoncheng7115/jt-snmpd.git
 git push -u origin main
 ```
 
-本機的開發 repo 保留完整歷史，不受影響。
+The local development repository keeps its full history and is unaffected.
 
 ---
 
-## 1. 每次推送前必做
+## 1. Before every push
 
-### 1.1 個資／機密掃描
+### 1.1 Privacy and secret scan
 
 ```bash
 python3 tools/check-privacy.py
 ```
 
-**有 `HIGH` 就不要推。** 掃描範圍是「git 實際會推上去的檔案」
-（已追蹤 + 未被忽略的未追蹤檔），不是整個工作目錄。
+**Do not push with any `HIGH`.** The scan covers the files git would actually
+push (tracked, plus untracked files that are not ignored), not the whole working
+directory.
 
-| 等級 | 意義 | 處理 |
+| Level | Meaning | Handling |
 |---|---|---|
-| `HIGH` | 私鑰、密碼、community 字串、MAC 位址、API 憑證、未審閱的圖片 | **必須修正**，不得推送 |
-| `MED` | IP 位址、序號、電子郵件、UNC 路徑 | 逐項確認是文件用範例還是現場資料 |
-| `LOW` | 主機名稱、內部網域、使用者路徑 | 專案擁有者已決定主機名稱可公開；仍應知道帶出了什麼 |
+| `HIGH` | Private keys, passwords, community strings, MAC addresses, API credentials, unreviewed images | **Must be fixed.** Do not push |
+| `MED` | IP addresses, serial numbers, email addresses, UNC paths | Confirm each one is a documentation example rather than field data |
+| `LOW` | Host names, internal domains, user paths | The project owner has decided host names may be published; still worth knowing what went out |
 
-確認安全的項目可加入 `tools/privacy-allowlist.txt`，**每一條都要寫明理由**。
-沒有理由的例外，久了就會變成「把所有警告關掉」的地方。
+Items confirmed safe can go in `tools/privacy-allowlist.txt`, and **every entry
+needs its reason written down**. Exceptions with no stated reason turn, over
+time, into the place where all the warnings get switched off.
 
-### 1.2 圖片人工審閱
+### 1.2 Image review by a person
 
-正規表示式讀不到像素。**每一張新增或修改過的圖片都必須被人實際看過。**
+A regular expression cannot read pixels. **Every new or modified image has to be
+looked at by a human.**
 
-實際踩過：為 README 拍的連接埠對照截圖，把 LibreNMS 畫出來的 SNMP 鄰居
-一併帶了出去——`host-101-ipmi`、`vas1`、`dc2`、`router-003`、`ap-112`、`nas4`，
-外加四組 MAC 位址。那等於公開內網拓撲圖。
+This has already gone wrong once: the ports comparison screenshot taken for the
+README carried the SNMP neighbours LibreNMS had drawn — `host-101-ipmi`, `vas1`,
+`dc2`, `router-003`, `ap-112`, `nas4`, plus four MAC addresses. That is a map of
+the internal network.
 
-檢查每張圖有沒有：
+Check every image for:
 
-- [ ] MAC 位址（截圖腳本會自動改寫成 `xx:xx:xx:xx:xx:xx`，但要確認真的生效）
-- [ ] 內網 IP（自己網段的位址，而非 `192.0.2.0/24` 這類文件用保留範圍）
-- [ ] 硬體序號、授權金鑰、community 字串
-- [ ] 鄰居裝置名稱（LibreNMS 的連接埠頁會顯示 SNMP／LLDP 鄰居）
-- [ ] 使用者姓名、帳號、電子郵件
-- [ ] 瀏覽器分頁列與書籤列（截圖時用無痕視窗或 headless）
+- [ ] MAC addresses (the screenshot script rewrites them to `xx:xx:xx:xx:xx:xx`, but confirm it actually took effect)
+- [ ] Internal IP addresses (your own ranges, as opposed to documentation ranges such as `192.0.2.0/24`)
+- [ ] Hardware serial numbers, licence keys, community strings
+- [ ] Neighbour device names (LibreNMS's ports page shows SNMP and LLDP neighbours)
+- [ ] User names, account names, email addresses
+- [ ] The browser tab bar and bookmarks bar (use a private window or headless capture)
 
-確認後：
+Then record the review:
 
 ```bash
 python3 tools/check-privacy.py --update-images
 ```
 
-圖片內容一改動，雜湊就對不上，掃描會擋下推送，強迫重新審閱。
+Any change to an image breaks its hash, the scan blocks the push, and the review
+has to happen again.
 
-### 1.3 測試與版本
+### 1.3 Tests and versions
 
-- [ ] `.venv/bin/python -m pytest tests/ -q` 全綠
-- [ ] `deploy/version.py` 的版本已更新
-- [ ] `CHANGELOG.md`（英文）與 `CHANGELOG_zh-TW.md`（繁中）**兩份都已更新**
-- [ ] README 兩份的版本號一致
-- [ ] `tests/lifecycle.ps1` 在實機跑過且 `LIFECYCLE_RESULT=PASS`
+- [ ] `.venv/bin/python -m pytest tests/ -q` fully green
+- [ ] `deploy/version.py` updated
+- [ ] **Both** `CHANGELOG.md` (English) and `CHANGELOG_zh-TW.md` (Traditional Chinese) updated
+- [ ] Version numbers consistent across both READMEs
+- [ ] `tests/lifecycle.ps1` run on real hardware with `LIFECYCLE_RESULT=PASS`
 
-### 1.4 安裝檔
+### 1.4 Installer
 
-- [ ] MSI 已建置並歸檔至 `dist/releases/<版本>/`
-- [ ] `BUILDINFO.txt` 的來源指紋（configure／wxs／agent）與 repo 一致
-- [ ] **MSI 本身不進 git**（`.gitignore` 已排除），改由 GitHub Release 附加
-- [ ] 附上 SHA-256
+- [ ] MSI built and archived to `dist/releases/<version>/`
+- [ ] Source fingerprints in `BUILDINFO.txt` (configure / wxs / agent) match the repository
+- [ ] **The MSI itself does not go into git** (excluded in `.gitignore`); it is attached to the GitHub Release
+- [ ] SHA-256 published alongside it
 
 ---
 
-## 2. 不公開的內容
+## 2. What is never published
 
-`.gitignore` 已排除，但每次仍應確認沒有被 `git add -f` 之類的動作繞過：
+`.gitignore` excludes these, but confirm each time that nothing bypassed it with
+`git add -f` or similar:
 
-| 項目 | 原因 |
+| Item | Reason |
 |---|---|
-| `spec.md` | 內部規格書 |
-| `CLAUDE.md` | 內部工作筆記，含正式環境的位址與作業紀律 |
-| `reports/` | 掃描報告，含本機路徑 |
-| `*.log`、`logs/` | agent 記錄檔會寫入介面名稱、磁碟型號與序號 |
-| `state/`、`index-map.json`、`engine.json` | 執行時期狀態，含網路卡 LUID 與 engineID |
-| `*.walk`、`*.snmpwalk` | 實機的原始 walk 輸出 |
-| `dist/`、`build/`、`*.msi` | 建置產物 |
-| `.env`、`*.pem`、`*.key`、`*.pfx` | 憑證與金鑰 |
+| `spec.md` | Internal specification |
+| `CLAUDE.md` | Internal working notes, including production addresses and operating discipline |
+| `reports/` | Scan reports, containing local paths |
+| `*.log`, `logs/` | Agent logs record interface names, disk models and serial numbers |
+| `state/`, `index-map.json`, `engine.json` | Runtime state, including adapter LUIDs and the engineID |
+| `*.walk`, `*.snmpwalk` | Raw walk output from real machines |
+| `dist/`, `build/`, `*.msi` | Build artefacts |
+| `.env`, `*.pem`, `*.key`, `*.pfx` | Certificates and keys |
 
 ---
 
-## 3. 關於「agent 會回報什麼」與「repo 裡有什麼」
+## 3. "What the agent reports" and "what is in the repository" are different questions
 
-這兩件事要分清楚：
+Keep them apart:
 
-- **agent 本身會回報真實序號、真實介面名稱、真實 IP。** 那是它的工作——
-  現場要換哪一顆磁碟、哪一條記憶體時，序號才是找得到的依據。
-  這些資料停留在**客戶自己的監控系統**內。
-- **公開 repo 裡不該有任何一台真實主機的資料。** 文件裡的位址一律使用
-  RFC 5737 的保留範圍（`192.0.2.0/24`、`198.51.100.0/24`），序號以 `****` 取代。
+- **The agent does report real serial numbers, real interface names and real
+  addresses.** That is its job — when someone has to decide which disk or which
+  memory module to replace, the serial is what makes it findable. That data stays
+  inside **the customer's own monitoring system**.
+- **Nothing about any real host belongs in the public repository.** Documentation
+  uses the RFC 5737 reserved ranges (`192.0.2.0/24`, `198.51.100.0/24`), and
+  serial numbers are replaced with `****`.
 
-換句話說，遮蔽是為了「這份文件會公開」，不是因為那些資料本身不該被採集。
+In other words, the masking exists because *this document is public*, not because
+the data should not have been collected.
 
 ---
 
-## 4. 快速指令
+## 4. Quick commands
 
 ```bash
-# 完整檢查
+# Full check
 .venv/bin/python -m pytest tests/ -q && python3 tools/check-privacy.py
 
-# 只看會被推上去的檔案清單
+# Exactly which files would be pushed
 git ls-files; git ls-files --others --exclude-standard
 
-# 確認某個檔案是否被忽略（注意：對**已追蹤**的檔案無效，需先 git rm --cached）
-git check-ignore -v <路徑>
+# Whether a path is ignored (note: this says nothing about *tracked* files;
+# they need git rm --cached first)
+git check-ignore -v <path>
 ```
+
+---
+
+## Related documentation
+
+- [Documentation home](https://jasoncheng7115.github.io/jt-snmpd/)
+- [Security assessment](https://jasoncheng7115.github.io/jt-snmpd/attack-surface.html)
+- [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html)
+- [Security scanning toolchain](https://jasoncheng7115.github.io/jt-snmpd/security-scanning.html)
