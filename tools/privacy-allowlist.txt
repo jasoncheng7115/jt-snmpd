@@ -53,3 +53,9 @@ github\.com/jasoncheng
 # test_preauth_gate.py 全檔都是來源 ACL 的比對案例，需要具體位址才測得出
 # 網段包含關係。換成文件用範圍不會更安全，只會讓測試意圖變模糊。
 ^\s*(#|""")?.*\b(allowed|denied|net|cidr|source|src|addr)\b.*(?:192\.168|10\.|172\.)
+
+# RTF control words in packaging/make-ui-assets.py look like UNC paths to the
+# unc-path rule: `\\par` is an escaped backslash followed by a keyword, not a
+# server name. The generator writes the licence page's RTF, so these literals
+# have to stay.
+out\.append\("\\\\par

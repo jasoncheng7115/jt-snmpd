@@ -137,6 +137,101 @@ def test_settings_dialog_is_reachable_from_the_standard_flow():
         "nothing publishes NewDialog=JtSettingsDlg, so the wizard never shows it"
 
 
+def test_settings_page_outranks_the_builtin_route_to_verifyready():
+    """The route to the settings page must be published *after* WixUI's own.
+
+    WixUI_InstallDir publishes NewDialog=VerifyReadyDlg on InstallDirDlg's Next
+    at Order 4. When several NewDialog events are true, the last one processed
+    decides where the wizard goes. Published at Order 3, our row was overruled
+    every time and the settings page never appeared -- which is exactly what
+    0.9.3 did: straight from Destination Folder to Ready to install, and then a
+    failed install because nothing had supplied the management networks.
+    """
+    rows = [p for p in TREE.iter(f"{{{NS['w']}}}Publish")
+            if p.get("Dialog") == "InstallDirDlg" and p.get("Control") == "Next"
+            and p.get("Value") == "JtSettingsDlg"]
+    assert rows, "no route from InstallDirDlg to JtSettingsDlg"
+    order = rows[0].get("Order")
+    assert order is not None and int(order) > 4, (
+        f"the route to JtSettingsDlg is at Order {order}; WixUI_InstallDir "
+        "publishes NewDialog=VerifyReadyDlg at Order 4 on the same control and "
+        "would win, skipping the settings page entirely")
+
+
+def test_settings_page_respects_path_validation():
+    """Ordering last must not mean overruling the invalid-path check."""
+    rows = [p for p in TREE.iter(f"{{{NS['w']}}}Publish")
+            if p.get("Dialog") == "InstallDirDlg" and p.get("Value") == "JtSettingsDlg"]
+    cond = rows[0].get("Condition") or ""
+    assert "WIXUI_INSTALLDIR_VALID" in cond, (
+        "coming after WixUI's own row means this condition has to repeat the "
+        "path-validity check, or a rejected path walks straight past InvalidDirDlg")
+
+
+def test_newdialog_is_the_last_event_on_the_settings_page():
+    """Windows Installer ignores every event published after a NewDialog.
+
+    With NewDialog first, the "you must enter the management networks" prompt
+    would only ever run because its own condition happened to be mutually
+    exclusive. Ordering should not be load-bearing for correctness.
+    """
+    dlg = _jt_settings_dialog()
+    nxt = [c for c in dlg.iter(f"{{{NS['w']}}}Control") if c.get("Id") == "Next"][0]
+    events = [(int(p.get("Order") or 0), p.get("Event"))
+              for p in nxt.iter(f"{{{NS['w']}}}Publish")]
+    assert events, "Next publishes no events"
+    last_order = max(o for o, _ in events)
+    news = [o for o, e in events if e == "NewDialog"]
+    assert news, "Next never moves the wizard on"
+    assert min(news) >= last_order, (
+        f"NewDialog is not the last event on Next: {sorted(events)}. Everything "
+        "published after a NewDialog is discarded by Windows Installer")
+
+
+# ------------------------------------------------------------- wizard presentation
+def test_wizard_supplies_its_own_artwork_and_licence():
+    """WiX substitutes placeholders for any of these that is left unset.
+
+    0.9.3 shipped all three defaults: a stock banner, a stock side panel, and a
+    licence page reading "Lorem ipsum dolor sit amet". The last one is the
+    serious one -- a document shown as terms of use, saying nothing, for software
+    licensed GPL-3.0-or-later.
+    """
+    declared = {v.get("Id"): v.get("Value")
+                for v in TREE.iter(f"{{{NS['w']}}}WixVariable")}
+    for var in ("WixUIBannerBmp", "WixUIDialogBmp", "WixUILicenseRtf"):
+        assert var in declared, (
+            f"{var} is not set, so WiX will substitute its own placeholder")
+        target = WXS.parent / declared[var]
+        assert target.exists(), f"{var} points at {declared[var]}, which is missing"
+
+
+def test_licence_shown_by_the_installer_is_the_repository_licence():
+    """Two copies of a licence drift. The one users accept has to be ours."""
+    rtf = (WXS.parent / "license.rtf").read_text(encoding="ascii")
+    assert "GNU GENERAL PUBLIC LICENSE" in rtf, \
+        "the licence page does not show the GPL"
+    assert "Lorem ipsum" not in rtf, "the placeholder licence is still in place"
+    licence = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    marker = "Version 3, 29 June 2007"
+    assert marker in licence and marker in rtf, \
+        "license.rtf and LICENSE disagree; regenerate with packaging/make-ui-assets.py"
+
+
+@pytest.mark.parametrize("name,size", [("banner.bmp", (493, 58)),
+                                       ("dialog.bmp", (493, 312))])
+def test_artwork_is_the_size_wix_requires(name, size):
+    """WiX does not scale these; a wrong size is drawn wrong, not rejected."""
+    path = WXS.parent / name
+    assert path.exists(), f"{name} is missing"
+    with path.open("rb") as fh:
+        head = fh.read(30)
+    assert head[:2] == b"BM", f"{name} is not a BMP"
+    w = int.from_bytes(head[18:22], "little")
+    h = int.from_bytes(head[22:26], "little", signed=True)
+    assert (w, abs(h)) == size, f"{name} is {w}x{abs(h)}, expected {size[0]}x{size[1]}"
+
+
 # ------------------------------------------------------- the backstop still holds
 def test_configure_script_fails_closed_on_empty_networks():
     """Defence in depth: even if both gates above are wrong, this must stop.
