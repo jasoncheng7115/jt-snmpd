@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.2] - 2026-08-24
+
+### Added
+
+- **Graphical installation.** Double-clicking the MSI used to install silently
+  with no opportunity to supply the management networks or the community string,
+  which meant it failed with "no community could be determined". There is now a
+  settings page between the install directory and the confirmation, and it will
+  not continue without a management network — an empty list means the agent
+  answers only loopback, which is installed but not monitoring. Silent
+  installation is unchanged: the UI sequence does not run under `/qn`, and both
+  paths read the same properties.
+
+### Fixed
+
+- **The Add/Remove Programs entry had no icon.** `ARPPRODUCTICON` pointing at the
+  Icon table is the documented approach and it did not work here — the property
+  was present, the Icon table entry was present, and the registry value was still
+  empty. Re-encoding the .ico without PNG-compressed entries made no difference
+  either. `DisplayIcon` is now written directly, pointing at the installed
+  executable, which carries the icon anyway.
+
+- **`build-msi.ps1` could ship stale code.** It packaged whatever was already in
+  `build/` without checking its age, so a fix that was never rebuilt shipped
+  inside an MSI carrying the new version number, a fresh SHA-256 and its own
+  archive directory. It also never checked WiX's exit code, so a failed build
+  fell through to the previous MSI and reported success with the old version.
+  Both are now gates, and `tests/test_build_gates.py` keeps them there — this is
+  the third time an artefact has been shipped under a label it did not earn.
+
+### Changed
+
+- Enabling SMART in LibreNMS is documented from the web interface first — gear
+  icon, Settings, Discovery, Discovery Modules, `applications` — with the `lnms`
+  command kept as the alternative.
+
 ## [0.9.1] - 2026-08-24
 
 ### Fixed

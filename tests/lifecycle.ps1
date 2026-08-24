@@ -1,11 +1,5 @@
 ﻿# jt-snmpd 安裝生命週期完整測試
 # 涵蓋：乾淨安裝 → 升級 → 移除（保留資料）→ 重裝 → PURGE 移除
-$ErrorActionPreference = 'Continue'
-$PASS = 0; $FAIL = 0
-function Check { param($name, $cond, $detail="")
-  if ($cond) { $script:PASS++; "  [PASS] $name $detail" }
-  else { $script:FAIL++; "  [FAIL] $name $detail" } }
-
 # community 與管理網段不寫死：這支腳本會進公開 repo，而 community 等同密碼。
 # 預設值是明顯的佔位字，執行時以參數覆寫：
 #   .\lifecycle.ps1 -Community <你的community> -ManagementNetworks 10.0.0.0/24
@@ -14,6 +8,12 @@ param(
   [string]$ManagementNetworks = "10.0.0.0/24",
   [string]$MsiPath = ""
 )
+
+$ErrorActionPreference = 'Continue'
+$PASS = 0; $FAIL = 0
+function Check { param($name, $cond, $detail="")
+  if ($cond) { $script:PASS++; "  [PASS] $name $detail" }
+  else { $script:FAIL++; "  [FAIL] $name $detail" } }
 
 $DATA = "C:\ProgramData\JT-SNMP"
 $PROG = "C:\Program Files\JT SNMP Agent"

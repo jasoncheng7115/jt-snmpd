@@ -64,7 +64,7 @@
     <Property Id="PURGE" Secure="yes" Value="0" />
 
     <!-- 出現在「加入或移除程式」的資訊 -->
-    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
     <Property Id="ARPHELPLINK" Value="https://jason.tools" />
     <!-- ARPNOMODIFY 由 WixUI_InstallDir 提供，這裡重複定義會撞號（WIX0091）。
          ARPNOREPAIR 仍由我們設定：修復流程會重跑自訂動作，
@@ -75,8 +75,22 @@
       <Directory Id="INSTALLFOLDER" Name="JT SNMP Agent" />
     </StandardDirectory>
 
+    <!-- 「加入或移除程式」的圖示。
+         ARPPRODUCTICON 指向 Icon 表理論上就夠，實測卻沒有寫出 DisplayIcon
+         （屬性在、Icon 表也在、BMP 編碼的 ICO 也換過，機碼裡就是沒有這個值）。
+         改為直接寫 DisplayIcon 指向已內嵌圖示的執行檔——這是多數安裝程式的
+         做法，也不必依賴 Windows Installer 把 ICO 解出來。 -->
+    <Component Id="ArpDisplayIcon" Directory="INSTALLFOLDER"
+               Guid="8F2C41A6-7D93-4E15-B0C8-3A9E5D7F2B41">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\[ProductCode]"
+                     Name="DisplayIcon" Type="string"
+                     Value="[INSTALLFOLDER]jt-snmpd.exe" KeyPath="yes" />
+    </Component>
+
     <Feature Id="Main" Title="JT SNMP Agent" Level="1" AllowAbsent="no">
       <ComponentGroupRef Id="AgentFiles" />
+      <ComponentRef Id="ArpDisplayIcon" />
     </Feature>
 
     <!-- ============ 自訂動作 ============
@@ -209,7 +223,10 @@
                Value="JtSettingsDlg" Order="3" Condition="NOT Installed" />
     </UI>
 
-    <Icon Id="AppIcon" SourceFile="$(var.IconFile)" />
+    <!-- Id 必須帶 .ico 副檔名。MSI 的 Icon 表以 Name 決定解出來的檔名，
+         沒有副檔名時 Windows 不會把它認成圖示，ARPPRODUCTICON 指過去也是空的——
+         「加入或移除程式」的 DisplayIcon 會是空字串（實測）。 -->
+    <Icon Id="AppIcon.ico" SourceFile="$(var.IconFile)" />
 
   </Package>
 </Wix>
