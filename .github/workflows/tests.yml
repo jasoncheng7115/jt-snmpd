@@ -148,18 +148,18 @@ jobs:
           $msi = (Get-ChildItem dist\jt-snmpd-*-x64.msi | Select-Object -First 1).FullName
           $bt  = [char]96
           $si = New-Object -ComObject WindowsInstaller.Installer
-          $db = $si.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$si,@($msi,0))
+          $db = $si.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$si,@([string]$msi,[int]0))
           $sql = "SELECT ${bt}Event${bt},${bt}Argument${bt},${bt}Ordering${bt} FROM ${bt}ControlEvent${bt} WHERE ${bt}Dialog_${bt}='InstallDirDlg' AND ${bt}Control_${bt}='Next'"
-          $vw = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@($sql))
+          $vw = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@([string]$sql))
           $vw.GetType().InvokeMember('Execute','InvokeMethod',$null,$vw,$null)
           $rows = @()
           while ($true) {
             $rec = $vw.GetType().InvokeMember('Fetch','InvokeMethod',$null,$vw,$null)
             if ($null -eq $rec) { break }
             $rows += ,@(
-              [string]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,1),
-              [string]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,2),
-              [int]$rec.GetType().InvokeMember('IntegerData','GetProperty',$null,$rec,3))
+              [string]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,[int]1),
+              [string]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,[int]2),
+              [int]$rec.GetType().InvokeMember('IntegerData','GetProperty',$null,$rec,[int]3))
           }
           $rows | ForEach-Object { Write-Host ("  {0} | {1} | {2}" -f $_[0], $_[1], $_[2]) }
           $ours = $rows | Where-Object { $_[0] -eq 'NewDialog' -and $_[1] -eq 'JtSettingsDlg' }
@@ -173,6 +173,31 @@ jobs:
             exit 1
           }
           Write-Host "the settings page is on the route"
+
+      - name: Confirm the optional checkbox starts unticked
+        # Windows Installer draws a checkbox ticked whenever its property is
+        # non-empty, and "0" is non-empty. 0.9.4 shipped KEEPMSSNMP="0", so the
+        # "keep the built-in SNMP service" box appeared ticked while the
+        # installer disabled the service. Reading the source cannot catch this;
+        # reading the Property table of the artefact can.
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\jt-snmpd-*-x64.msi | Select-Object -First 1).FullName
+          $bt  = [char]96
+          $si  = New-Object -ComObject WindowsInstaller.Installer
+          $db  = $si.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$si,@([string]$msi,[int]0))
+          $sql = "SELECT ${bt}Property${bt},${bt}Value${bt} FROM ${bt}Property${bt} WHERE ${bt}Property${bt}='KEEPMSSNMP'"
+          $vw  = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@([string]$sql))
+          $vw.GetType().InvokeMember('Execute','InvokeMethod',$null,$vw,$null)
+          $rec = $vw.GetType().InvokeMember('Fetch','InvokeMethod',$null,$vw,$null)
+          if ($null -ne $rec) {
+            $v = [string]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,[int]2)
+            if ($v -ne '') {
+              Write-Host "::error::KEEPMSSNMP defaults to '$v' in the built MSI; any non-empty value draws the checkbox ticked, contradicting its own label"
+              exit 1
+            }
+          }
+          Write-Host "the optional checkbox starts unticked"
 
       - name: Confirm the licence page is not a placeholder
         # WiX substitutes Lorem ipsum when WixUILicenseRtf is unset, and 0.9.3
