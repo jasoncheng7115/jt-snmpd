@@ -1,14 +1,14 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>jt-snmpd — Windows SNMP 服務的完整取代方案</title>
-<meta name="description" content="唯讀 SNMP agent for Windows。取代已停止支援的 Microsoft SNMP Service，以標準 MIB 餵給 LibreNMS。">
+<title>jt-snmpd — a complete replacement for the Windows SNMP Service</title>
+<meta name="description" content="Read-only SNMP agent for Windows. Replaces the deprecated Microsoft SNMP Service and feeds LibreNMS over standard MIBs.">
 <style>
 :root{
-  --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#9198a1;
-  --accent:#1f8a70; --accent2:#2f81f7; --warn:#d29922; --bad:#f85149;
+  --bg:#ffffff; --panel:#f6f8fa; --line:#d8dee4; --fg:#1f2328; --dim:#59636e;
+  --accent:#15806a; --accent2:#0969da; --warn:#9a6700; --bad:#cf222e;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
@@ -21,27 +21,27 @@ body.lang-en .en{display:initial}
 .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
 a{color:var(--accent2);text-decoration:none}
 a:hover{text-decoration:underline}
-code,kbd{font-family:var(--mono);font-size:.9em;background:#1c2128;border:1px solid var(--line);
+code,kbd{font-family:var(--mono);font-size:.9em;background:rgba(175,184,193,.22);border:1px solid var(--line);
   border-radius:5px;padding:.12em .4em}
-pre{background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:16px 18px;
+pre{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px 18px;
   overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.6}
 pre code{background:none;border:0;padding:0}
 
-nav{position:sticky;top:0;z-index:20;background:rgba(13,17,23,.86);
+nav{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);
   backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 nav .wrap{display:flex;align-items:center;gap:18px;height:58px}
 nav .brand{font-weight:700;letter-spacing:-.2px;margin-right:auto;font-size:17px}
 nav .brand span{color:var(--accent)}
 nav a.navlink{color:var(--dim);font-size:14.5px}
 nav a.navlink:hover{color:var(--fg);text-decoration:none}
-.btn{display:inline-block;border:1px solid var(--line);background:#21262d;color:var(--fg);
+.btn{display:inline-block;border:1px solid var(--line);background:#f6f8fa;color:var(--fg);
   border-radius:7px;padding:6px 13px;font-size:14px;cursor:pointer;font-family:inherit}
-.btn:hover{border-color:#8b949e;text-decoration:none}
+.btn:hover{border-color:#8c959f;background:#eef1f4;text-decoration:none}
 .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .btn-primary:hover{background:#25a383;border-color:#25a383}
 
 header.hero{padding:76px 0 60px;border-bottom:1px solid var(--line);
-  background:radial-gradient(1200px 400px at 50% -120px,rgba(31,138,112,.16),transparent)}
+  background:radial-gradient(1200px 400px at 50% -140px,rgba(21,128,106,.10),transparent)}
 header.hero h1{font-size:42px;line-height:1.25;margin:0 0 18px;letter-spacing:-.6px}
 header.hero .lead{font-size:19px;color:var(--dim);max-width:760px;margin:0 0 28px}
 .badges{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 26px}
@@ -52,19 +52,21 @@ section{padding:56px 0;border-bottom:1px solid var(--line)}
 section h2{font-size:27px;margin:0 0 10px;letter-spacing:-.3px}
 section .sub{color:var(--dim);margin:0 0 30px;max-width:780px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:20px 22px}
 .card h3{margin:0 0 8px;font-size:16.5px}
 .card p{margin:0;color:var(--dim);font-size:14.5px;line-height:1.7}
 .k{color:var(--accent);font-weight:700}
 
 table{width:100%;border-collapse:collapse;font-size:14.5px}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--dim);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.4px}
+th{color:var(--dim);background:var(--panel);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.4px}
 td.num{text-align:right;font-family:var(--mono)}
 .yes{color:var(--accent)}.no{color:var(--bad)}.mid{color:var(--warn)}
 
 figure{margin:0 0 28px}
-figure img{width:100%;border:1px solid var(--line);border-radius:10px;display:block;cursor:zoom-in}
+figure img{width:100%;border:1px solid var(--line);border-radius:10px;display:block;
+  cursor:zoom-in;box-shadow:0 1px 3px rgba(31,35,40,.08)}
 figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 .shotnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}
 .shotnav button{font-size:13.5px}
@@ -80,16 +82,18 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 @media(max-width:640px){header.hero h1{font-size:31px}section{padding:40px 0}}
 </style>
 </head>
-<body>
+<body class="lang-en">
 <script>
   // 在 body 開頭就決定語言，避免切換時閃爍
+  // 預設英文：<body> 已帶 lang-en，這裡只在該顯示中文時把它拿掉。
+  // 順序是「網址參數 > 使用者先前的選擇 > 英文」——不看瀏覽器語言，
+  // 因為未指定時一律英文是刻意的決定，而不是猜使用者想看什麼。
   (function(){
-    var KEY='jtsnmpd-doc-lang', p=new URLSearchParams(location.search).get('lang'), v;
+    var KEY='jtsnmpd-doc-lang', p=new URLSearchParams(location.search).get('lang'), v=null;
     if(p) v = /^en/i.test(p) ? 'en' : 'zh';
-    else { try{ v = localStorage.getItem(KEY); }catch(e){}
-           if(!v) v = /^zh/i.test(navigator.language||'') ? 'zh' : 'en'; }
-    if(v==='en'){ document.body.classList.add('lang-en');
-                  document.documentElement.setAttribute('lang','en'); }
+    else { try{ v = localStorage.getItem(KEY); }catch(e){} }
+    if(v==='zh'){ document.body.classList.remove('lang-en');
+                  document.documentElement.setAttribute('lang','zh-Hant'); }
   })();
 </script>
 
@@ -294,7 +298,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 
 <footer><div class="wrap">
   <div>
-    <strong style="color:#e8f0fb">jt-snmpd</strong> ·
+    <strong style="color:var(--fg)">jt-snmpd</strong> ·
     <span class="zh">Windows SNMP 服務的完整取代方案</span>
     <span class="en">a complete replacement for the Windows SNMP Service</span><br>
     <span style="opacity:.7">GPL-3.0-or-later · © Jason Cheng (Jason Tools)</span>
