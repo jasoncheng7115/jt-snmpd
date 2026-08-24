@@ -104,6 +104,9 @@ figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 .shots figure h3::before{content:"";width:6px;height:18px;border-radius:3px;
   background:var(--accent);display:inline-block}
 
+.steps{margin:0 0 26px;padding-left:22px;color:var(--dim);max-width:800px}
+.steps li{margin:0 0 9px;line-height:1.75}
+.steps b{color:var(--fg)}
 footer{padding:44px 0 64px;color:var(--dim);font-size:14px;background:#f7f9fb;
   border-top:1px solid var(--line)}
 footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
@@ -327,12 +330,43 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 <pre><code>msiexec /i jt-snmpd-0.9.1-x64.msi /qn ^
   MANAGEMENTNETWORKS=10.0.0.0/24 ^
   COMMUNITY=your-community</code></pre>
-  <p class="sub" style="margin-top:22px">
-    <span class="zh">要在 LibreNMS 看到 SMART，必須啟用 <code>discovery_modules.applications</code>——它預設是關的。</span>
-    <span class="en">To see SMART in LibreNMS you must enable <code>discovery_modules.applications</code>;
-      it is off by default.</span>
+  <h3 style="font-size:18px;margin:34px 0 10px">
+    <span class="zh">在 LibreNMS 啟用 SMART</span>
+    <span class="en">Enabling SMART in LibreNMS</span>
+  </h3>
+  <p class="sub">
+    <span class="zh">SMART 的探索模組在 LibreNMS 預設是<b>關閉</b>的。沒有啟用時，
+      jt-snmpd 照樣供應資料，但不會有人來取——Apps 分頁不會出現 SMART。</span>
+    <span class="en">The discovery module that finds SMART is <b>off by default</b> in LibreNMS.
+      Until it is enabled, jt-snmpd still serves the data but nothing collects it, and no SMART
+      entry appears under Apps.</span>
+  </p>
+  <ol class="steps">
+    <li><span class="zh">以管理員身分登入 LibreNMS，點右上角的<b>齒輪圖示</b>。</span>
+        <span class="en">Sign in to LibreNMS as an administrator and open the <b>gear icon</b>
+          in the top-right corner.</span></li>
+    <li><span class="zh">選 <b>Settings</b>，左側選 <b>Discovery</b>，再選 <b>Discovery Modules</b>。</span>
+        <span class="en">Choose <b>Settings</b>, then <b>Discovery</b> in the sidebar, then
+          <b>Discovery Modules</b>.</span></li>
+    <li><span class="zh">找到 <code>applications</code>，把它打開。</span>
+        <span class="en">Find <code>applications</code> and switch it on.</span></li>
+    <li><span class="zh">回到裝置頁，點齒輪選 <b>Rediscover</b>（或等下一次排程探索）。
+        完成後 <b>Apps</b> 分頁就會出現 <b>SMART</b>。</span>
+        <span class="en">Go back to the device, open its gear menu and choose <b>Rediscover</b>
+          (or wait for the next scheduled discovery). <b>SMART</b> then appears under
+          <b>Apps</b>.</span></li>
+  </ol>
+  <p class="sub">
+    <span class="zh">若偏好命令列，等效的指令是：</span>
+    <span class="en">If you prefer the command line, the equivalent is:</span>
   </p>
 <pre><code>lnms config:set discovery_modules.applications true</code></pre>
+  <p class="sub">
+    <span class="zh">輪詢端的 <code>poller_modules.applications</code> 預設就是開的，
+      所以探索過一次之後就會持續更新。</span>
+    <span class="en">The polling side, <code>poller_modules.applications</code>, is on by default,
+      so once discovery has run the data keeps updating.</span>
+  </p>
 </div></section>
 
 <section id="docs"><div class="wrap">

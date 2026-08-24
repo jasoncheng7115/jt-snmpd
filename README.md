@@ -105,10 +105,13 @@ SMART reaches LibreNMS entirely over SNMP, through `NET-SNMP-EXTEND-MIB` — no
 LibreNMS agent and no `smartctl` on the monitored host. Attributes that were not
 measured stay `null` rather than being reported as zero.
 
-> Requires `discovery_modules.applications` to be enabled in LibreNMS; it is
-> `false` by default. (The `Proxmox` entry on the built-in host is an unrelated
-> false positive from an earlier discovery — the built-in service provides no
-> SMART data.)
+> **SMART needs one setting in LibreNMS.** The discovery module that finds it is
+> off by default, so until it is enabled jt-snmpd serves the data and nothing
+> collects it. In the web interface: **gear icon → Settings → Discovery →
+> Discovery Modules → `applications`**, then rediscover the device. On the
+> command line the equivalent is `lnms config:set discovery_modules.applications true`.
+> (The `Proxmox` entry on the built-in host is an unrelated false positive from an
+> earlier discovery — the built-in service provides no SMART data.)
 
 ![SMART comparison](docs/images/smart-en.png)
 
