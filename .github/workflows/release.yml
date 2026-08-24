@@ -38,8 +38,23 @@ jobs:
           pip install pysnmp pywin32 pyinstaller pytest
 
       - name: 執行測試
+        # 失敗時把 pytest 的摘要以 ::error:: 送出，讓它變成工作流程註記。
+        # GitHub 的執行日誌需要認證才讀得到，註記則是公開的——
+        # 沒有這一步，遠端偵錯就只剩下「exit code 1」這個資訊。
         shell: pwsh
-        run: python -m pytest tests/ -q
+        run: |
+          $out = python -m pytest tests/ -q --tb=line 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) {
+            foreach ($line in ($out -split "`n")) {
+              $t = $line.Trim()
+              if ($t -match '^(FAILED|ERROR)\s' -or $t -match '^E\s' -or
+                  $t -match '^\S+\.py:\d+:' -or $t -match '^\d+ failed') {
+                Write-Host "::error::$t"
+              }
+            }
+            exit 1
+          }
 
       - name: 確認標籤與 version.py 一致
         # 版本只能有一個來源。標籤與 version.py 不一致時，
