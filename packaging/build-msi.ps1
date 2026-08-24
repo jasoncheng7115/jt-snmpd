@@ -55,7 +55,10 @@ $wix = Join-Path $env:USERPROFILE '.dotnet\tools\wix.exe'
 if (-not (Test-Path $wix)) {
     $c = Get-Command wix -ErrorAction SilentlyContinue
     if ($c) { $wix = $c.Source } else {
-        Write-Host "[FAIL] 找不到 wix.exe。請執行：dotnet tool install --global wix --version 5.*" -ForegroundColor Red
+        Write-Host "[FAIL] 找不到 wix.exe。請執行：" -ForegroundColor Red
+        Write-Host "         dotnet tool install --global wix --version 5.*"
+        Write-Host "         wix extension add -g WixToolset.Util.wixext"
+        Write-Host "         wix extension add -g WixToolset.UI.wixext"
         exit 1
     }
 }
@@ -152,6 +155,29 @@ $fragPath = Join-Path $work 'files.wxs'
 [IO.File]::WriteAllText($fragPath, $frag, (New-Object Text.UTF8Encoding $false))
 Write-Host "[*] $($files.Count + 1) 個檔案，$($dirDefs.Count) 個目錄"
 
+# --- 產物新鮮度閘門 -----------------------------------------------------------
+# build-msi 打包 build\ 裡現有的東西，不會自己去建。若忘了先跑 build-exe，
+# 或 build-exe 失敗但輸出被吞掉，這裡就會把**舊的 exe** 包進新版本號的 MSI——
+# 安裝檔看起來是新的，裡面卻是舊程式碼。實測踩過：修好的冪等載入沒進 MSI，
+# 而 MSI 的版本號、SHA-256、歸檔目錄全都顯示是新版。
+#
+# build-exe.ps1 早就有這道閘門，但它保護的是 exe；MSI 這一層是另一個缺口。
+$exePath = Join-Path $BuildDir 'jt-snmpd.exe'
+if (-not (Test-Path $exePath)) {
+    Write-Host "[FAIL] 找不到 $exePath，請先執行 build-exe.ps1" -ForegroundColor Red
+    exit 1
+}
+$exeTime = (Get-Item $exePath).LastWriteTime
+$newestSrc = Get-ChildItem $SrcDir -Filter *.py -ErrorAction SilentlyContinue |
+             Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($newestSrc -and $newestSrc.LastWriteTime -gt $exeTime) {
+    Write-Host "[FAIL] 執行檔比原始碼舊，會打包到過時的程式碼：" -ForegroundColor Red
+    Write-Host "         exe  $($exeTime.ToString('yyyy-MM-dd HH:mm:ss'))  $exePath"
+    Write-Host "         原始碼 $($newestSrc.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))  $($newestSrc.Name)"
+    Write-Host "       請先重新執行 build-exe.ps1。"
+    exit 1
+}
+
 # --- 圖示 -------------------------------------------------------------------
 # 這裡曾經產生一個 16x16 的空白 ICO 佔位，於是「加入或移除程式」裡的項目
 # 是一片空白——在客戶的資產盤點畫面上，那看起來像是安裝到一半的東西。
@@ -176,13 +202,28 @@ Write-Host "[*] wix build ..."
     -d "ProductVersion=$Version" `
     -d "IconFile=$icon" `
     -ext WixToolset.Util.wixext `
+    -ext WixToolset.UI.wixext `
     -o $msi `
     (Join-Path $PSScriptRoot 'wix\jt-snmpd.wxs') `
     $fragPath
 $code = $LASTEXITCODE
 
+# 失敗就是失敗。這裡原本只檢查「檔案存在」，於是 wix build 失敗時會取到
+# **上一次**留下的 MSI，印出 [OK] 與舊版本號——實測踩過：缺少 WiX 擴充導致
+# 建置失敗，腳本卻回報成功並歸檔了一顆舊的安裝檔。這與 build-exe.ps1
+# 早就修過的「產物新鮮度」是同一類問題。
+if ($code -ne 0) {
+    Write-Host "[FAIL] wix build 失敗 (exit=$code)" -ForegroundColor Red
+    exit 1
+}
 if (-not (Test-Path $msi)) {
     Write-Host "[FAIL] MSI 未產出 (exit=$code)" -ForegroundColor Red
+    exit 1
+}
+# 即使結束碼為 0，也要確認這顆 MSI 是這一次建出來的，而不是殘留檔案
+$age = (Get-Date) - (Get-Item $msi).LastWriteTime
+if ($age.TotalMinutes -gt 10) {
+    Write-Host "[FAIL] $msi 不是本次建置的產物（最後寫入於 $([int]$age.TotalMinutes) 分鐘前）" -ForegroundColor Red
     exit 1
 }
 

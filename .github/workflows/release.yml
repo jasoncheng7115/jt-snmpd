@@ -88,9 +88,18 @@ jobs:
             exit 1
           }
 
-      - name: 安裝 WiX 5
+      - name: 安裝 WiX 5 與擴充
+        # `dotnet tool install wix` 只裝了 wix.exe 本身。專案用到的擴充要另外
+        # 加，否則建置以 WIX0144「extension could not be found」失敗。
         shell: pwsh
-        run: dotnet tool install --global wix --version 5.*
+        run: |
+          dotnet tool install --global wix --version 5.*
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          # 釘住版本：不指定時會解析到最新的（7.x），而那與 WiX v5 不相容，
+          # 建置會以 WIX6101「Could not find expected package root folder wixext5」失敗。
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension list -g
 
       - name: 建置 MSI
         shell: pwsh

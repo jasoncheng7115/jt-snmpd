@@ -21,7 +21,8 @@
       sc failure / failureflag / privs，這些 WiX 的 ServiceInstall 不提供
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <Package Name="JT SNMP Agent"
            Manufacturer="Jason Tools"
@@ -65,7 +66,9 @@
     <!-- 出現在「加入或移除程式」的資訊 -->
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
     <Property Id="ARPHELPLINK" Value="https://jason.tools" />
-    <Property Id="ARPNOMODIFY" Value="1" />
+    <!-- ARPNOMODIFY 由 WixUI_InstallDir 提供，這裡重複定義會撞號（WIX0091）。
+         ARPNOREPAIR 仍由我們設定：修復流程會重跑自訂動作，
+         而那會重新停用內建 SNMP 並覆寫設定，不是使用者按下「修復」時預期的行為。 -->
     <Property Id="ARPNOREPAIR" Value="1" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -126,6 +129,85 @@
       <Custom Action="ConfigureAgent" After="InstallFiles"
               Condition="NOT REMOVE" />
     </InstallExecuteSequence>
+
+
+    <!-- ================= 圖形安裝介面 =================
+      無訊息安裝（GPO / Intune / SCCM）是主要交付方式，但雙擊 MSI 也必須能用：
+      沒有 UI 的 MSI 雙擊之後會直接安裝，使用者沒有機會填入管理網段與 community，
+      安裝就會以「找不到 community」失敗。
+
+      這裡在標準的 InstallDir 流程之後插入一個設定畫面。無訊息安裝時整個 UI
+      序列不會執行，命令列屬性照舊生效，兩條路徑共用同一組屬性。
+    -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UI>
+      <Dialog Id="JtSettingsDlg" Width="370" Height="270" Title="JT SNMP Agent">
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15"
+                 Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}監控設定" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="20"
+                 Transparent="yes" NoPrefix="yes"
+                 Text="這兩項決定誰可以查詢這台主機。安裝後可編輯 config.json 並重新啟動服務來調整。" />
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
+                 TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="NetLabel" Type="Text" X="20" Y="60" Width="330" Height="12"
+                 NoPrefix="yes" Text="管理網段（必填）" />
+        <Control Id="NetHint" Type="Text" X="20" Y="73" Width="330" Height="20"
+                 NoPrefix="yes"
+                 Text="只有這些來源可以查詢，例如 192.168.1.0/24。多筆以逗號分隔。" />
+        <Control Id="NetEdit" Type="Edit" X="20" Y="94" Width="330" Height="17"
+                 Property="MANAGEMENTNETWORKS" Indirect="no" />
+
+        <Control Id="CommLabel" Type="Text" X="20" Y="122" Width="330" Height="12"
+                 NoPrefix="yes" Text="Community 字串（必填）" />
+        <Control Id="CommHint" Type="Text" X="20" Y="135" Width="330" Height="20"
+                 NoPrefix="yes"
+                 Text="等同唯讀密碼。留空時會嘗試沿用 Windows 內建 SNMP 的設定。" />
+        <Control Id="CommEdit" Type="Edit" X="20" Y="156" Width="330" Height="17"
+                 Property="COMMUNITY" Indirect="no" />
+
+        <Control Id="KeepMs" Type="CheckBox" X="20" Y="186" Width="330" Height="17"
+                 Property="KEEPMSSNMP" CheckBoxValue="1"
+                 Text="保留 Windows 內建 SNMP Service（預設會停用它並在移除時還原）" />
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
+                 Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="InstallDirDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
+                 Default="yes" Text="!(loc.WixUINext)">
+          <!-- 管理網段沒填就不讓過。spec §3.3 預設 deny，不接受 Any/Any，
+               而空白會讓 agent 只回應 loopback，等於裝了但沒在監控。 -->
+          <Publish Event="NewDialog" Value="VerifyReadyDlg"
+                   Condition="MANAGEMENTNETWORKS" />
+          <Publish Event="SpawnDialog" Value="JtNeedNetworksDlg"
+                   Condition="NOT MANAGEMENTNETWORKS" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
+                 Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="JtNeedNetworksDlg" Width="260" Height="85" Title="JT SNMP Agent"
+              NoMinimize="yes">
+        <Control Id="Text" Type="Text" X="20" Y="15" Width="220" Height="40"
+                 NoPrefix="yes"
+                 Text="請填入管理網段。未指定時代理程式只會回應本機查詢，等於安裝了卻沒有在監控。" />
+        <Control Id="OK" Type="PushButton" X="100" Y="60" Width="56" Height="17"
+                 Default="yes" Cancel="yes" Text="!(loc.WixUIOK)">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+
+      <!-- 把設定畫面插進標準流程：InstallDirDlg → JtSettingsDlg → VerifyReadyDlg -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog"
+               Value="JtSettingsDlg" Order="3" Condition="NOT Installed" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog"
+               Value="JtSettingsDlg" Order="3" Condition="NOT Installed" />
+    </UI>
 
     <Icon Id="AppIcon" SourceFile="$(var.IconFile)" />
 
