@@ -39,7 +39,8 @@ nav{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);
 nav .wrap{display:flex;align-items:center;gap:18px;height:58px}
 nav .brand{font-weight:700;letter-spacing:-.2px;margin-right:auto;font-size:17px;
   display:flex;align-items:center;gap:9px}
-nav .brand span{color:var(--accent)}
+nav .brand .wordmark{color:inherit}
+nav .brand .wordmark span{color:var(--accent)}
 nav a.navlink{color:var(--dim);font-size:14.5px}
 nav a.navlink:hover{color:var(--fg);text-decoration:none}
 /* <a class="btn"> 與 <button class="btn"> 的高度由不同規則決定：按鈕有自己的
@@ -134,7 +135,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 </script>
 
 <nav><div class="wrap">
-  <div class="brand"><img src="brand/icon.svg" alt="" width="26" height="26">jt-<span>snmpd</span></div>
+  <div class="brand"><img src="brand/icon.svg" alt="" width="26" height="26"><span class="wordmark">jt-<span>snmpd</span></span></div>
   <a class="navlink" href="#why"><span class="zh">為什麼</span><span class="en">Why</span></a>
   <a class="navlink" href="#compare"><span class="zh">對照</span><span class="en">Comparison</span></a>
   <a class="navlink" href="#install"><span class="zh">安裝</span><span class="en">Install</span></a>
@@ -276,7 +277,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 
   <div class="shots">
     <figure>
-      <h3><span class="zh">感測器</span><span class="en">Sensors</span></h3>
+      <h3><span class="zh">感測器對照圖</span><span class="en">Sensors — side by side</span></h3>
       <img data-shot="temperature" src="images/temperature-en.png" alt="">
       <figcaption>
         <span class="zh">內建服務完全不回報感測器，LibreNMS 因此根本不會建立「溫度」頁籤。</span>
@@ -284,7 +285,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       </figcaption>
     </figure>
     <figure>
-      <h3>SMART</h3>
+      <h3><span class="zh">SMART 對照圖</span><span class="en">SMART — side by side</span></h3>
       <img data-shot="smart" src="images/smart-en.png" alt="">
       <figcaption>
         <span class="zh">SMART 完全透過 SNMP 送達。沒量到的屬性保持 null，不以 0 回報——
@@ -295,7 +296,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       </figcaption>
     </figure>
     <figure>
-      <h3><span class="zh">連接埠</span><span class="en">Ports</span></h3>
+      <h3><span class="zh">連接埠對照圖</span><span class="en">Ports — side by side</span></h3>
       <img data-shot="ports" src="images/ports-en.png" alt="">
       <figcaption>
         <span class="zh">內建服務把每一個 NDIS 過濾驅動都當成獨立介面；jt-snmpd 只輸出實體網路卡，
@@ -306,7 +307,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       </figcaption>
     </figure>
     <figure>
-      <h3><span class="zh">記憶體</span><span class="en">Memory</span></h3>
+      <h3><span class="zh">記憶體對照圖</span><span class="en">Memory — side by side</span></h3>
       <img data-shot="memory" src="images/memory-en.png" alt="">
       <figcaption>
         <span class="zh">內建服務提供實體與虛擬記憶體；jt-snmpd 另外提供快取記憶體與 Swap。</span>
@@ -336,22 +337,22 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   </h3>
   <p class="sub">
     <span class="zh">SMART 的探索模組在 LibreNMS 預設是<b>關閉</b>的。沒有啟用時，
-      jt-snmpd 照樣供應資料，但不會有人來取——Apps 分頁不會出現 SMART。</span>
+      jt-snmpd 照樣供應資料，但不會有人來取——裝置的「應用程式」分頁不會出現 SMART。</span>
     <span class="en">The discovery module that finds SMART is <b>off by default</b> in LibreNMS.
       Until it is enabled, jt-snmpd still serves the data but nothing collects it, and no SMART
       entry appears under Apps.</span>
   </p>
   <ol class="steps">
-    <li><span class="zh">以管理員身分登入 LibreNMS，點右上角的<b>齒輪圖示</b>。</span>
+    <li><span class="zh">以管理員身分登入 LibreNMS，點右上角的<b>齒輪圖示</b>，選「<b>全域設定</b>」。</span>
         <span class="en">Sign in to LibreNMS as an administrator and open the <b>gear icon</b>
           in the top-right corner.</span></li>
-    <li><span class="zh">選 <b>Settings</b>，左側選 <b>Discovery</b>，再選 <b>Discovery Modules</b>。</span>
+    <li><span class="zh">上方分頁選「<b>探索</b>」，展開「<b>探索模組</b>」。</span>
         <span class="en">Choose <b>Settings</b>, then <b>Discovery</b> in the sidebar, then
           <b>Discovery Modules</b>.</span></li>
-    <li><span class="zh">找到 <code>applications</code>，把它打開。</span>
+    <li><span class="zh">找到「<b>應用程式</b>」（即 <code>applications</code>），把它打開。</span>
         <span class="en">Find <code>applications</code> and switch it on.</span></li>
-    <li><span class="zh">回到裝置頁，點齒輪選 <b>Rediscover</b>（或等下一次排程探索）。
-        完成後 <b>Apps</b> 分頁就會出現 <b>SMART</b>。</span>
+    <li><span class="zh">回到該裝置頁面，按「<b>重新探索裝置</b>」（或等下一次排程探索）。
+        完成後裝置的「<b>應用程式</b>」分頁就會出現 <b>SMART</b>。</span>
         <span class="en">Go back to the device, open its gear menu and choose <b>Rediscover</b>
           (or wait for the next scheduled discovery). <b>SMART</b> then appears under
           <b>Apps</b>.</span></li>

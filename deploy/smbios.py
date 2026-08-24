@@ -1,22 +1,23 @@
-"""SMBIOS 解析（spec §2.10）— ENTITY-MIB 的資料來源。
+"""SMBIOS parsing (spec §2.10) — where the ENTITY-MIB data comes from.
 
-spec §2.10 明確指出**不需要 WMI**：用
+spec §2.10 is explicit that **WMI is not needed**: call
 `GetSystemFirmwareTable(FIRMWARE_TABLE_PROVIDER 'RSMB', 0, buffer, size)`
-取得 raw SMBIOS table 後自行解析。此路徑**不需要特殊權限**，
-符合 spec §31 的資料來源優先序，也符合「不用 wmic、不用 PowerShell subprocess」
-的鐵則（§10-32）。
+to fetch the raw SMBIOS table and parse it here. That path **needs no special
+privilege**, follows the data-source precedence in spec §31, and honours the rule
+against wmic and PowerShell subprocesses (§10-32).
 
-對應關係（spec §2.10 表）：
+The mapping (spec §2.10):
 
     Type 0   BIOS          → entPhysicalFirmwareRev
-    Type 1   System        → 製造商、型號、序號、UUID
-    Type 2   Baseboard     → 主機板
+    Type 1   System        → manufacturer, model, serial, UUID
+    Type 2   Baseboard     → mainboard
     Type 4   Processor     → CPU package
-    Type 17  Memory Device → DIMM（含序號、容量、速度）
+    Type 17  Memory Device → DIMMs, with serial, capacity and speed
 
-SMBIOS 結構格式：每個 structure 由 4-byte header（type, length, handle）起頭，
-接著是 formatted area，之後是以雙 NUL 結尾的字串區。結構中的字串欄位存的是
-**索引**（1-based），0 代表無字串。
+SMBIOS structure format: each structure starts with a 4-byte header (type,
+length, handle), followed by the formatted area, followed by a string area
+terminated by two NULs. String fields inside a structure hold a **1-based
+index**, where 0 means "no string".
 """
 
 from __future__ import annotations
@@ -25,12 +26,13 @@ import ctypes
 import struct
 from ctypes import wintypes
 
-# 'RSMB' 以 little-endian DWORD 表示
+# 'RSMB' as a little-endian DWORD
 RSMB = 0x52534D42
 
 
 def get_raw_smbios() -> bytes:
-    """取得 raw SMBIOS table。失敗回傳空 bytes（呼叫端視為該表不存在）。"""
+    """Fetch the raw SMBIOS table. Returns empty bytes on failure, which the
+    caller treats as "the table is not there"."""
     k32 = ctypes.windll.kernel32
     k32.GetSystemFirmwareTable.argtypes = [wintypes.DWORD, wintypes.DWORD,
                                            ctypes.c_void_p, wintypes.DWORD]
@@ -47,15 +49,17 @@ def get_raw_smbios() -> bytes:
 
 
 def _strings(blob: bytes, pos: int) -> tuple[list[str], int]:
-    """讀取結構尾端的字串區，回傳 (字串清單, 下一個結構的起始位置)。
+    """Read the string area at the end of a structure and return
+    (list of strings, offset of the next structure).
 
-    字串區以雙 NUL 結尾。無字串時仍有一個 NUL（即 0x00 0x00）。
+    The area is terminated by two NULs. A structure with no strings still has
+    one NUL, so the terminator is 0x00 0x00.
     """
     out: list[str] = []
     start = pos
     while pos < len(blob):
         if blob[pos] == 0:
-            if pos == start:                      # 空字串區
+            if pos == start:                      # empty string area
                 return out, pos + 2
             out.append(blob[start:pos].decode("utf-8", "replace"))
             start = pos + 1
@@ -65,40 +69,43 @@ def _strings(blob: bytes, pos: int) -> tuple[list[str], int]:
     return out, len(blob)
 
 
-# SMBIOS 佔位字串。OEM 沒填時韌體會塞這些值，它們不是真實資料。
-# 原樣輸出會讓 LibreNMS 的 Inventory 頁顯示 "Serial No. To Be Filled By O.E.M."
-# ——比空白更糟，因為看起來像真的。實測回報。
+# SMBIOS placeholder strings. Firmware fills these in when the OEM did not, and
+# they are not real data. Passing them through makes the LibreNMS Inventory page
+# read "Serial No. To Be Filled By O.E.M." — worse than blank, because it looks
+# genuine. Reported from the field.
 _PLACEHOLDERS = {
     "to be filled by o.e.m.", "to be filled by o.e.m", "system serial number",
     "default string", "not specified", "not available", "none", "n/a",
     "unknown", "chassis serial number", "base board serial number",
     "system product name", "system manufacturer", "system version",
-    "asset-1234567890", "0123456789", "00000000", "填寫者 o.e.m.",
+    "asset-1234567890", "0123456789", "00000000",
     "fill by oem", "oem", "no dimm", "unknown manufacturer",
 }
 
 
 def _s(strings: list[str], idx: int) -> str:
-    """SMBIOS 字串索引為 1-based，0 代表無字串。
+    """SMBIOS string indices are 1-based; 0 means there is no string.
 
-    一併濾掉 OEM 佔位字串——把 "To Be Filled By O.E.M." 當成序號輸出，
-    比留空更糟，因為它看起來像真實資料。
+    OEM placeholders are filtered out here too: reporting
+    "To Be Filled By O.E.M." as a serial number is worse than reporting nothing,
+    because it looks like real data.
     """
     if idx <= 0 or idx > len(strings):
         return ""
     val = strings[idx - 1].strip()
     if val.lower() in _PLACEHOLDERS:
         return ""
-    # 全是重複字元的字串（"0000000"、"........"）也是佔位
+    # A string of one repeated character ("0000000", "........") is also a
+    # placeholder
     if len(val) > 2 and len(set(val)) == 1:
         return ""
     return val
 
 
 def parse_smbios(blob: bytes) -> list[dict]:
-    """把 raw SMBIOS 解析成結構清單。
+    """Parse raw SMBIOS into a list of structures.
 
-    Windows 的 RSMB 回傳前有 8 bytes header：
+    Windows' RSMB response starts with an 8-byte header:
         BYTE Used20CallingMethod; BYTE SMBIOSMajorVersion;
         BYTE SMBIOSMinorVersion;  BYTE DmiRevision; DWORD Length;
     """
@@ -118,7 +125,8 @@ def parse_smbios(blob: bytes) -> list[dict]:
         out.append({"type": stype, "handle": handle, "data": formatted, "strings": strings})
         if stype == 127:                          # End-of-Table
             break
-        if nxt <= pos:                            # 防呆：避免畸形資料造成無限迴圈
+        if nxt <= pos:                            # guard: malformed data must
+                                                  # not spin forever
             break
         pos = nxt
     return out
@@ -136,7 +144,7 @@ def _u32(d: bytes, off: int) -> int:
     return struct.unpack_from("<I", d, off)[0] if off + 4 <= len(d) else 0
 
 
-# --- 各 type 的萃取 ---------------------------------------------------------
+# --- Extraction per structure type ------------------------------------------
 
 def bios_info(structs) -> dict:
     """Type 0 — BIOS。"""
@@ -174,7 +182,7 @@ def baseboard_info(structs) -> dict:
 
 
 def processors(structs) -> list[dict]:
-    """Type 4 — Processor。只取已安裝（socket populated）的。"""
+    """Type 4 — Processor. Only sockets that are actually populated."""
     out = []
     for s in structs:
         if s["type"] != 4:
@@ -194,7 +202,7 @@ def processors(structs) -> list[dict]:
 
 
 def memory_devices(structs) -> list[dict]:
-    """Type 17 — Memory Device。跳過未安裝的插槽（size == 0）。"""
+    """Type 17 — Memory Device. Empty slots (size == 0) are skipped."""
     out = []
     for s in structs:
         if s["type"] != 17:
@@ -202,10 +210,10 @@ def memory_devices(structs) -> list[dict]:
         d, st = s["data"], s["strings"]
         size = _u16(d, 0x0C)
         if size == 0:
-            continue                              # 空插槽
-        if size == 0x7FFF:                        # 需用 extended size（32-bit，MB）
+            continue                              # empty slot
+        if size == 0x7FFF:                        # use extended size (32-bit, MB)
             size_mb = _u32(d, 0x1C) & 0x7FFFFFFF
-        elif size & 0x8000:                       # bit15 set = 單位是 KB
+        elif size & 0x8000:                       # bit 15 set: the unit is KB
             size_mb = (size & 0x7FFF) // 1024
         else:
             size_mb = size
@@ -220,10 +228,10 @@ def memory_devices(structs) -> list[dict]:
 
 
 def collect() -> dict:
-    """一次取得全部 inventory 資料。
+    """Fetch the whole inventory in one pass.
 
-    spec §2.7：硬體 inventory 啟動時取一次即可，**永久快取**——
-    SMBIOS 在開機後不會變。
+    spec §2.7: hardware inventory is read once at startup and **cached for the
+    lifetime of the process** — SMBIOS does not change after boot.
     """
     structs = parse_smbios(get_raw_smbios())
     if not structs:

@@ -99,9 +99,10 @@ SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`——
 沒量到的屬性保持 `null`，不會以 0 回報。
 
 > **SMART 需要在 LibreNMS 開一個設定。** 找到它的探索模組預設是關的，
-> 沒開啟時 jt-snmpd 照樣供應資料，但不會有人來取。網頁介面的路徑是：
-> **齒輪圖示 → Settings → Discovery → Discovery Modules → `applications`**，
-> 開啟後對該裝置重新探索即可。命令列的等效指令是
+> 沒開啟時 jt-snmpd 照樣供應資料，但不會有人來取。網頁介面的路徑（用語與
+> LibreNMS 繁體中文介面一致）：**齒輪圖示 → 全域設定 → 分頁「探索」→
+> 展開「探索模組」→ 打開「應用程式」**，然後回到該裝置按「重新探索裝置」。
+> 完成後裝置的「應用程式」分頁就會出現 SMART。命令列的等效指令是
 > `lnms config:set discovery_modules.applications true`。
 >（內建那台顯示的 `Proxmox` 是先前探索留下的誤判，與本對照無關——
 > 內建服務並不提供任何 SMART 資料。）

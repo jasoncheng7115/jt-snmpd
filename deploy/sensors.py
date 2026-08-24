@@ -1,38 +1,48 @@
 # -*- coding: utf-8 -*-
-"""免核心驅動的硬體感測器：ACPI 熱區、電池、CPU 頻率。
+"""Driverless hardware sensors: ACPI thermal zones, battery, CPU frequency.
 
-**為什麼不讀 CPU 核心溫度**
+**Why CPU package temperature is not here**
 
-CPU 封裝溫度要存取 MSR（Intel `IA32_THERM_STATUS`、AMD SMN），那必須有核心
-驅動。LibreHardwareMonitor / OpenHardwareMonitor 用的 WinRing0 已列入 Microsoft
-的易受攻擊驅動封鎖清單，在客戶端普遍啟用的 HVCI / WDAC 環境下根本載不進去；
-就算載得進去，為了一個溫度值在數百台政府與醫院主機上安裝一個能任意讀寫 MSR
-與實體記憶體的驅動，是把監控工具變成提權管道。CLAUDE.md 鐵則 8 因此禁止。
+Reading it requires MSR access (Intel `IA32_THERM_STATUS`, AMD SMN), which
+requires a kernel driver. WinRing0 — the one LibreHardwareMonitor and
+OpenHardwareMonitor use — is on Microsoft's vulnerable-driver blocklist and will
+not load under the HVCI/WDAC configurations our customers run. Even where it
+would load, installing something that can read and write arbitrary MSRs and
+physical memory across hundreds of government and hospital machines, for one
+temperature reading, turns a monitoring tool into a privilege-escalation path.
+CLAUDE.md rule 8 forbids it.
 
-本模組提供的是韌體本來就願意公開的資料：
+What this module exposes is what the firmware already publishes:
 
-- **ACPI 熱區**（`MSAcpi_ThermalZoneTemperature`）—— 主機板/CPU 附近的熱區溫度，
-  含 ACPI 自己定義的 passive / critical 跳脫點，可直接當門檻值。
-- **電池** —— `GetSystemPowerStatus`（充電百分比、市電狀態）。
-- **CPU 頻率** —— `CallNtPowerInformation(ProcessorInformation)`。
+- **ACPI thermal zones** (`MSAcpi_ThermalZoneTemperature`) — the temperature near
+  the mainboard or CPU, with the passive and critical trip points ACPI itself
+  declares, usable directly as thresholds.
+- **Battery** — `GetSystemPowerStatus` (charge percentage, AC line status).
+- **CPU frequency** — `CallNtPowerInformation(ProcessorInformation)`.
 
-三者都是文件化的公開 API，不需要驅動、不需要提權、不開 subprocess。
+All three are documented public APIs: no driver, no extra privilege, no
+subprocess.
 
-**這個模組的解析為什麼寫得這麼防禦**
+**Why the parsing here is so defensive**
 
-WMI 資料區塊的每一個偏移量與長度都**取自緩衝區自身**，而緩衝區來自韌體與
-驅動。Python 是記憶體安全的，所以不會有典型的溢位；真正的風險是：
+Every offset and length in a WMI data block is **read from the buffer itself**,
+and the buffer comes from firmware and drivers. Python is memory-safe, so there
+is no classic overflow; the real risks are different:
 
-1. 一個亂寫的 `InstanceCount` 讓迴圈跑上百萬次 —— 在「絕不能拖慢 host」的
-   硬性要求下，這就是一次 DoS。
-2. 一個亂寫的 `BufferSize` 讓我們配置巨大的緩衝區。
-3. 韌體提供的執行個體名稱直接進 SNMP OCTET STRING —— 控制字元與超長字串會
-   讓回應變形或撐破 1400 位元組上限。
-4. `0` 或 `0xFFFFFFFF` 這種「未知」值換算成攝氏是 -273°C 或 4 億度，
-   進了 LibreNMS 就是一串假告警。
+1. An implausible `InstanceCount` turns into a loop running millions of times —
+   which, under a hard requirement never to slow the host down, is a
+   self-inflicted denial of service.
+2. An implausible `BufferSize` leads to an enormous allocation.
+3. Firmware-supplied instance names go straight into an SNMP OCTET STRING, where
+   control characters and over-long strings deform the response or push it past
+   the 1400-byte cap.
+4. `0` and `0xFFFFFFFF` are how ACPI says "unknown"; converted to Celsius they
+   are -273 °C and four hundred million degrees, and in LibreNMS they are a
+   stream of false alerts.
 
-因此**解析與採集完全分離**：`parse_wnode_all_data()` 是純函式，吃 bytes 吐
-結構，可以在 Linux 上用惡意緩衝區做 property test（見 tests/test_sensors.py）。
+So **parsing is separated from acquisition**: `parse_wnode_all_data()` is a pure
+function from bytes to structures, which is what makes it testable against
+hostile buffers on Linux (see tests/test_sensors_parsing.py).
 """
 
 from __future__ import annotations
@@ -41,32 +51,36 @@ import struct
 import sys
 from typing import NamedTuple
 
-# --- 防禦性上限 -------------------------------------------------------------
-# 這些數字不是「應該夠用」，而是「超過就代表資料有問題，寧可不要」。
-MAX_WMI_BUFFER = 1 << 20        # 1 MB：熱區資料實際只有數百位元組
-MAX_INSTANCES = 64              # 熱區數量；真實機器是 1~8
-MAX_NAME_CHARS = 128            # 執行個體名稱字元數上限
-MAX_PROCESSORS = 512            # CallNtPowerInformation 緩衝區上限
+# --- Defensive limits --------------------------------------------------------
+# These are not "should be enough"; they are "past this, the data is wrong and
+# is better discarded".
+MAX_WMI_BUFFER = 1 << 20        # 1 MB; thermal zone data is a few hundred bytes
+MAX_INSTANCES = 64              # thermal zones; a real machine has 1 to 8
+MAX_NAME_CHARS = 128            # cap on instance name length
+MAX_PROCESSORS = 512            # cap on the CallNtPowerInformation buffer
 
-# ACPI 溫度以十分之一克耳文表示。合理範圍取 -40°C ~ 200°C：
-# 低於此多半是「未知」（ACPI 規範以 0 或 0xFFFFFFFF 表示），
-# 高於此則是解析錯位。兩者都必須丟棄而不是輸出。
+# ACPI temperatures are in tenths of a kelvin. The plausible range is taken as
+# -40 °C to 200 °C: below that is almost always "unknown" (ACPI signals it with 0
+# or 0xFFFFFFFF), above it means the parse is misaligned. Both are discarded
+# rather than reported.
 TENTHS_K_MIN = 2332             # -40.0 °C
 TENTHS_K_MAX = 4732             # 200.0 °C
 
 
 def tenths_kelvin_to_celsius(v: int) -> float | None:
-    """十分之一克耳文 → 攝氏；不合理值回 None（絕不捏造，spec §6.9）。"""
+    """Tenths of a kelvin to Celsius; None for implausible values (never
+    fabricate — spec §6.9)."""
     if not isinstance(v, int) or not (TENTHS_K_MIN <= v <= TENTHS_K_MAX):
         return None
     return round(v / 10.0 - 273.15, 1)
 
 
 def sanitise_name(raw: str, *, limit: int = MAX_NAME_CHARS) -> str:
-    """韌體提供的字串在進入 SNMP 之前必須先清理。
+    """Clean a firmware-supplied string before it enters SNMP.
 
-    控制字元會讓記錄檔與 LibreNMS 的顯示變形；超長字串會擠壓回應的
-    1400 位元組上限。兩者都在來源端處理，不留給下游。
+    Control characters deform both the log file and the LibreNMS display;
+    over-long strings eat into the 1400-byte response cap. Both are handled at
+    the source rather than left for something downstream.
     """
     cleaned = "".join(c for c in raw if c.isprintable() and c not in "\r\n\t")
     return cleaned[:limit]
@@ -80,13 +94,14 @@ class WnodeInstance(NamedTuple):
 
 def parse_wnode_all_data(raw: bytes, *,
                          max_instances: int = MAX_INSTANCES) -> list[WnodeInstance]:
-    """解析 WNODE_ALL_DATA 緩衝區。
+    """Parse a WNODE_ALL_DATA buffer.
 
-    純函式，不呼叫任何 Win32 API —— 這是為了能用惡意輸入測試它。
-    任何不合理的內容都以「回傳目前為止解析成功的部分」收場，
-    絕不拋例外、絕不信任緩衝區自稱的數字。
+    A pure function that calls no Win32 API — which is the point, because it
+    makes the parser testable against hostile input. Anything implausible ends
+    with "return what parsed successfully so far": it never raises, and it never
+    trusts a number the buffer states about itself.
 
-    版面（wmistr.h）::
+    Layout (wmistr.h)::
 
         WNODE_HEADER          48 bytes
           +0  BufferSize      ULONG
@@ -95,19 +110,19 @@ def parse_wnode_all_data(raw: bytes, *,
           +16 TimeStamp       LARGE_INTEGER
           +24 Guid            GUID (16)
           +40 KernelHandle/ProviderPtr
-          +44 Flags           ULONG        (WNODE_HEADER 實際為 48)
+          +44 Flags           ULONG        (WNODE_HEADER is 48 bytes)
         WNODE_ALL_DATA
           +48 DataBlockOffset            ULONG
           +52 InstanceCount              ULONG
           +56 OffsetInstanceNameOffsets  ULONG
-          +60 FixedInstanceSize 或 OffsetInstanceDataAndLength[]
+          +60 FixedInstanceSize, or OffsetInstanceDataAndLength[]
     """
     out: list[WnodeInstance] = []
     if len(raw) < 64:
         return out
 
     buffer_size = struct.unpack_from("<I", raw, 0)[0]
-    # 緩衝區自稱的大小不可超過我們實際持有的位元組數。
+    # The size the buffer claims cannot exceed the bytes actually held.
     limit = min(buffer_size, len(raw)) if buffer_size >= 64 else len(raw)
 
     flags = struct.unpack_from("<I", raw, 44)[0]
@@ -115,7 +130,8 @@ def parse_wnode_all_data(raw: bytes, *,
 
     if inst_count == 0:
         return out
-    # 截斷而不是相信：真實機器熱區個位數，百萬筆代表資料壞了。
+    # Truncate rather than trust: a real machine has single-digit thermal
+    # zones, so a count in the millions means the data is corrupt.
     count = min(inst_count, max_instances)
 
     fixed = bool(flags & 0x0200)        # WNODE_FLAG_FIXED_INSTANCE_SIZE
@@ -127,17 +143,17 @@ def parse_wnode_all_data(raw: bytes, *,
         for i in range(count):
             off = data_off + i * inst_size
             if off < 0 or off + inst_size > limit:
-                break                   # 越界即停止，已解析的仍然有效
+                break                   # out of bounds: stop, keep what parsed
             spans.append((off, inst_size))
     else:
-        # OffsetInstanceDataAndLength[] 每項 8 bytes（Offset + Length）
+        # OffsetInstanceDataAndLength[] is 8 bytes per entry (Offset + Length)
         table_end = 60 + count * 8
         if table_end > limit:
             count = max(0, (limit - 60) // 8)
         for i in range(count):
             off, length = struct.unpack_from("<II", raw, 60 + i * 8)
             if length == 0 or off < 0 or length > limit or off + length > limit:
-                continue                # 跳過壞的那筆，不放棄整批
+                continue                # skip the bad entry, keep the batch
             spans.append((off, length))
 
     names = _parse_instance_names(raw, name_off, len(spans), limit)
@@ -149,10 +165,12 @@ def parse_wnode_all_data(raw: bytes, *,
 
 def _parse_instance_names(raw: bytes, name_off: int, count: int,
                           limit: int) -> list[str]:
-    """執行個體名稱是一組偏移量，各自指向一個計數式 UNICODE 字串。
+    """Instance names are an array of offsets, each pointing at a counted
+    UNICODE string.
 
-    每一層偏移都要重新檢查——名稱表的偏移、字串本身的偏移、字串長度，
-    任何一個都可能是垃圾。
+    Every level of indirection is re-checked — the offset of the name table, the
+    offset of the string, the length of the string — because any of them can be
+    garbage.
     """
     names: list[str] = []
     if not (0 < name_off < limit) or count <= 0:
@@ -166,7 +184,8 @@ def _parse_instance_names(raw: bytes, name_off: int, count: int,
                 names.append("")
                 continue
             nbytes = struct.unpack_from("<H", raw, off)[0]
-            # 字元數上限同時擋住「超長」與「長度欄位是垃圾」兩種情況
+            # The character cap covers both "far too long" and "the length
+            # field is garbage"
             if nbytes == 0 or nbytes > MAX_NAME_CHARS * 2 or off + 2 + nbytes > limit:
                 names.append("")
                 continue
@@ -185,15 +204,16 @@ class ThermalZone(NamedTuple):
 
 
 def parse_thermal_zone(inst: WnodeInstance) -> ThermalZone | None:
-    """把一筆熱區資料轉成溫度。
+    """Turn one thermal zone record into a temperature.
 
-    MSAcpi_ThermalZoneTemperature 的欄位序（ACPI 驅動的 MOF）::
+    Field order of MSAcpi_ThermalZoneTemperature (from the ACPI driver's MOF)::
 
         ThermalStamp, ThermalConstant1, ThermalConstant2, Reserved,
         SamplingPeriod, CurrentTemperature, PassiveTripPoint,
         CriticalTripPoint, ActiveTripPointCount, ActiveTripPoint[10]
 
-    共 9 個 ULONG 加 10 個 ULONG。只需要前 9 個，但長度不足就不硬解。
+    Nine ULONGs followed by ten more. Only the first nine are needed, and a
+    record too short for them is not forced.
     """
     if len(inst.data) < 36:             # 9 * 4
         return None
@@ -203,7 +223,8 @@ def parse_thermal_zone(inst: WnodeInstance) -> ThermalZone | None:
         return None
     celsius = tenths_kelvin_to_celsius(f[5])
     if celsius is None:
-        return None                     # 未知或不合理 → 這一列從快照消失
+        return None                     # unknown or implausible: the row
+                                        # disappears from the snapshot
     return ThermalZone(
         name=inst.name or "ThermalZone",
         celsius=celsius,
@@ -212,9 +233,9 @@ def parse_thermal_zone(inst: WnodeInstance) -> ThermalZone | None:
     )
 
 
-# --- 以下需要 Windows；在 Linux 上 import 本模組仍然安全 --------------------
+# --- Below here needs Windows; importing this module on Linux stays safe ----
 
-if sys.platform == "win32":  # pragma: no cover - 只在 Windows 上執行
+if sys.platform == "win32":  # pragma: no cover - only runs on Windows
     import ctypes
     from ctypes import wintypes
 
@@ -226,7 +247,7 @@ if sys.platform == "win32":  # pragma: no cover - 只在 Windows 上執行
         _fields_ = [("Data1", ctypes.c_ulong), ("Data2", ctypes.c_ushort),
                     ("Data3", ctypes.c_ushort), ("Data4", ctypes.c_ubyte * 8)]
 
-    # 鐵則 11：所有 Win32 呼叫必須宣告 argtypes/restype。
+    # Rule 11: every Win32 call declares argtypes and restype.
     _adv.WmiOpenBlock.argtypes = [ctypes.POINTER(_GUID), ctypes.c_ulong,
                                   ctypes.POINTER(wintypes.HANDLE)]
     _adv.WmiOpenBlock.restype = ctypes.c_ulong
@@ -263,15 +284,16 @@ if sys.platform == "win32":  # pragma: no cover - 只在 Windows 上執行
     _ERROR_INSUFFICIENT_BUFFER = 122
     _ALL_PROCESSOR_GROUPS = 0xFFFF
     _PROCESSOR_INFORMATION = 11
-    # MSAcpi_ThermalZoneTemperature（ACPI 驅動的 WMI 資料區塊）
+    # MSAcpi_ThermalZoneTemperature (the ACPI driver's WMI data block)
     _TZ_GUID = _GUID(0xA1BC18C0, 0xA7C8, 0x11D1,
                      (ctypes.c_ubyte * 8)(0xBF, 0x3C, 0x00, 0xA0, 0xC9, 0x06, 0x29, 0x10))
 
     def read_thermal_zones() -> list[ThermalZone]:
-        """讀取 ACPI 熱區。無熱區的機器（虛擬機、多數桌機）回空清單。
+        """Read the ACPI thermal zones. Machines without any — virtual
+        machines, most desktops — return an empty list.
 
-        `WmiOpenBlock` 在沒有熱區時回 4200（ERROR_WMI_GUID_NOT_FOUND）——
-        這是正常情況，不是錯誤，不必記錄。
+        `WmiOpenBlock` returns 4200 (ERROR_WMI_GUID_NOT_FOUND) when there are no
+        zones. That is normal, not an error, and is not logged.
         """
         h = wintypes.HANDLE()
         if _adv.WmiOpenBlock(ctypes.byref(_TZ_GUID), _WMIGUID_QUERY,
@@ -282,14 +304,15 @@ if sys.platform == "win32":  # pragma: no cover - 只在 Windows 上執行
             rc = _adv.WmiQueryAllDataW(h, ctypes.byref(size), None)
             if rc not in (0, _ERROR_INSUFFICIENT_BUFFER):
                 return []
-            # 驅動自稱需要的大小也要設上限，否則一個壞掉的驅動就能讓我們
-            # 配置任意大的記憶體。
+            # Cap the size the driver asks for as well; otherwise a broken
+            # driver can make us allocate arbitrarily much memory.
             if not (0 < size.value <= MAX_WMI_BUFFER):
                 return []
             buf = (ctypes.c_ubyte * size.value)()
             if _adv.WmiQueryAllDataW(h, ctypes.byref(size), ctypes.byref(buf)) != 0:
                 return []
-            # 第二次呼叫可能回報比配置量更小的實際長度；取兩者較小者。
+            # The second call may report less than was allocated; take the
+            # smaller of the two.
             used = min(size.value, ctypes.sizeof(buf))
             raw = bytes(buf)[:used]
         finally:
@@ -308,18 +331,18 @@ if sys.platform == "win32":  # pragma: no cover - 只在 Windows 上執行
         seconds_left: int | None
 
     def read_battery() -> Battery | None:
-        """電池狀態。桌機與虛擬機沒有電池，回 None。"""
+        """Battery state. Desktops and virtual machines have none, so None."""
         st = _SYSTEM_POWER_STATUS()
         if not _k32.GetSystemPowerStatus(ctypes.byref(st)):
             return None
-        # BATTERY_FLAG_NO_SYSTEM_BATTERY = 0x80；百分比 255 = 未知。
+        # BATTERY_FLAG_NO_SYSTEM_BATTERY = 0x80; 255 percent means unknown.
         if st.BatteryFlag & 0x80 or st.BatteryLifePercent > 100:
             return None
         secs = st.BatteryLifeTime
         return Battery(
             percent=int(st.BatteryLifePercent),
             on_ac=(st.ACLineStatus == 1),
-            # 0xFFFFFFFF = 未知；接市電時本來就沒有意義
+            # 0xFFFFFFFF means unknown, and on AC power it has no meaning anyway
             seconds_left=None if secs == 0xFFFFFFFF else int(secs),
         )
 
@@ -329,17 +352,21 @@ if sys.platform == "win32":  # pragma: no cover - 只在 Windows 上執行
         max_mhz: int
 
     def read_cpu_frequencies() -> list[CpuFreq]:
-        """每個邏輯處理器的目前/最高頻率。
+        """Current and maximum frequency for each logical processor.
 
-        **緩衝區大小必須用 GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)**，
-        不能用 os.cpu_count()：後者只反映呼叫端所屬的處理器群組，在超過 64 核
-        的機器上會少報，而核心是照**實際處理器數**寫回來的——緩衝區配小了
-        就是一次真正的堆積毀損。ctypes 正是 Python 記憶體安全性失效之處。
+        **The buffer must be sized with
+        GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)**, not `os.cpu_count()`.
+        The latter reflects only the caller's processor group and under-reports
+        on machines with more than 64 processors, while the kernel writes back
+        according to the **actual** processor count — so an undersized buffer is
+        a genuine heap corruption. ctypes is exactly where Python's memory safety
+        stops applying.
         """
         n = _k32.GetActiveProcessorCount(_ALL_PROCESSOR_GROUPS)
         if n <= 0:
             return []
-        # 上限同時擋住 API 回傳異常值，以及避免配置過大的緩衝區。
+        # The cap guards against an anomalous return from the API and against
+        # an over-large allocation.
         n = min(int(n), MAX_PROCESSORS)
         arr = (_PROCESSOR_POWER_INFORMATION * n)()
         if _pwr.CallNtPowerInformation(_PROCESSOR_INFORMATION, None, 0,
@@ -347,14 +374,16 @@ if sys.platform == "win32":  # pragma: no cover - 只在 Windows 上執行
             return []
         out: list[CpuFreq] = []
         for p in arr:
-            # 0 MHz 代表核心沒填；不合理的高值代表解析錯位。兩者都丟棄。
+            # 0 MHz means the kernel left it unset; an implausibly high value
+            # means the parse is misaligned. Both are discarded.
             if 0 < p.CurrentMhz <= 100_000 and 0 < p.MaxMhz <= 100_000:
                 out.append(CpuFreq(number=int(p.Number),
                                    current_mhz=int(p.CurrentMhz),
                                    max_mhz=int(p.MaxMhz)))
         return out
 
-else:   # 非 Windows：提供同名函式，讓 agent 的匯入與測試不必分歧
+else:   # Non-Windows: same names, so the agent's imports and the tests do not
+        # have to branch
     def read_thermal_zones() -> list[ThermalZone]:
         return []
 
