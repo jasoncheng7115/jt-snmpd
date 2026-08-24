@@ -26,14 +26,58 @@ description: Compared with the built-in SNMP Service, table by table
 |---|---:|---:|---|
 | **entPhysical**（Inventory 頁）| **0** | **5** | 內建完全沒有 Inventory。我們從 SMBIOS 解析出機箱、主機板、CPU、DIMM、磁碟 |
 | **ucd_diskio**（Disk I/O 頁）| **0** | **2** | 內建沒有 Disk I/O。我們以 `IOCTL_DISK_PERFORMANCE` 提供 |
-| **sensors**（溫度頁）| **0** | **2** | 內建沒有任何感測器。我們提供磁碟溫度與 ACPI 熱區（實體機實測 33°C / 25°C）|
+| **sensors**（溫度頁）| **0** | **2** | 內建沒有任何感測器。我們提供磁碟溫度與 ACPI 溫度區，也就是主機板韌體自己定義的溫度量測點（實體機實測 33°C / 25°C）|
 | **applications**（SMART 頁）| **0** | **1** | 內建沒有。我們以 NET-SNMP-EXTEND-MIB 提供 LibreNMS 的 `smart` 應用程式（需啟用 `discovery_modules.applications`）|
 | **mempools**（Memory 頁）| 2 | **4** | 內建只有 Physical / Virtual。我們另加 Cached / Swap |
-| storage（Disk Usage 頁）| 2 | 2 | 相同，但我們的描述含真實磁碟區標籤（含中文）|
+| **System 圖表** | 3 | **8** | 內建只有 Processes / Users / Uptime，因為那三張來自 HOST-RESOURCES。其餘五張在 Linux 上來自 UCD-SNMP-MIB，而 Windows 內建服務沒有實作那個 MIB |
+| storage（Disk Usage 頁）| 2 | 2 | 筆數相同，描述不同：我們讀出真實磁碟區標籤與序號，含中文標籤 |
 | processors | 8 | 6 | 各自的實際核心數，無差異 |
 | ipv4_addresses | 2 | 2 | 相同 |
 | **ports**（連接埠頁）| 9 | **1** | **刻意不同**，見下 |
 | **hrDevice**（設備頁）| 68 | 9 | **刻意不同**，見下 |
+
+## System 圖表：Windows 上原本只有三張
+
+LibreNMS 的 System 圖表群組在 Linux 裝置上有八張圖，在 Windows 上只有三張。
+原因不是 LibreNMS 對 Windows 支援不好，而是那五張圖的資料來源是
+**UCD-SNMP-MIB 的 `systemStats`**，那是 net-snmp 的企業 MIB，
+Windows 內建 SNMP Service 沒有實作。
+
+| 圖表 | 資料來源 | 內建 SNMP | jt-snmpd |
+|---|---|---|---|
+| Processes | HOST-RESOURCES `hrSystemProcesses` | ✅ | ✅ |
+| Users | HOST-RESOURCES `hrSystemNumUsers` | ✅ | ✅ |
+| Uptime | `sysUpTime` | ✅ | ✅ |
+| Detailed Processor Usage | UCD `ssCpuRawUser/Nice/System/Idle` | ❌ | ✅ |
+| Context Switches | UCD `ssRawContexts` | ❌ | ✅ |
+| Interrupts | UCD `ssRawInterrupts` | ❌ | ✅ |
+| I/O | UCD `ssIORawSent` / `ssIORawReceived` | ❌ | ✅ |
+| Swap I/O | UCD `ssRawSwapIn` / `ssRawSwapOut` | ❌ | ✅ |
+
+資料以 `NtQuerySystemInformation`（`SystemPerformanceInformation` 加逐 CPU 時間）
+取得，不開 WMI、不開子處理程序。
+
+無法在 Windows 上量測的欄位（`ssCpuRawWait`、`ssCpuRawSteal`、`ssCpuRawSoftIRQ`、
+`ssCpuRawGuest`）**不輸出**，而不是填 0。填 0 會讓 LibreNMS 建立圖表並畫一條零線，
+看起來像「量過而且是零」，實際上是「根本量不到」。
+
+`ssCpuRawNice` 是例外：Windows 沒有 nice，但這裡輸出 0，因為
+「Windows 上永遠沒有 nice 時間」是正確的陳述，而 LibreNMS 的 ucd-mib poller
+要求 user / nice / system / idle **四個都存在**才會建立 Detailed Processor Usage 圖表，
+少一個整張圖就不會出現。
+
+## 磁碟區標籤的編碼問題
+
+`hrStorageDescr` 帶的是磁碟區標籤。在台灣的現場，磁碟區標籤常常是中文，
+而這是一個會實際炸掉的地方：pysnmp 的 `rfc1902.OctetString(str)` 遇到非 ASCII
+會拋 `PyAsn1UnicodeEncodeError`，整個快照建不起來，agent 看起來是「啟動了但沒資料」。
+
+處理方式是所有 OCTET STRING 一律先自行編成 UTF-8 位元組再交給 pysnmp，
+不讓它自己去猜編碼。這條規則涵蓋磁碟區標籤、介面描述、
+`sysContact` / `sysLocation`，以及 SMBIOS 解析出來的字串。
+
+實測結果：一個標籤為「乙太網路」的磁碟區，在 LibreNMS 的 Disk Usage 頁面
+顯示正確，沒有亂碼也沒有問號。這件事有端對端驗證，不只是編碼層面的單元測試。
 
 ## 為什麼 ports 與 hrDevice 少那麼多
 
@@ -64,7 +108,7 @@ Loopback、Teredo / IP-HTTPS / 6to4。
 
 差距集中在幾張表，逐一說明。
 
-### 刻意不提供（資訊揭露，spec §3.5）
+### 刻意不提供（資訊揭露）
 
 | Subtree | 內建 | jt-snmpd | 為什麼不提供 |
 |---|---:|---:|---|
@@ -77,9 +121,40 @@ Loopback、Teredo / IP-HTTPS / 6to4。
 
 合計 **3,175 個 OID**，佔兩者差距的絕大部分。
 
-這些**都已實作或可實作**，但預設關閉。威脅模型（spec §3.1）認定主要對手是
+這些**都已實作或可實作**，但預設關閉。威脅模型認定主要對手是
 已在內網的攻擊者：一次未認證的唯讀 walk 就能取得完整的弱點評估報告與內網拓撲，
-而 agent 以 LocalSystem 執行。ARP 表已實作，設定中開啟即可。
+而 agent 以 LocalSystem 執行。
+
+### 預設關閉的三千個 OID，裡有用的只有一項
+
+「刻意不提供」這個說法，隱含著「提供了會很有用」。實際去查 LibreNMS 26.8.1
+的原始碼之後，四類裡有三類**在 LibreNMS 根本沒有取用端**：送出去也不會變成
+任何一個頁面、任何一張圖、任何一筆資料表。
+
+| Subtree | OID 數 | LibreNMS 取用端 | 送出去會得到什麼 |
+|---|---:|---|---|
+| `hrSWInstalled` | 407 | 只有 `LibreNMS/OS/Junos.php` 讀其中兩筆特定索引，用來解析 JUNOS 版本字串 | 沒有任何軟體清單頁面。在 Windows 上等於零 |
+| `hrSWRun` / `hrSWRunPerf` | 1,792 | 只有 `LibreNMS/OS/Edgeos.php` 與 `Edgeosolt.php` | LibreNMS 沒有處理程序模組。等於零 |
+| `tcpConnTable` / `udpTable` | 528 | **完全沒有**。整份原始碼零引用 | 等於零 |
+| `ipNetToMedia` / `ipNetToPhysical` | 448 | **有**：`LibreNMS/Modules/ArpTable.php` 會 walk 這兩張表，寫進 `ipv4_mac` | ARP 搜尋、FDB 搜尋、連接埠的鄰居資料 |
+
+換句話說，2,727 個 OID 揭露的是弱點清單與連線狀態，換來的 LibreNMS 功能是**零**。
+這不再是「安全與功能的取捨」，而是單純沒有理由送出去。
+
+只有 ARP 是真的有用的那一項，它也**已經實作**，預設關閉。要開啟的話，
+編輯 `C:\ProgramData\JT-SNMP\config.json`：
+
+```json
+{
+  "enable_arp_table": true
+}
+```
+
+存檔後重新啟動服務（`Restart-Service jt-snmpd`），下一次探索就會出現。
+
+開啟前請衡量：ARP 表是內網的鄰居清單，對已經進到內網的攻擊者而言是橫向移動的
+目標清單。在一台 Windows 端點上，它通常只有同網段的少數幾筆，對 LibreNMS 的
+價值主要是「用 MAC 反查 IP」，而那件事在路由器與交換器上做的效益高得多。
 
 ### 已補齊（原本真的缺）
 
@@ -99,7 +174,7 @@ Loopback、Teredo / IP-HTTPS / 6to4。
 | Subtree | 內建 | jt-snmpd | 內容 |
 |---|---:|---:|---|
 | `entPhysicalTable` | 0 | 80 | SMBIOS 解析：機箱、主機板、CPU、DIMM（含料號與速度）、磁碟 |
-| `entPhySensorTable` | 0 | 24 | 磁碟溫度、ACPI 熱區、CPU 頻率 |
+| `entPhySensorTable` | 0 | 24 | 磁碟溫度、ACPI 溫度區、CPU 頻率 |
 | `diskIOEntry`（UCD）| 0 | 20 | 讀寫位元組與次數，含 64-bit 版本 |
 | JT 自我健康 OID | 0 | 65 | 版本、RSS、快照年齡、collector 健康表 |
 | `ipAddressTable`（IPv6）| 0 | 24 | 內建只有 IPv4 的 `ipAddrTable` |
@@ -113,7 +188,7 @@ Loopback、Teredo / IP-HTTPS / 6to4。
     voltsDC voltsAC amperes watts hertz percentRH rpm celsius dBm
 
 `other` 不在裡面，整筆被無聲丟棄。agent 端一切正常、`snmpwalk` 也查得到值，
-只是 LibreNMS 不收——這種「兩邊都沒錯但接不起來」的落差最難查。
+只是 LibreNMS 不收，這種「兩邊都沒錯但接不起來」的落差最難查。
 
 計數型的 SMART 指標因此改走 **NET-SNMP-EXTEND-MIB**，那是 LibreNMS 讀 SMART 的
 正規路徑，而且完全走 SNMP（被監控端不需要 LibreNMS agent 或 smartctl）。
@@ -137,7 +212,7 @@ Latitude E5270 (DESKTOP-9PNNQ34)        Serial ****
     └── PhysicalDrive0 Temp              34 °C
 ```
 
-> 序號在本文件中以 `****` 取代。agent 本身**會**回報真實序號——現場要換哪一顆
+> 序號在本文件中以 `****` 取代。agent 本身**會**回報真實序號，現場要換哪一顆
 > 磁碟、哪一條記憶體時，序號才是找得到的依據，那些資料停留在客戶自己的
 > 監控系統內。這裡遮蔽只是因為這份文件會公開。
 
@@ -160,7 +235,7 @@ Latitude E5270 (DESKTOP-9PNNQ34)        Serial ****
 `ifIndex` 那一列值得特別注意：更換驅動、拔插網路卡、重建 vSwitch 都可能讓
 Windows 重新編號，而 LibreNMS 以 ifIndex 對應 port。編號一變，舊 port 被標記
 刪除、新 port 重新建立，歷史 RRD 全部失去對應。jt-snmpd 以 NET_LUID 為主鍵
-長期保存的配發，首次見到某介面時給一個 ifIndex，之後永不變更。
+長期保存的配發，首次見到某介面時給一個 ifIndex，之後不再變更。
 
 ## 移轉行為
 
@@ -172,7 +247,7 @@ Windows 重新編號，而 LibreNMS 以 ifIndex 對應 port。編號一變，舊
 | `ValidCommunities` 權限 8 / 16（可寫）| community | **降級為唯讀**並警告 |
 | `ValidCommunities` 權限 1 / 2 | — | 不匯入（對唯讀 agent 無意義）|
 | `PermittedManagers` | 來源 ACL + 防火牆範圍 | 主機名稱解析為 IP，失敗則列出警告 |
-| `PermittedManagers` 為空 | — | **安裝中止**，絕不移轉為 Any/Any |
+| `PermittedManagers` 為空 | — | **安裝中止**，不會移轉為 Any/Any |
 | `RFC1156Agent\sysContact` | `sysContact` | 直接沿用 |
 | `RFC1156Agent\sysLocation` | `sysLocation` | 直接沿用 |
 | `RFC1156Agent\sysServices` | — | 不匯入（固定 76），原值不同時列入報告 |

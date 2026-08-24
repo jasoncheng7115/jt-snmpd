@@ -3,11 +3,11 @@
 **為什麼這個測試是必要的**
 
 第一次實作時我把覆寫方法命名為 `handle_datagram`，但 pysnmp 7.x 的實際掛點是
-`datagram_received`。Python 不會因為「覆寫了一個不存在的方法」而報錯——
+`datagram_received`。Python 不會因為「覆寫了一個不存在的方法」而報錯，
 子類別只是多了一個沒人呼叫的方法，而 `super()` 的原版照常執行。
 
 結果會是：agent 正常啟動、正常回應、測試全過、log 顯示
-「pre-auth gate 啟用」——**而閘門完全沒有生效**。所有 ACL、速率限制、
+「pre-auth gate 啟用」，**而閘門完全沒有生效**。所有 ACL、速率限制、
 畸形封包檢查都被繞過，攻擊者的位元組長驅直入 BER decoder。
 
 這是資安控制最危險的失效模式：**看起來有防護，實際上沒有**。
@@ -55,7 +55,7 @@ def test_gated_transport_subclasses_pysnmp_udp_transport():
 def test_overridden_methods_actually_exist_on_parent():
     """每個覆寫的方法都必須真的存在於父類別。
 
-    覆寫一個不存在的方法在 Python 中完全合法且無聲——這正是本測試要擋的。
+    覆寫一個不存在的方法在 Python 中完全合法且無聲，這正是本測試要擋的。
     """
     overridden = _gated_transport_methods() - {"__init__"}
     assert overridden, "GatedUdpTransport 沒有覆寫任何方法"
@@ -76,7 +76,7 @@ def test_datagram_received_is_the_hook_point():
     """釘死掛點名稱。pysnmp 若改名，這個測試會先失敗，
     而不是等到資安控制在正式環境無聲失效。"""
     assert "datagram_received" in _gated_transport_methods(), (
-        "必須覆寫 datagram_received —— 這是 pysnmp 7.x 的封包接收掛點")
+        "必須覆寫 datagram_received，這是 pysnmp 7.x 的封包接收掛點")
     assert hasattr(udp.UdpTransport, "datagram_received")
 
 
@@ -97,7 +97,7 @@ def test_override_signature_matches_parent():
 
 
 def test_override_calls_super():
-    """放行的封包必須交回父類別，否則 agent 收得到卻不回應——
+    """放行的封包必須交回父類別，否則 agent 收得到卻不回應，
     又一個「服務 Running 但沒功能」的失效模式。"""
     src = AGENT.read_text(encoding="utf-8")
     tree = ast.parse(src)

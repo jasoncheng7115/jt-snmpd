@@ -3,7 +3,7 @@
 Self-contained in one file. Runs in the foreground for debugging, or is
 registered by pywin32 as a Windows service (automatic start, LocalSystem).
 
-The architecture follows spec.md §4.3: snapshot + bisect. The entire MIB is one
+The architecture follows snapshot + bisect. The entire MIB is one
 array sorted in OID lexicographic order; GET uses bisect_left and GETNEXT uses
 bisect_right, which makes the §36 requirements — ordering, no duplicate OIDs, no
 GETNEXT loops, correct endOfMibView — structural rather than something to
@@ -54,11 +54,11 @@ STATE_FILE = os.path.join(STATE_DIR, "state", "index-map.json")
 # loopback health check with MSI error 1603. The defaults were what made the bug
 # survive testing — our own lab used precisely those values.
 CFG = {"port": 161, "community": "", "contact": "", "location": "",
-       # spec §3.3: deny by default, never Any/Any. Empty means "not configured"
+       # deny by default, never Any/Any. Empty means "not configured"
        # and is treated as deny-all (loopback excepted); to serve every source
        # deliberately, set 0.0.0.0/0 and ::/0 explicitly.
        "allowed_networks": (), "rate_pps": 50, "rate_burst": 100,
-       # spec §3.5: ipNetToPhysicalTable is the local ARP table, which is a
+       # ipNetToPhysicalTable is the local ARP table, which is a
        # ready-made target list for lateral movement. Off unless asked for.
        "enable_arp_table": False}
 
@@ -316,7 +316,7 @@ def _reg(path: str, name: str, root=winreg.HKEY_LOCAL_MACHINE):
         return winreg.QueryValueEx(key, name)[0]
 
 
-# --- Own process resources (spec §7.1, §6.4 self-restart thresholds) ---------
+# --- Own process resources  ---------
 class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
     _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
                 ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
@@ -330,7 +330,7 @@ class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
 def _proc_rss_bytes() -> int | None:
     """Own RSS. Returns None when it cannot be read — **not 0**.
 
-    spec §6.9: never fabricate a value. Returning 0 makes the LibreNMS graph show
+    never fabricate a value. Returning 0 makes the LibreNMS graph show
     "RSS = 0", which looks like a valid reading when it is actually a measurement
     failure — worse than the OID not existing at all. It would also mean the
     §6.4 self-restart threshold (RSS > 250 MB) could never fire.
@@ -387,19 +387,17 @@ def _reg_opt(path: str, name: str, default=None):
 def load_system_identity() -> dict:
     """Decide the effective sysContact and sysLocation.
 
-    Precedence (spec §5.5: policy **overrides** local settings, matching how the
+    Precedence (policy **overrides** local settings, matching how the
     rest of Windows behaves):
 
       1. ADMX policy at HKLM\\SOFTWARE\\Policies\\JasonTools\\JTSNMPD
-      2. Whatever the built-in Windows SNMP service already had (spec §5.9.3,
-         the migration source)
+      2. Whatever the built-in Windows SNMP service already had
       3. Empty string
 
     Point 2 is deliberate. The customer was already running the built-in service;
     switching over should not make them retype sysContact and sysLocation — that
-    is the core of the migration experience in spec §5.9. The registry values
-    remain even after the built-in service is disabled, and are still worth
-    carrying over (§5.9.1).
+    is the core of the migration experience. The registry values remain even
+    after the built-in service is disabled, and are still worth carrying over.
     """
     out = {"contact": "", "location": "", "contact_source": "none",
            "location_source": "none"}
@@ -425,7 +423,7 @@ def load_system_identity() -> dict:
 
 
 def _install_dir() -> str:
-    """spec §5.10: the installation directory must be answerable over SNMP,
+    """the installation directory must be answerable over SNMP,
     without logging in to the machine."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
@@ -434,7 +432,7 @@ def _install_dir() -> str:
 
 def _config_warnings() -> str:
     """Security warnings about the effective configuration
-    (spec §7.1 jtAgentConfigWarnings).
+    .
 
     §5.9.4: importing a community during migration from Windows SNMP turns v2c on
     where it was off by default. That is an explicit downgrade in security and
@@ -526,7 +524,7 @@ def _volume_info(root: str) -> tuple[str, str, str]:
 
 
 def get_fixed_volumes() -> list[dict]:
-    """Fixed disks only. spec §4.5: never enumerate network drives or optical
+    """Fixed disks only. never enumerate network drives or optical
     media — a disconnected network share blocks for 30 seconds or more."""
     buf = ctypes.create_unicode_buffer(1024)
     _k32.GetLogicalDriveStringsW(1024, buf)
@@ -556,7 +554,7 @@ def get_fixed_volumes() -> list[dict]:
 
 
 def storage_units(total_bytes: int) -> int:
-    """spec §2.1: hrStorageSize and hrStorageUsed are Integer32, so the
+    """hrStorageSize and hrStorageUsed are Integer32, so the
     allocation unit has to be scaled up dynamically."""
     unit = 4096
     while total_bytes // unit > INT32_MAX:
@@ -581,7 +579,7 @@ _ntdll.NtQuerySystemInformation.argtypes = [wintypes.ULONG, ctypes.c_void_p,
 _ntdll.NtQuerySystemInformation.restype = ctypes.c_long
 _prev_cpu: dict[int, tuple[int, int]] = {}
 
-# spec §2.7: hardware inventory is read once at startup and **cached for the
+# hardware inventory is read once at startup and **cached for the
 # lifetime of the process**. SMBIOS does not change after boot, and neither do
 # physical disk models or capacities. Re-reading it on every snapshot rebuild
 # would be pure waste.
@@ -601,7 +599,7 @@ def get_inventory() -> dict:
         _inventory_cache = info
     return _inventory_cache
 
-# --- Self-health (spec §7) ---------------------------------------------------
+# --- Self-health  ---------------------------------------------------
 # This agent fails quietly: the service reports Running while the LibreNMS graphs
 # go flat. These values let LibreNMS monitor the agent itself, and they are the
 # only way to tell "alive but broken" from "dead".
@@ -616,13 +614,12 @@ _health = {
 
 
 def _collector(name: str, fn, default):
-    """Run one collector and record its health (spec §7.1
-    jtAgentCollectorTable).
+    """Run one collector and record its health.
 
-    §10-25: every new collector must also implement its entry in
-    jtAgentCollectorTable. On failure this returns the default rather than
-    raising — spec §6.7 ("startup never fails hard") and §6.9 ("when a collector
-    fails its rows disappear from the snapshot; never fabricate a value").
+    Every new collector must also implement its entry in jtAgentCollectorTable.
+    On failure this returns the default rather than raising: startup never fails
+    hard, and when a collector fails its rows disappear from the snapshot rather
+    than being filled with a fabricated value.
     """
     st = _health["collectors"].setdefault(
         name, {"status": 1, "last_ok": 0.0, "duration_ms": 0, "errors": 0, "last_error": ""})
@@ -643,7 +640,7 @@ def _collector(name: str, fn, default):
 
 
 def get_cpu_loads() -> list[int]:
-    """Per-core utilisation as a percentage. spec §4.5: NtQuerySystemInformation
+    """Per-core utilisation as a percentage. NtQuerySystemInformation
     returns every CPU in one call, far cheaper than PDH wildcard expansion on a
     many-core machine."""
     ncpu = os.cpu_count() or 1
@@ -686,7 +683,7 @@ FILE_SHARE_RW = 3
 
 
 def get_disk_io() -> list[tuple[int, int, int, int, int]]:
-    """spec §4.5: IOCTL_DISK_PERFORMANCE. Needs administrative rights, which the
+    """IOCTL_DISK_PERFORMANCE. Needs administrative rights, which the
     service has as LocalSystem. Returns (drive_no, BytesRead, BytesWritten,
     ReadCount, WriteCount), all cumulative."""
     out = []
@@ -890,7 +887,7 @@ _NDSTATE_TO_MIB = {0: 7, 1: 7, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 1}
 def get_ip_neighbors() -> list[dict]:
     """Neighbour cache (ARP and IPv6 ND).
 
-    spec §3.5 warns about this explicitly: ipNetToPhysicalTable is the **local
+    This one needs stating explicitly: ipNetToPhysicalTable is the **local
     ARP table**, which is a ready-made target list for lateral movement and is of
     real value to an attacker. It is therefore **off by default** and has to be
     switched on deliberately (the VACM standard preset, not librenms-minimal).
@@ -943,7 +940,7 @@ _iph.GetIpForwardTable2.restype = wintypes.DWORD
 def get_routes() -> list[dict]:
     """IPv4 route table.
 
-    spec §3.5 classifies ipForwardTable as "the complete internal routing
+    ipForwardTable counts as "the complete internal routing
     topology" and of value to an attacker, which places it in the VACM standard
     preset. It is not, however, a direct target list the way the ARP table is —
     routes describe subnets, ARP describes hosts — and parts of LibreNMS use it.
@@ -972,7 +969,7 @@ def get_routes() -> list[dict]:
                 # address, so Bandit's B104 is a false positive here.
                 "next_hop": nexthop if nv == 4 else "0.0.0.0",  # nosec B104
                 "if_index": int(r.InterfaceIndex), "metric": int(r.Metric),
-                # RFC1213 ipRouteProto: other(1) local(2) netmgmt(3) ... 
+                # RFC1213 ipRouteProto: other(1) local(2) netmgmt(3) ...
                 # Windows NL_ROUTE_PROTOCOL: 1=Other 2=Local 3=NetMgmt
                 "proto": 2 if r.Protocol == 2 else (3 if r.Protocol == 3 else 1),
                 # ipRouteType: direct(3) means the destination is on a local
@@ -1116,7 +1113,7 @@ _k32.Process32Next.restype = wintypes.BOOL
 def get_process_count() -> int:
     """hrSystemProcesses. Counts only; nothing is enumerated.
 
-    spec §3.5: a full hrSWRunTable is an information-disclosure source — which
+    a full hrSWRunTable is an information-disclosure source — which
     EDR is running and where it is installed — and is off by default. A **bare
     count** discloses nothing, and LibreNMS's System → Processes graph needs it.
     """
@@ -1172,7 +1169,7 @@ def _asciiz(buf: bytes, off: int) -> str:
 def get_physical_disks() -> list[dict]:
     """Enumerate physical disks and read model, serial, capacity and bus type.
 
-    spec §4.5: handles should be cached, since repeatedly opening and closing a
+    handles should be cached, since repeatedly opening and closing a
     physical disk device is wasteful. This is inventory data, so once is enough
     (§2.7: hardware inventory is cached for the lifetime of the process).
     """
@@ -1204,7 +1201,7 @@ def get_physical_disks() -> list[dict]:
                 info["removable"] = bool(d.RemovableMedia)
             # Capacity: IOCTL_DISK_GET_LENGTH_INFO needs FILE_READ_ACCESS, but
             # the handle is deliberately opened with dwDesiredAccess=0 (least
-            # privilege, spec §3.6). GET_DRIVE_GEOMETRY_EX works with no access
+            # privilege). GET_DRIVE_GEOMETRY_EX works with no access
             # rights at all, so it is the primary source.
             geo = ctypes.create_string_buffer(64)
             if _k32.DeviceIoControl(h, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, None, 0,
@@ -1217,15 +1214,14 @@ def get_physical_disks() -> list[dict]:
                                         ctypes.byref(length), ctypes.sizeof(length),
                                         ctypes.byref(ret), None):
                     info["size_bytes"] = int(length.value)
-            # Temperature and health (spec §2.9: native paths, no kernel
-            # driver). Firmware support for these IOCTLs varies enormously, and
+            # Temperature and health. Firmware support for these IOCTLs varies enormously, and
             # one misbehaving device must not fail the whole enumeration
-            # (spec §6.7: startup never fails hard). The work is delegated to the
+            # . The work is delegated to the
             # diskhealth module, which tries several paths — see its docstring.
             #
             # The handle is not shared: diskhealth needs READ|WRITE to issue
             # SMART commands, while this function deliberately opens with least
-            # privilege (spec §3.6).
+            # privilege.
             try:
                 import diskhealth
                 hl = diskhealth.probe(n)
@@ -1462,7 +1458,7 @@ def _load_index_map() -> dict:
 
 
 def _save_index_map(m: dict) -> None:
-    """spec §6.6: temp file, flush, atomic replace, keep a .bak. A corrupted
+    """temp file, flush, atomic replace, keep a .bak. A corrupted
     index-map is the most expensive way this can fail."""
     try:
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
@@ -1482,11 +1478,11 @@ def _save_index_map(m: dict) -> None:
 
 
 def get_interfaces() -> list[dict]:
-    """spec §2.4: hardware interfaces only by default. A Hyper-V host reports 40
+    """hardware interfaces only by default. A Hyper-V host reports 40
     to 80 interfaces including WFP LightWeight Filters, Teredo and isatap;
     publishing all of them creates a mass of useless ports and orphaned RRDs.
 
-    spec §2.5: ifIndex is assigned from the persistent NET_LUID, because Windows'
+    ifIndex is assigned from the persistent NET_LUID, because Windows'
     own InterfaceIndex is not guaranteed stable across reboots."""
     ptr = ctypes.POINTER(MIB_IF_TABLE2)()
     if _iph.GetIfTable2(ctypes.byref(ptr)) != 0:
@@ -1529,7 +1525,7 @@ def get_interfaces() -> list[dict]:
                 "idx": ent["if_index"], "alias": r.Alias or f"if{ent['if_index']}",
                 # Windows' native InterfaceIndex. The IP, ARP and neighbour
                 # tables are all indexed by it, while our ifTable uses the
-                # persistent LUID-derived index (spec §2.5). The two have to be
+                # persistent LUID-derived index. The two have to be
                 # mapped, or LibreNMS binds addresses to the wrong port or finds
                 # nothing at all — which happened: 127.0.0.1 has Windows index 1,
                 # and ended up attached to the Ethernet adapter.
@@ -1575,7 +1571,7 @@ def _is_domain_controller() -> bool:
     """Determine whether this machine is a domain controller, via
     DsRoleGetPrimaryDomainInformation.
 
-    spec §1.2 requires three sysObjectID branches — workstation, server, domain
+    Three sysObjectID branches are required: workstation, server, domain
     controller — and LibreNMS's Windows.php uses the third to call
     getDatacenterVersion().
     Splitting only into client and server puts a domain controller in the server
@@ -1611,7 +1607,7 @@ def get_product_type() -> str:
     InstallationType can be Client, Server, Server Core or Windows Server Core
     depending on the release, so this uses startswith("server") rather than an
     equality test — Server Core has to be recognised as a server (the platform
-    definition of done in spec §9.3).
+    definition of done).
     """
     is_server = False
     try:
@@ -1636,7 +1632,7 @@ def get_product_type() -> str:
 
 
 def build_sysdescr() -> str:
-    """spec §1.2: mirror the Microsoft SNMP Service format exactly, or the regex
+    """mirror the Microsoft SNMP Service format exactly, or the regex
     in LibreNMS's Windows.php will not match and the Hardware, Version and
     Features fields come out blank.
 
@@ -1726,7 +1722,7 @@ def uptime_centis() -> int:
 # --------------------------------------------------------------- Snapshot
 # The JT private subtree. No IANA PEN has been assigned yet, so this borrows a
 # reserved branch under a Microsoft-compatible prefix; once a PEN is assigned the
-# tree moves and a mapping is published (spec §7.1).
+# tree moves and a mapping is published.
 JT = (1, 3, 6, 1, 4, 1, 99999, 1)
 JTAGENT = JT + (1,)          # scalars
 JTCOLL = JT + (2, 1)         # jtAgentCollectorTable
@@ -1805,14 +1801,14 @@ NSEXT_OUT2 = NSEXT + (4, 1)                # nsExtendOutput2Table
 # quietly would leave the impression that every disk is being monitored.
 MAX_EXTEND_BYTES = 1100
 
-# hrDeviceIndex ranges (spec §34.5 in spirit: partitioned and persistent).
+# hrDeviceIndex ranges.
 # 196608 upwards is the Microsoft SNMP Service convention for CPUs, kept for
 # compatibility.
 DEV_BASE_CPU = 196608
 DEV_BASE_NET = 262144
 DEV_BASE_DISK = 327680
 
-# entPhysicalIndex ranges (spec §34.5)
+# entPhysicalIndex ranges
 ENT_SYSTEM = 1000
 ENT_MAINBOARD = 1100
 ENT_CPU_BASE = 2000
@@ -1829,7 +1825,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add = lambda oid, val: pairs.append((tuple(oid), val))  # noqa: E731
 
     ptype = get_product_type()
-    # spec §1.2: three branches matching the three version lookup paths in
+    # three branches matching the three version lookup paths in
     # LibreNMS's Windows.php
     sysobjid = {
         "client": (1, 3, 6, 1, 4, 1, 311, 1, 1, 3, 1, 1),
@@ -1842,7 +1838,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     # --- system group ---
     add(SYS + (1, 0), octet(build_sysdescr()))
     add(SYS + (2, 0), rfc1902.ObjectIdentifier(sysobjid))
-    add(SYS + (3, 0), rfc1902.TimeTicks(up & U32))     # spec §2.6: wraps naturally
+    add(SYS + (3, 0), rfc1902.TimeTicks(up & U32))     # wraps naturally
     # sysUpTime is TimeTicks, so it wraps after 2^32 hundredths of a second —
     # about 497.1 days. That is the type RFC 3418 mandates and every conforming
     # agent behaves the same way, the built-in Windows service included.
@@ -1860,7 +1856,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(SYS + (4, 0), octet(CFG["contact"]))
     add(SYS + (5, 0), octet(host))
     add(SYS + (6, 0), octet(CFG["location"]))
-    add(SYS + (7, 0), rfc1902.Integer32(76))           # spec §1.2: always 76
+    add(SYS + (7, 0), rfc1902.Integer32(76))           # always 76
     for i, (orid, descr) in enumerate([
         ((1, 3, 6, 1, 2, 1, 1), "SNMPv2-MIB"),
         ((1, 3, 6, 1, 2, 1, 2), "IF-MIB"),
@@ -1925,7 +1921,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     # GetPerformanceInfo is preferred: a single call, tens of microseconds. Only
     # when that is unavailable does this fall back to a Toolhelp32 snapshot,
     # which enumerates every process and costs 50-300 ms with 300 of them
-    # (spec §4.5 lists it as expensive).
+    # .
     nproc = perf.ProcessCount if perf is not None else _collector(
         "processes", get_process_count, 0)
     add(HR + (1, 6, 0), rfc1902.Gauge32(nproc))
@@ -1963,7 +1959,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         # memory plus the page file, so the page file size is the commit limit
         # minus physical memory. This is a different concept from "Virtual
         # Memory" (the commit charge) and the two must not be conflated
-        # (spec §2.2).
+        # .
         swap_total = max(commit_limit - phys_total, 0)
         swap_used = max(commit_total - (phys_total - mem.ullAvailPhys), 0)
         if swap_total:
@@ -2032,7 +2028,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         return f"PhysicalDrive{n}: {model}"
 
     # --- The whole hrDeviceTable family ---
-    # spec §2.3: every table derived from hrDevice (hrProcessor, hrNetwork,
+    # every table derived from hrDevice (hrProcessor, hrNetwork,
     # hrDiskStorage) shares one hrDeviceIndex space rather than inventing its own.
     inv = _collector("inventory", get_inventory, {})
 
@@ -2083,7 +2079,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(HRDISK + (4, di), rfc1902.Integer32(min(disk["size_bytes"] // 1024, INT32_MAX)))
 
     # --- ENTITY-MIB entPhysicalTable (the LibreNMS Inventory page) ---
-    # spec §2.10: the data comes from GetSystemFirmwareTable('RSMB'), needing
+    # the data comes from GetSystemFirmwareTable('RSMB'), needing
     # neither WMI nor any special privilege.
     def ent(idx, cls, descr, name, parent, relpos, *, serial="", mfg="", model="",
             hw="", fw="", sw="", fru=False):
@@ -2239,7 +2235,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     # Addresses not in this map — loopback, tunnels, filtered-out virtual
     # interfaces — are not emitted at all:
     # pointing at a non-existent ifIndex only produces orphaned data in
-    # LibreNMS (spec §6.9 in spirit).
+    # LibreNMS.
     _win2if = {n["win_idx"]: n["idx"] for n in ifaces if "win_idx" in n}
 
     addrs = _collector("ip_addresses", get_ip_addresses, [])
@@ -2268,7 +2264,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(IPADDRESS + (10,) + aidx, rfc1902.Integer32(1))               # ipAddressRowStatus
 
     # --- ipNetToPhysicalTable（ARP / IPv6 ND）---
-    # spec §3.5: off by default. The local ARP table is a target list for
+    # off by default. The local ARP table is a target list for
     # lateral movement.
     if CFG.get("enable_arp_table"):
         for nb in _collector("ip_neighbors", get_ip_neighbors, []):
@@ -2286,7 +2282,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     # --- hrPartitionTable + hrFSTable ---
     # The built-in service has both of these tables (20 and 27 rows as measured)
     # and this agent originally had neither. They raise no disclosure concern —
-    # they describe this machine's own volumes — and are not on the spec §3.5
+    # they describe this machine's own volumes — and are not on the withheld
     # list, so they are emitted by default.
     HRFS_TYPE_NTFS = HR + (3, 9, 4)      # hrFSNTFS
     HRFS_TYPE_FAT32 = HR + (3, 9, 3)     # hrFSFat32 (approximate; the RFC does
@@ -2296,7 +2292,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
                  "FAT": HRFS_TYPE_FAT32, "REFS": HRFS_TYPE_OTHER}
 
     # hrPartition is indexed by (hrDeviceIndex, hrPartitionIndex)
-    # (spec §2.3, RFC 2790). There is no reliable mapping from a volume to the
+    # . There is no reliable mapping from a volume to the
     # physical disk it lives on — Storage Spaces, dynamic disks and multiple
     # mount points all break the one-to-one assumption — so everything is
     # attached to the first disk's hrDeviceIndex and the limitation documented.
@@ -2360,7 +2356,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(IPROUTE + (11,) + ridx, rfc1902.IpAddress(rt["mask"]))       # ipRouteMask
 
     # --- ENTITY-SENSOR-MIB (the LibreNMS sensors module) ---
-    # spec §2.9: sensor data does **not** come from LibreHardwareMonitor, which
+    # sensor data does **not** come from LibreHardwareMonitor, which
     # depends on WinRing0 — on Microsoft's vulnerable-driver blocklist, and
     # enough to trigger Defender on an HVCI endpoint. Native
     # IOCTL_STORAGE_QUERY_PROPERTY with StorageDeviceTemperatureProperty is used
@@ -2661,7 +2657,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(SNMPG + (6, 0), rfc1902.Counter32(drops & U32))         # snmpInASNParseErrs
     add(SNMPG + (30, 0), rfc1902.Integer32(2))                  # snmpEnableAuthenTraps: disabled(2)
 
-    # --- JT self-health OIDs (spec §7) ---
+    # --- JT self-health OIDs  ---
     # §7.3: these and the system group must stay answerable even in degraded
     # mode. They are the only way to tell "the service is alive but broken" from
     # "the service is dead".
@@ -2671,7 +2667,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(JTAGENT + (1, 0), octet(AGENT_VERSION))                      # jtAgentVersion
     add(JTAGENT + (2, 0), octet(AGENT_BUILD_DATE))                   # jtAgentBuildDate
     add(JTAGENT + (3, 0), rfc1902.TimeTicks(svc_uptime & U32))       # jtAgentServiceUptime
-    # Unreadable means the OID is not emitted (spec §6.9: never fabricate)
+    # Unreadable means the OID is not emitted
     _rss = _proc_rss_bytes()
     if _rss is not None:
         add(JTAGENT + (6, 0), rfc1902.Gauge32(_rss))                 # jtAgentRssBytes
@@ -2706,7 +2702,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     pairs.sort(key=lambda p: p[0])
 
     # Guard: the correctness of snapshot + bisect rests on there being no
-    # duplicate OIDs (spec §36). A duplicate makes bisect land in the wrong
+    # duplicate OIDs. A duplicate makes bisect land in the wrong
     # place, and the symptom is values inexplicably showing another field's data.
     for a, b in zip(pairs, pairs[1:]):
         if a[0] == b[0]:
@@ -2717,8 +2713,8 @@ def build_snapshot() -> tuple[tuple, tuple]:
 
 # ------------------------------------------------------------- MIB controller
 class SnapshotController(AbstractMibInstrumController):
-    """spec §4.3. Not overriding write_variables makes this a read-only agent by
-    construction (spec §2.12)."""
+    """Not overriding write_variables makes this a read-only agent by
+    construction."""
 
     def __init__(self, oids: tuple, vals: tuple):
         self.oids, self.vals = oids, vals
@@ -2748,7 +2744,7 @@ class SnapshotController(AbstractMibInstrumController):
 
 
 class CappedBulkResponder(cmdrsp.BulkCommandResponder):
-    """spec §4.4: cap max-repetitions server-side (25 by default), ignoring any
+    """cap max-repetitions server-side (25 by default), ignoring any
     larger value a request asks for.
 
     pysnmp's own implementation caps only the varbind count (max_varbinds=64),
@@ -2772,7 +2768,7 @@ class CappedBulkResponder(cmdrsp.BulkCommandResponder):
 
 # ------------------------------------------------------------------- Runtime
 class GatedUdpTransport(udp.UdpTransport):
-    """Intercept every datagram before pysnmp sees it (spec §3.2).
+    """Intercept every datagram before pysnmp sees it.
 
     This is the first line of the whole security design: a packet that is stopped
     here **never reaches the BER decoder**, so deep nesting, oversized length
@@ -2797,7 +2793,7 @@ class GatedUdpTransport(udp.UdpTransport):
             allowed, _reason = gate.check(bytes(datagram), src_ip)
             if not allowed:
                 # Drop events have to be rate-limited, or an attacker can use
-                # them to flood the log and a Graylog licence (spec §3.8). Only
+                # them to flood the log and a Graylog licence. Only
                 # counters are updated here; a periodic task emits summaries.
                 return
         return super().datagram_received(datagram, transportAddress)
@@ -2830,7 +2826,7 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
         # Critical: the transport has to be created inside a running event loop.
         # Calling open_server_mode before the loop starts leaves the socket
         # unbound — the service reports Running and answers nothing (the "alive
-        # but dead" case in spec §6.5). This actually happened.
+        # but dead" case). This actually happened.
         ok = lower_process_priority()
         log(f"process priority lowered to BELOW_NORMAL: {ok}")
         ident = load_system_identity()
@@ -2875,7 +2871,7 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
                 no, nv = build_snapshot()
                 # Atomic handover: reference assignment in Python is atomic
                 # under the GIL, so a walk in progress never sees half a
-                # snapshot (spec §4.3, benefit 3).
+                # snapshot.
                 ctrl.oids, ctrl.vals = no, nv
                 _health["snapshot_build_ms"] = int((time.monotonic() - t0) * 1000)
                 _health["snapshot_built_monotonic"] = time.monotonic()
@@ -2948,7 +2944,7 @@ try:
             # Waiting on hstop alone is not enough: if the agent thread dies
             # during startup — a bind failure, a MIB load failure, a snapshot
             # build failure — the service sits at Running forever with nothing
-            # listening (the "alive but dead" case in spec §6.5). The Service
+            # listening (the "alive but dead" case). The Service
             # Control Manager saying Running while monitoring reports a timeout
             # is the hardest state to diagnose in the field.
             #
@@ -2984,7 +2980,7 @@ def _service_main() -> None:
     Unpackaged, this goes through HandleCommandLine and pythonservice.exe hosts
     it. Once packaged as an exe it **must** use PrepareToHostSingle and
     StartServiceCtrlDispatcher instead, because the service binary is then our
-    own exe (a hard rule in spec §1.4) and there is no pythonservice.exe to host
+    own exe (a hard rule) and there is no pythonservice.exe to host
     it.
     """
     if not _HAVE_SERVICE:

@@ -8,7 +8,7 @@
     Called from a deferred custom action in the MSI, this performs everything
     install.ps1 does after the files are copied. Both share the same logic so
     that "installed by MSI" and "installed by script" cannot drift into two
-    different states (a key design point in spec §5.4).
+    different states (a key design point).
 
     The MSI handles: pre-checks, file copying, removing the old version on
     upgrade, and rollback on failure.
@@ -82,7 +82,7 @@ if ($Uninstall) {
     Remove-NetFirewallRule -DisplayName "$FW_RULE_ICMP*" -ErrorAction SilentlyContinue
     Log "firewall rules removed"
 
-    # Restore the built-in SNMP service (spec §5.9.5)
+    # Restore the built-in SNMP service
     $restorePath = Join-Path $STATE_DIR 'ms-snmp-restore.json'
     if (Test-Path $restorePath) {
         try {
@@ -121,7 +121,7 @@ if ($Uninstall) {
             Log "WARN data directory not fully removed; $left items remain: $DATA_DIR"
         }
     } else {
-        # spec §5.7: keeping it by default is deliberate. Customers commonly
+        # keeping it by default is deliberate. Customers commonly
         # uninstall and reinstall to troubleshoot, and clearing the index map
         # makes LibreNMS rediscover everything, orphaning the existing RRDs.
         Log "data directory kept: $DATA_DIR"
@@ -141,7 +141,7 @@ if (-not (Test-Path $exe)) { Log "FAIL $exe not found"; exit 1 }
 
 Stop-AgentService
 
-# --- Read the built-in SNMP configuration (spec §5.9) ---
+# --- Read the built-in SNMP configuration  ---
 $msCfg = [ordered]@{
     service_exists = $false; status = $null; start_type = $null
     communities = @{}; permitted_managers = @()
@@ -188,7 +188,7 @@ if (Test-Path $MSSNMP_PARAMS) {
     }
 }
 
-# --- Decide the community (spec §5.9.4: security rules outrank faithful migration) ---
+# --- Decide the community  ---
 $comm = $Community
 if (-not $comm) {
     foreach ($name in $msCfg.communities.Keys) {
@@ -233,13 +233,13 @@ if ($ManagementNetworks) {
     }
 }
 if ($nets.Count -eq 0) {
-    # spec §3.3 and §5.9.4 (1): never migrate to Any/Any
+    # Never migrate to Any/Any
     Log "FAIL no management networks were supplied and none could be taken from the existing configuration. Deny by default; Any/Any is not allowed."
     exit 1
 }
 Log "management networks: $($nets -join ', ')"
 
-# --- Data directory and ACL (spec §3.7) ---
+# --- Data directory and ACL  ---
 foreach ($d in @($DATA_DIR, $STATE_DIR, $LOG_DIR, $SECRETS_DIR)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force $d | Out-Null }
 }
@@ -322,7 +322,7 @@ $restore = [ordered]@{
 }
 $restore | ConvertTo-Json -Depth 6 | Set-Content $RESTORE_FILE -Encoding UTF8
 
-# --- Disable the built-in SNMP service (disabled, not removed; spec §5.9.5) ---
+# --- Disable the built-in SNMP service (disabled, not removed) ---
 if ($msCfg.service_exists -and $KeepMsSnmp -ne '1') {
     Stop-Service -Name SNMP -Force -ErrorAction SilentlyContinue
     Set-Service -Name SNMP -StartupType Disabled -ErrorAction SilentlyContinue
@@ -348,16 +348,16 @@ if (-not (Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue)) {
 }
 & sc.exe description $SERVICE_NAME 'SNMP agent serving Windows host monitoring data over standard MIBs' | Out-Null
 # Three-stage automatic recovery; failureflag 1 makes a non-zero exit code
-# trigger it too (spec §6.2)
+# trigger it too
 & sc.exe failure $SERVICE_NAME reset= 86400 actions= restart/60000/restart/60000/restart/300000 | Out-Null
 & sc.exe failureflag $SERVICE_NAME 1 | Out-Null
-# Privilege reduction (spec §3.6)
+# Privilege reduction
 & sc.exe privs $SERVICE_NAME SeChangeNotifyPrivilege/SeSystemProfilePrivilege/SeIncreaseQuotaPrivilege | Out-Null
 $s = Get-CimInstance Win32_Service -Filter "Name='$SERVICE_NAME'"
 Log "service registered: $($s.StartName) / $($s.StartMode)"
 if ($s.PathName -notmatch '^"') { Log "[!] ImagePath is not quoted: $($s.PathName)" }
 
-# --- Firewall (spec §3.3: mandatory, deny by default) ---
+# --- Firewall  ---
 Remove-NetFirewallRule -DisplayName "$FW_RULE*" -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName $FW_RULE -Direction Inbound -Protocol UDP `
     -LocalPort 161 -RemoteAddress $nets -Action Allow -Profile Any `
@@ -370,7 +370,7 @@ New-NetFirewallRule -DisplayName $FW_RULE_ICMP -Direction Inbound -Protocol ICMP
     -Description 'jt-snmpd ICMP echo for NMS availability' | Out-Null
 Log "firewall rules created (UDP/161 and ICMPv4, sources limited to $($nets -join ', '))"
 
-# --- Start the service and run the loopback health check (spec §5.7 step 7) ---
+# --- Start the service and run the loopback health check  ---
 function Test-SnmpLoopback {
     param($CommunityName)
     $c2 = [Text.Encoding]::ASCII.GetBytes($CommunityName)
@@ -402,8 +402,8 @@ while ((Get-Date) -lt $deadline) {
 }
 if (-not $healthy) {
     # By default an MSI only confirms the service started, and a service that
-    # started is not the same as one that answers SNMP (the "alive but dead" case
-    # in spec §6.5). A failed health check rolls the whole MSI transaction back.
+    # started is not the same as one that answers SNMP: the "alive but dead"
+    # case. A failed health check rolls the whole MSI transaction back.
     Log "FAIL the service started but did not answer a loopback SNMP query within 30 seconds"
     exit 1
 }

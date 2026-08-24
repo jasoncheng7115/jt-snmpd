@@ -24,12 +24,12 @@ powershell -ExecutionPolicy Bypass -File packaging\build-exe.ps1 `
 
 建置腳本內含三道閘門，任一失敗即 exit 1：
 
-1. **停服務並等待行程消失** —— `Stop-Service` 回來不代表檔案句柄已釋放
-2. **產物必須比來源新** —— 只驗「exe 存在」會在建置失敗時取到殘留的舊版本
-3. **`--selftest`** —— 實際初始化 SNMP engine 並建立快照，攔截「exe 產出但缺資料檔」
+1. **停服務並等待處理程序消失**：`Stop-Service` 回來不代表檔案控制代碼已釋放
+2. **產物必須比來源新**：只驗「exe 存在」會在建置失敗時取到殘留的舊版本
+3. **`--selftest`**：實際初始化 SNMP engine 並建立快照，攔截「exe 產出但缺資料檔」
 
 ## 為什麼是 one-folder 而非 one-file
 
-spec §1.4 硬性規則。one-file 會把內容解壓到 `%TEMP%`（服務身分下是
+這是硬性規則。one-file 會把內容解壓到 `%TEMP%`（服務身分下是
 `C:\Windows\Temp`）再執行，那是已知的 DLL 劫持路徑，在 WDAC / HVCI
 環境也更容易被擋。

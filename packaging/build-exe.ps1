@@ -7,7 +7,7 @@
 # Why this file exists: the build arguments were typed by hand twice, and the
 # second time pysnmp's MIB data files were left out. The resulting exe raised
 # MibNotFoundError on startup while **the service still reported Running** (the
-# "alive but dead" case in spec §6.5). There can be only one source for the build
+# "alive but dead" case). There can be only one source for the build
 # arguments.
 #
 # Usage:
@@ -84,7 +84,7 @@ Remove-Item -Path "$name.spec" -Force -ErrorAction SilentlyContinue
 Get-ChildItem -Path $OutDir -Directory -Filter "$name.old.*" -ErrorAction SilentlyContinue |
     ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 
-# spec §1.4: always one-folder, **never one-file**. one-file extracts itself into
+# always one-folder, **never one-file**. one-file extracts itself into
 # %TEMP% (C:\Windows\Temp under the service account) before executing, which is a
 # known DLL hijacking path and more likely to be blocked under WDAC and HVCI.
 $args = @(

@@ -2,7 +2,7 @@
 <!--
   jt-snmpd MSI definition (WiX v5)
 
-  Why MSI is mandatory (spec §5.4):
+  Why MSI is mandatory :
     **Group Policy software installation accepts MSI and nothing else** — that
     one fact settles the choice. An EXE from Inno Setup or NSIS supports neither
     GPO software installation nor transactional rollback, and does not appear in
@@ -20,8 +20,7 @@
       side-by-side installations
     - the ProductCode differs for every version (WiX's * generates it)
     - configuration and state live under %ProgramData% and are **not in the MSI's
-      component list**, so uninstalling does not remove them (spec §5.7: keeping
-      them by default is deliberate)
+      component list**, so uninstalling does not remove them
     - the service is registered by a custom action rather than ServiceInstall,
       because sc failure, failureflag and privs are needed and WiX's
       ServiceInstall does not offer them
@@ -50,13 +49,13 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- Platform and OS version requirements (spec §5.6 pre-checks) -->
+    <!-- Platform and OS version requirements  -->
     <Launch Condition="VersionNT >= 603"
             Message="Windows 10 / Server 2016 or newer is required." />
     <Launch Condition="Privileged"
             Message="Installing JT SNMP Agent requires administrator rights." />
 
-    <!-- The management networks are mandatory. spec §3.3: deny by default, never
+    <!-- The management networks are mandatory. deny by default, never
          Any/Any. Without them the installation stops rather than quietly opening
          the agent to the whole network. -->
     <Property Id="MANAGEMENTNETWORKS" Secure="yes" />
@@ -66,7 +65,7 @@
     <!-- The community is optional; without it the installer tries to migrate one
          from the built-in SNMP service.
 
-         spec §5.5: **do not pass passwords as MSI properties** — they appear in
+         **do not pass passwords as MSI properties** — they appear in
          the msiexec log and in Event IDs 1033 and 11707. A community string is a
          read-only access token and sits at a different risk level from a v3 key;
          v3 keys always go through ADMX policy and never through an MSI
@@ -216,7 +215,7 @@
         </Control>
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
                  Default="yes" Text="!(loc.WixUINext)">
-          <!-- Refuse to continue without management networks. spec §3.3 is deny by
+          <!-- Refuse to continue without management networks. The default is deny by
                default and never Any/Any, and an empty list leaves the agent
                answering only loopback: installed, but not monitoring. -->
           <Publish Event="NewDialog" Value="VerifyReadyDlg"

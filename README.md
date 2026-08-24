@@ -295,7 +295,7 @@ jt-snmpd/
 | SNMPv3 (SHA-256 + AES-128) | ⛔ not implemented |
 | VACM view presets | ⛔ not implemented |
 | MSI for GPO / Intune / SCCM | ⛔ not implemented |
-| Authenticode signing | ⛔ not planned — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
+| Authenticode signing | ⏳ planned via an open-source certificate programme — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
 | Windows Server, Server Core, domain controllers | ⛔ not yet verified |
 | Multi-homed source address selection | ⛔ not yet verified |
 

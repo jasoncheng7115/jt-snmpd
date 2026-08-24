@@ -167,8 +167,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
     <span class="en">Windows' built-in SNMP is deprecated.<br>jt-snmpd takes over.</span>
   </h1>
   <p class="lead">
-    <span class="zh">jt-snmpd 是一個 <b>唯讀</b> 的 Windows SNMP agent，以標準 MIB 把主機監控資料餵給 LibreNMS——
-      而且不必修改 LibreNMS。磁碟 SMART、ACPI 熱區、硬體 inventory 全程走 SNMP —— 被監控端除了 jt-snmpd 本身之外，不必再裝 LibreNMS agent，也不必裝 smartctl。</span>
+    <span class="zh">jt-snmpd 是一個 <b>唯讀</b> 的 Windows SNMP agent，以標準 MIB 把主機監控資料餵給 LibreNMS，
+      而且不必修改 LibreNMS。磁碟 SMART、ACPI 溫度區、硬體 inventory 全程走 SNMP，被監控端除了 jt-snmpd 本身之外，不必再裝 LibreNMS agent，也不必裝 smartctl。</span>
     <span class="en">jt-snmpd is a <b>read-only</b> SNMP agent for Windows that serves host monitoring data
       over standard MIBs — and needs no changes on the LibreNMS side. Disk SMART, ACPI thermal zones and
       hardware inventory all travel over SNMP, so beyond jt-snmpd itself the monitored host needs
@@ -204,7 +204,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   <div class="grid">
     <div class="card">
       <h3><span class="zh">唯讀不是設定，是沒有那條路徑</span><span class="en">Read-only by construction</span></h3>
-      <p><span class="zh">不覆寫 pysnmp 的 <code>write_variables()</code>，SET 請求連處理的程式碼都不存在——
+      <p><span class="zh">不覆寫 pysnmp 的 <code>write_variables()</code>，SET 請求連處理的程式碼都不存在，
         直接丟棄且不回應，不提供任何可探測的訊息。</span>
         <span class="en">The agent never overrides pysnmp's <code>write_variables()</code>, so there is no code path
           for SET at all. Requests are dropped without a reply, offering nothing to probe.</span></p>
@@ -225,8 +225,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
           that is roughly 0.004%.</span></p>
     </div>
     <div class="card">
-      <h3><span class="zh">絕不捏造數值</span><span class="en">Never fabricates a value</span></h3>
-      <p><span class="zh">採集失敗時該列從快照消失，不回 0、不回前值。SMART 屬性沒量到就是 <code>null</code>——
+      <h3><span class="zh">量不到就不回報</span><span class="en">Never fabricates a value</span></h3>
+      <p><span class="zh">採集失敗時該列從快照消失，不回 0、不回前值。SMART 屬性沒量到就是 <code>null</code>，
         在「重新配置磁區」填 0 的意思是「這顆碟很健康」，那是謊言。</span>
         <span class="en">When a collector fails its rows disappear from the snapshot rather than reporting zero or
           a stale value. An unmeasured SMART attribute stays <code>null</code>: a fabricated zero in
@@ -268,27 +268,50 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <th><span class="zh">說明</span><span class="en">Notes</span></th>
     </tr></thead>
     <tbody>
-      <tr><td>Inventory (entPhysical)</td><td class="num no">0</td><td class="num yes">8</td>
+      <tr><td><span class="zh">設備（entPhysical）</span><span class="en">Inventory (entPhysical)</span></td><td class="num no">0</td><td class="num yes">8</td>
         <td><span class="zh">從 SMBIOS 解析機箱、主機板、CPU、DIMM、磁碟</span>
             <span class="en">Chassis, mainboard, CPU, DIMM and disks parsed from SMBIOS</span></td></tr>
-      <tr><td>SMART</td><td class="num no">0</td><td class="num yes">6</td>
+      <tr><td><span class="zh">應用程式 › SMART</span><span class="en">Apps › SMART</span></td><td class="num no">0</td><td class="num yes">6</td>
         <td><span class="zh">走 NET-SNMP-EXTEND-MIB，完全 SNMP，不需 smartctl</span>
             <span class="en">Over NET-SNMP-EXTEND-MIB — pure SNMP, no smartctl</span></td></tr>
-      <tr><td><span class="zh">感測器</span><span class="en">Sensors</span></td><td class="num no">0</td><td class="num yes">2</td>
-        <td><span class="zh">磁碟溫度與 ACPI 熱區，含韌體宣告的門檻值</span>
-            <span class="en">Disk temperature and ACPI thermal zone, with firmware-declared thresholds</span></td></tr>
-      <tr><td>Disk I/O</td><td class="num no">0</td><td class="num yes">2</td>
+      <tr><td><span class="zh">健康情況 › 感測器</span><span class="en">Health › Sensors</span></td><td class="num no">0</td><td class="num yes">2</td>
+        <td><span class="zh">磁碟溫度，以及 ACPI 溫度區（主機板韌體自己定義的量測點，通常對應 CPU 周邊或機殼），兩者都帶韌體宣告的門檻值</span>
+            <span class="en">Disk temperature, plus ACPI thermal zones (measurement points the mainboard firmware defines itself, usually near the CPU or across the chassis), both with the thresholds the firmware declares</span></td></tr>
+      <tr><td><span class="zh">健康情況 › 磁碟 I/O</span><span class="en">Health › Disk I/O</span></td><td class="num no">0</td><td class="num yes">2</td>
         <td><span class="zh"><code>IOCTL_DISK_PERFORMANCE</code></span>
             <span class="en"><code>IOCTL_DISK_PERFORMANCE</code></span></td></tr>
-      <tr><td><span class="zh">記憶體集區</span><span class="en">Memory pools</span></td><td class="num mid">2</td><td class="num yes">4</td>
+      <tr><td><span class="zh">健康情況 › 記憶體</span><span class="en">Health › Memory</span></td><td class="num mid">2</td><td class="num yes">4</td>
         <td><span class="zh">另加 Cached 與 Swap</span><span class="en">Adds cached memory and swap</span></td></tr>
+      <tr><td><span class="zh">System 圖表</span><span class="en">System graphs</span></td><td class="num mid">3</td><td class="num yes">8</td>
+        <td><span class="zh">內建只有 Processes / Users / Uptime 三張，因為那些來自 HOST-RESOURCES。
+              Detailed Processor Usage、Context Switches、Interrupts、I/O、Swap I/O 這五張在
+              Linux 上來自 UCD-SNMP-MIB，Windows 內建服務沒有這個 MIB。jt-snmpd 以
+              <code>NtQuerySystemInformation</code> 補齊</span>
+            <span class="en">The built-in service gives three (Processes, Users, Uptime) because those come from
+              HOST-RESOURCES. Detailed Processor Usage, Context Switches, Interrupts, I/O and Swap I/O come from
+              UCD-SNMP-MIB on Linux, and the built-in Windows service does not implement that MIB. jt-snmpd
+              supplies them from <code>NtQuerySystemInformation</code></span></td></tr>
+      <tr><td><span class="zh">健康情況 › 儲存</span><span class="en">Health › Storage</span></td><td class="num mid">2</td><td class="num yes">2</td>
+        <td><span class="zh">筆數相同，差別在描述：jt-snmpd 以 <code>GetVolumeInformationW</code>
+              讀出真實磁碟區標籤與序號。<b>中文標籤是實際會踩到的編碼問題</b>，非 ASCII 一律以 UTF-8
+              編碼後送出，並已在 LibreNMS 端對端確認顯示正確</span>
+            <span class="en">Same row count, different descriptions: jt-snmpd reads the real volume label and
+              serial number with <code>GetVolumeInformationW</code>. <b>Non-ASCII labels are a real encoding
+              hazard</b>, so they are encoded as UTF-8 on the way out and confirmed end to end through
+              LibreNMS</span></td></tr>
       <tr><td><span class="zh">連接埠</span><span class="en">Ports</span></td><td class="num mid">9</td><td class="num yes">2</td>
         <td><span class="zh"><b>刻意較少</b>：只輸出實體介面，不輸出 NDIS 篩選器驅動程式</span>
             <span class="en"><b>Deliberately fewer</b>: hardware interfaces only, no NDIS filter drivers</span></td></tr>
       <tr><td><span class="zh">OID 總數</span><span class="en">Total OIDs</span></td><td class="num">6,507</td><td class="num">776</td>
-        <td><span class="zh"><b>刻意較少</b>：3,175 個屬於預設關閉的資訊揭露（已安裝軟體、執行中處理程序、連線表、ARP）</span>
+        <td><span class="zh"><b>刻意較少</b>：其中 3,175 個是預設關閉的資訊揭露。查過 LibreNMS 原始碼後
+              可以確定，已安裝軟體、執行中處理程序、連線表這三類<b>在 LibreNMS 沒有任何取用端</b>，
+              送出去也不會變成任何頁面；只有 ARP 有（<code>ArpTable</code> 模組），可用設定開啟。
+              <a href="comparison-vs-builtin-snmp_zh-TW.html#預設關閉的三千個-oid裡有用的只有一項">逐項查證</a></span>
             <span class="en"><b>Deliberately fewer</b>: 3,175 of the gap is information disclosure that is off by
-              default — installed software, running processes, connection tables, ARP</span></td></tr>
+              default. Checked against LibreNMS's source, installed software, running processes and connection
+              tables have <b>no consumer in LibreNMS at all</b> and would become no page if published; only ARP
+              does (the <code>ArpTable</code> module), and it can be switched on.
+              <a href="comparison-vs-builtin-snmp.html#what-the-3175-withheld-oids-would-actually-buy-you">Item by item</a></span></td></tr>
     </tbody>
   </table>
 
@@ -305,11 +328,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <h3><span class="zh">SMART 對照圖</span><span class="en">SMART — side by side</span></h3>
       <img data-shot="smart" src="images/smart-en.png" alt="">
       <figcaption>
-        <span class="zh">SMART 完全透過 SNMP 送達。沒量到的屬性保持 null，不以 0 回報——
-          在「重新配置磁區」填 0 的意思是「這顆碟很健康」。</span>
-        <span class="en">SMART arrives entirely over SNMP. Attributes that were not measured stay null rather
-          than being reported as zero: a fabricated zero in "reallocated sectors" reads as "this disk is
-          healthy".</span>
+        <span class="zh">內建服務沒有 SMART 應用程式，所以上半部是空的。SMART 完全透過 SNMP 送達；
+          沒量到的屬性保持 null 而不填 0，因為在「重新配置磁區」填 0 的意思是「這顆碟很健康」。</span>
+        <span class="en">The built-in service has no SMART application, which is why the upper half is empty.
+          SMART arrives entirely over SNMP; attributes that were not measured stay null rather than being
+          reported as zero, because a zero in "reallocated sectors" reads as "this disk is healthy".</span>
       </figcaption>
     </figure>
     <figure>
@@ -338,7 +361,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 <section id="install"><div class="wrap">
   <h2><span class="zh">安裝</span><span class="en">Install</span></h2>
   <p class="sub">
-    <span class="zh">MSI 完全自包含——安裝時不上網抓任何東西。安裝程式會偵測內建 SNMP Service，
+    <span class="zh">MSI 完全自包含，安裝時不上網抓任何東西。安裝程式會偵測內建 SNMP Service，
       沿用它的 community 與 sysContact / sysLocation，然後停用它（<b>停用，不移除</b>），
       解除安裝時自動還原。</span>
     <span class="en">The MSI is fully self-contained — it downloads nothing during installation. It detects the
@@ -378,7 +401,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   </h3>
   <p class="sub">
     <span class="zh">安裝程式會逐步詢問安裝路徑與監控設定。兩個必填的設定是<b>管理網段</b>與
-      <b>community</b>——它們決定誰查得到這台主機。事後也可以編輯
+      <b>community</b>，它們決定誰查得到這台主機。事後也可以編輯
       <code>C:\ProgramData\JT-SNMP\config.json</code> 再重新啟動服務。</span>
     <span class="en">The installer asks for the install location and the monitoring settings.
       The two required values are the <b>management networks</b> and the <b>community string</b> —
@@ -399,12 +422,10 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <b>Group Policy software deployment</b>: deployed in this form the installation runs as SYSTEM
       with no prompts.</span>
   </p>
-<pre><code>msiexec /i jt-snmpd-0.9.2-x64.msi /qn ^
-  MANAGEMENTNETWORKS=10.0.0.0/24 ^
-  COMMUNITY=your-community</code></pre>
+<pre><code>msiexec /i jt-snmpd-0.9.2-x64.msi /qn MANAGEMENTNETWORKS=10.0.0.0/24 COMMUNITY=your-community</code></pre>
   <p class="sub">
     <span class="zh">以 GPO 派送時，請把 MSI 放在網域內的共用資料夾，
-      並確保電腦帳戶對該資料夾有讀取權限。從內部共用資料夾安裝也不會帶 Mark of the Web，
+      並確保電腦帳戶對該資料夾有讀取權限。從內部共用資料夾安裝也不會帶網頁標記（Mark of the Web），
       因此不會遇到 SmartScreen。</span>
     <span class="en">For GPO, place the MSI on a domain file share and make sure computer accounts can
       read it. Installing from an internal share also avoids the Mark of the Web, so SmartScreen
@@ -416,7 +437,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   </h3>
   <p class="sub">
     <span class="zh">SMART 的探索模組在 LibreNMS 預設是<b>關閉</b>的。沒有啟用時，
-      jt-snmpd 照樣供應資料，但不會有人來取——裝置的「應用程式」分頁不會出現 SMART。</span>
+      jt-snmpd 照樣供應資料，但不會有人來取，裝置的「應用程式」分頁不會出現 SMART。</span>
     <span class="en">The discovery module that finds SMART is <b>off by default</b> in LibreNMS.
       Until it is enabled, jt-snmpd still serves the data but nothing collects it, and no SMART
       entry appears under Apps.</span>
@@ -454,7 +475,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   <div class="grid">
     <div class="card"><h3><a data-doc="attack-surface" href="attack-surface.html">
       <span class="zh">安全性評估</span><span class="en">Security assessment</span></a></h3>
-      <p><span class="zh">實測放大倍率、權杖權限剝除，以及未緩解風險的誠實清單</span>
+      <p><span class="zh">實測放大倍率、權杖權限縮減，以及未緩解風險的誠實清單</span>
          <span class="en">Measured amplification factor, privilege stripping, and an honest list of what is
            <em>not</em> mitigated</span></p></div>
     <div class="card"><h3><a data-doc="comparison-vs-builtin-snmp" href="comparison-vs-builtin-snmp.html">

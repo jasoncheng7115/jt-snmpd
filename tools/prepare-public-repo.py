@@ -4,7 +4,7 @@
 
 **為什麼不直接推現有的 repo**
 
-開發歷史裡含有 `spec.md`（內部規格書）。Git 的歷史是內容定址的——
+開發歷史裡含有 `spec.md`（內部規格書）。Git 的歷史是內容定址的，
 即使現在把檔案移除並提交，**推送既有歷史仍會把內容一起帶上去**，
 而 GitHub 保留 fork 與快取，事後刪除只是把它從畫面上拿掉。
 
@@ -29,12 +29,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# 明確不公開的項目。`.gitignore` 已涵蓋大部分，這裡是第二道防線——
+# 明確不公開的項目。`.gitignore` 已涵蓋大部分，這裡是第二道防線，
 # `.gitignore` 對**已追蹤**的檔案無效，而 spec.md 與 CLAUDE.md 正好都已被追蹤。
 NEVER_PUBLISH = {
     "spec.md",              # 內部規格書
     "CLAUDE.md",            # 內部工作筆記，含正式環境位址與作業紀律
     "upt.b64",
+    # 閘門 0 的查證報告：整份是照著內部規格書的章節寫的，對外讀者無從對照，
+    # 且只有中文。與其把三十幾個指不到的章節引用改寫成獨立文章，不如不公開。
+    "phase0-findings.md",
 }
 NEVER_PUBLISH_DIRS = {"reports", "state", "logs", ".venv", "build", "dist",
                       "__pycache__", ".pytest_cache", ".git"}
@@ -42,7 +45,7 @@ NEVER_PUBLISH_SUFFIX = {".log", ".msi", ".exe", ".pem", ".key", ".pfx",
                         ".walk", ".snmpwalk", ".rrd"}
 
 # 這些目錄要保留，但只留 README（說明用途，產物不進版控）。
-# 比對的是「檔名以 README 開頭」而非等於 README.md——原本寫死 README.md，
+# 比對的是「檔名以 README 開頭」而非等於 README.md，原本寫死 README.md，
 # 結果 dist/README_zh-TW.md 從來沒被發佈過，公開 repo 裡的 dist 只有英文版。
 KEEP_README_ONLY = {"build", "dist"}
 
@@ -73,7 +76,7 @@ def main() -> int:
     dest.mkdir(parents=True, exist_ok=True)
 
     # 已是公開 repo 時做增量同步：保留 .git（remote、歷史都在裡面），
-    # 但先清掉舊檔，否則來源刪掉的檔案會留在公開 repo 裡不會消失——
+    # 但先清掉舊檔，否則來源刪掉的檔案會留在公開 repo 裡不會消失，
     # 那正是「以為移除了、其實還在」的洩漏路徑。
     if existing_git:
         for item in dest.iterdir():

@@ -6,7 +6,7 @@
 `PURGE=1` 之後 `C:\\ProgramData\\JT-SNMP` 仍然存在，裡面剩下 `logs\\msi-configure.log`。
 
 原因是自訂動作的記錄檔就放在**它自己要清除的目錄裡**。`Remove-Item` 確實刪掉了整個
-目錄，但緊接著的兩行 `Log` 又把 `logs\\` 重新建出來——清除動作被自己的收尾訊息推翻。
+目錄，但緊接著的兩行 `Log` 又把 `logs\\` 重新建出來，清除動作被自己的收尾訊息推翻。
 
 **為什麼一般測試抓不到**
 
@@ -36,7 +36,7 @@ SRC = CONFIGURE.read_text(encoding="utf-8-sig")
 def _purge_block() -> str:
     """取出 `if ($Purge -eq '1') { ... }` 的 then 區塊。
 
-    用括號配對而非搜尋第一個 `} else {`——then 區塊裡本身就有巢狀的 if/else
+    用括號配對而非搜尋第一個 `} else {`，then 區塊裡本身就有巢狀的 if/else
     （驗證清除結果），第一次寫的時候正是被這個絆倒。
     """
     i = SRC.find("if ($Purge -eq '1')")
@@ -58,7 +58,7 @@ def _purge_block() -> str:
 def test_log_writes_are_gated_by_a_flag():
     """Log 必須能被關閉，否則清除後任何一行訊息都會重建目錄。"""
     assert "$script:LogToFile" in SRC, (
-        "Log 缺少可關閉的旗標——PURGE 後的收尾訊息會把 logs\\ 重建回來")
+        "Log 缺少可關閉的旗標，PURGE 後的收尾訊息會把 logs\\ 重建回來")
     i = SRC.find("function Log {")
     body = SRC[i:SRC.find("\n}", i)]
     assert "if ($script:LogToFile)" in body, "Log 的寫檔動作必須受旗標保護"
@@ -78,19 +78,19 @@ def test_file_logging_is_disabled_before_the_delete():
 def test_log_dir_lives_inside_data_dir():
     """這個測試的前提：記錄檔確實在要被清除的目錄裡。
 
-    若哪天記錄檔搬到 %TEMP%，上面兩個斷言就不再必要——但那要是個明確的決定，
+    若哪天記錄檔搬到 %TEMP%，上面兩個斷言就不再必要，但那要是個明確的決定，
     而不是無聲的漂移。
     """
     assert "$LOG_DIR     = Join-Path $DATA_DIR 'logs'" in SRC.replace("  ", " ").replace(
         "$LOG_DIR = Join-Path $DATA_DIR 'logs'", "$LOG_DIR     = Join-Path $DATA_DIR 'logs'"
-    ) or re.search(r"\$LOG_DIR\s*=\s*Join-Path \$DATA_DIR 'logs'", SRC), (
+) or re.search(r"\$LOG_DIR\s*=\s*Join-Path \$DATA_DIR 'logs'", SRC), (
         "記錄檔位置改變時，請一併檢視 PURGE 的關閉記錄邏輯是否仍需要")
 
 
 # --- 不得謊報成功 -----------------------------------------------------------
 
 def test_purge_verifies_the_directory_is_actually_gone():
-    """spec §6.9 的精神：不得回報未經驗證的結果。"""
+    """設計規格的精神：不得回報未經驗證的結果。"""
     block = _purge_block()
     assert "Test-Path $DATA_DIR" in block, (
         "刪除後必須實際驗證目錄消失，不能只看 Remove-Item 沒拋錯")
@@ -104,7 +104,7 @@ def test_purge_retries_because_files_may_still_be_locked():
 
 
 def test_failed_purge_is_reported_not_swallowed():
-    """失敗時必須留下警告——殘骸會讓下次安裝沿用舊狀態。"""
+    """失敗時必須留下警告，殘骸會讓下次安裝沿用舊狀態。"""
     block = _purge_block()
     assert "WARN" in block, "清除失敗必須以 WARN 回報"
     ok = block.find('Log "data directory completely removed')
@@ -117,7 +117,7 @@ def test_failed_purge_is_reported_not_swallowed():
 # --- 預設（非 PURGE）行為 ---------------------------------------------------
 
 def test_default_uninstall_keeps_data_dir():
-    """spec §5.7：預設保留是刻意的。
+    """預設保留是刻意的。
 
     客戶常以「移除再重裝」排除問題；索引被清掉會讓 LibreNMS 重新 discovery，
     舊 RRD 全數失去對應。

@@ -1,4 +1,4 @@
-"""同行程 profile：把「解碼請求 → controller → 組裝回應 → 編碼」整條請求路徑
+"""同處理程序 profile：把「解碼請求 → controller → 組裝回應 → 編碼」整條請求路徑
 用 cProfile 剖析，找出 §4.2 的 80 µs/varbind 預算花在哪。
 
 不經過 socket / asyncio，直接呼叫我們自訂的 command responder 邏輯，

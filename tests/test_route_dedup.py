@@ -11,7 +11,7 @@ RFC1213 的 `ipRouteTable` 以**目的位址單獨**當索引，一個目的位�
 但真實主機每張網路卡都會有自己的多播路由 224.0.0.0、廣播路由 255.255.255.255，
 等價多路徑也會產生同一目的位址的多筆路由。
 
-在只有一張網路卡的機器上完全不會發生——這是「在 A 機器測過就以為沒問題」
+在只有一張網路卡的機器上完全不會發生，這是「在 A 機器測過就以為沒問題」
 的典型陷阱。
 
 **為什麼是護欄抓到的**
@@ -19,7 +19,7 @@ RFC1213 的 `ipRouteTable` 以**目的位址單獨**當索引，一個目的位�
 snapshot + bisect 架構的正確性建立在「無重複 OID」之上。
 `build_snapshot()` 的重複檢查護欄直接讓 agent 拒絕啟動，
 而安裝程式的 loopback 健康檢查又讓整個 MSI 交易倒回。
-兩道關卡都發揮了作用——沒有留下一個「看起來裝好了但資料是錯的」安裝。
+兩道關卡都發揮了作用，沒有留下一個「看起來裝好了但資料是錯的」安裝。
 
 較新的 `ipForwardTable` / `inetCidrRouteTable` 把介面納入索引，沒有這個限制。
 本專案目前只提供 RFC1213 的 `ipRouteTable`（LibreNMS 讀它），
@@ -58,7 +58,7 @@ def _r(dest: str, metric: int, if_index: int) -> dict:
 
 
 def test_multicast_route_on_every_nic_collapses_to_one():
-    """每張網路卡都有 224.0.0.0 —— 這是實測觸發 bug 的實際情境。"""
+    """每張網路卡都有 224.0.0.0，這是實測觸發 bug 的實際情境。"""
     routes = [_r("224.0.0.0", 256, 5), _r("224.0.0.0", 256, 8),
               _r("224.0.0.0", 256, 17), _r("224.0.0.0", 256, 20)]
     out = _dedup_by_lowest_metric(routes)
@@ -88,7 +88,7 @@ def test_distinct_destinations_are_all_kept():
 
 
 def test_equal_metric_keeps_first_deterministically():
-    """metric 相同時保留先出現者。重點是**結果必須穩定**——
+    """metric 相同時保留先出現者。重點是**結果必須穩定**，
     每次 walk 給不同答案會讓 LibreNMS 的圖表跳動。"""
     routes = [_r("10.0.0.0", 256, 5), _r("10.0.0.0", 256, 9)]
     out = _dedup_by_lowest_metric(routes)

@@ -11,12 +11,11 @@ description: Security scanning toolchain and the report a review will accept
 
 | 項目 | 內容 |
 |---|---|
-| 對應規格 | `spec.md` §3.9（資安 CI Harness，每次 release 必跑） |
 | 用途 | 政府 / 醫院標案的資安審查需要**可提交的報告**，不是口頭保證 |
 
 ## 為什麼 ZAP 不適用
 
-OWASP ZAP 是 **web 應用程式**的動態掃描器（DAST）——它爬 HTTP 端點、注入
+OWASP ZAP 是 **web 應用程式**的動態掃描器（DAST），它爬 HTTP 端點、注入
 payload、看回應。jt-snmpd **沒有 HTTP 介面**，攻擊面是 UDP/161 上的 BER 編碼
 封包。ZAP 對它一無所用。
 
@@ -25,14 +24,14 @@ payload、看回應。jt-snmpd **沒有 HTTP 介面**，攻擊面是 UDP/161 上
 
 ---
 
-## 1. SAST — 原始碼靜態分析
+## 1. SAST，原始碼靜態分析
 
 | 工具 | 用途 | 為什麼需要 |
 |---|---|---|
 | **Bandit** | Python 安全反模式 | 抓 `eval`、`subprocess(shell=True)`、寫死密碼、弱雜湊、不安全的 tempfile、`assert` 用於驗證 |
 | **Semgrep** | 規則式 SAST（含 `p/security-audit`、`p/secrets`） | 比 Bandit 更深的資料流；可自訂規則抓本專案特有問題 |
 | **Ruff**（`S` 規則集） | flake8-bandit 移植，速度極快 | 適合每次 commit 就跑；與 Bandit 規則重疊但更快 |
-| **mypy** | 靜態型別檢查 | 型別錯誤在 ctypes 邊界特別危險——傳錯型別會讀寫錯誤記憶體 |
+| **mypy** | 靜態型別檢查 | 型別錯誤在 ctypes 邊界特別危險，傳錯型別會讀寫錯誤記憶體 |
 | **CodeQL** | GitHub 的資料流分析 | 跨函式追蹤「未認證輸入 → 危險操作」，最接近人工審查 |
 
 ### 本專案特別要檢查的模式
@@ -40,21 +39,21 @@ payload、看回應。jt-snmpd **沒有 HTTP 介面**，攻擊面是 UDP/161 上
 一般規則集抓不到的，需自訂 Semgrep 規則：
 
 ```yaml
-# 所有 ctypes 外部函式必須宣告 argtypes/restype（CLAUDE.md 鐵則 11）
-# 缺少宣告會讓 64 位回傳值被截斷 —— 實測造成 C: 磁碟顯示 0 GB
+# 所有 ctypes 外部函式必須宣告 argtypes/restype
+# 缺少宣告會讓 64 位回傳值被截斷，實測造成 C: 磁碟顯示 0 GB
 - id: ctypes-missing-argtypes
   pattern: $LIB.$FUNC(...)
   pattern-not-inside: |
       $LIB.$FUNC.argtypes = ...
       ...
 
-# OCTET STRING 必須經 octet() 包裝（CLAUDE.md 鐵則 13）
+# OCTET STRING 必須經 octet() 包裝
 # 裸用 rfc1902.OctetString(str) 遇非 ASCII 會拋 PyAsn1UnicodeEncodeError
 - id: bare-octetstring
   pattern: rfc1902.OctetString($X)
   pattern-not: rfc1902.OctetString($X.encode(...))
 
-# 內部計時不得用 wall clock（CLAUDE.md 鐵則 2）
+# 內部計時不得用 wall clock
 - id: wall-clock-timing
   patterns:
     - pattern-either:
@@ -64,17 +63,17 @@ payload、看回應。jt-snmpd **沒有 HTTP 介面**，攻擊面是 UDP/161 上
 
 ---
 
-## 2. SCA — 相依弱點掃描與 SBOM
+## 2. SCA，相依弱點掃描與 SBOM
 
 | 工具 | 用途 |
 |---|---|
 | **pip-audit** | 對照 PyPI Advisory DB 與 OSV，掃 Python 相依的 CVE |
 | **OSV-Scanner** | Google 的跨生態系掃描器，涵蓋面比 pip-audit 廣 |
-| **CycloneDX-python** | 產生 **SBOM**（spec §3.9 明列要求）|
+| **CycloneDX-python** | 產生 **SBOM**|
 | **Trivy** | 也能掃檔案系統與 SBOM，一併驗 secrets |
 
 jt-snmpd 的相依極少（`pysnmp` → `pyasn1`，加打包期的 `pywin32`、`pyinstaller`），
-這是刻意的——**相依愈少，SCA 報告愈乾淨，審查愈好過**。
+這是刻意的，**相依愈少，SCA 報告愈乾淨，審查愈好過**。
 
 ---
 
@@ -85,14 +84,14 @@ jt-snmpd 的相依極少（`pysnmp` → `pyasn1`，加打包期的 `pywin32`、`
 | **gitleaks** | 掃整個 git 歷史，不只當前工作區 |
 | **detect-secrets** | 可建立 baseline，避免誤報疲勞 |
 
-CLAUDE.md 鐵則 7：金鑰明文不得出現在 config / log / Event Log / MSI 屬性。
+專案規則：金鑰明文不得出現在 config、log、Event Log 或 MSI 屬性中。
 Secret 掃描是這條的自動化守門。
 
 ---
 
-## 4. DAST — 協定層模糊測試（取代 ZAP 的角色）
+## 4. DAST，協定層模糊測試（取代 ZAP 的角色）
 
-spec §3.9 明列兩項：
+以下兩項為必做：
 
 | 項目 | 工具 | 通過條件 |
 |---|---|---|
@@ -116,9 +115,9 @@ spec §3.9 明列兩項：
 
 | 項目 | 工具 / 方法 | 為什麼 |
 |---|---|---|
-| **Authenticode 簽章** | `signtool verify /pa /v`、Sysinternals `sigcheck` | 本專案不簽章，此項用於確認自行簽章後的結果；見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
+| **Authenticode 簽章** | `signtool verify /pa /v`、Sysinternals `sigcheck` | 憑證到位前，此項用於確認自行簽章後的結果；見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | **unquoted service path** | `sc qc jt-snmpd` 檢查 binPath 有引號 | 最常被稽核抓到的 finding。預設安裝路徑本身含空白 |
-| **服務帳號與特權** | `sc qprivs jt-snmpd` | 驗證特權縮減生效（spec §3.6）|
+| **服務帳號與特權** | `sc qprivs jt-snmpd` | 驗證特權縮減生效|
 | **檔案 / 目錄 ACL** | Sysinternals `accesschk -d` | `C:\ProgramData` 預設允許 Users 建子目錄，攻擊者可搶先建立 |
 | **弱 ACL 提權路徑** | **PowerUp** / **PrivescCheck** | 專門掃 Windows 服務提權路徑，會同時檢查上面三項 |
 | **DLL 劫持** | 確認 one-folder（非 one-file）；`Process Monitor` 觀察載入路徑 | one-file 會解壓到 `%TEMP%` 執行 |
@@ -142,13 +141,13 @@ spec §3.9 明列兩項：
   gitleaks detect --report-format json --report-path reports/gitleaks.json
   cyclonedx-py env -o reports/sbom.json
 
-每次 release（慢，spec §3.9 硬性要求）
+每次 release（慢，發版前必做）
   上述全部 +
   boofuzz 24 小時對 UDP/161
   PROTOS c06-snmpv1
   Windows 平台檢查（signtool / accesschk / PrivescCheck）
-  §5.8 安裝測試矩陣
-  §6.10 30 天穩定性（major 版本）
+  安裝測試矩陣
+  30 天穩定性（major 版本）
 ```
 
 ## 7. 報告產出

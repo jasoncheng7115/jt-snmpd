@@ -1,4 +1,4 @@
-r"""Disk temperature and health — multiple detection paths (spec §2.9).
+r"""Disk temperature and health — multiple detection paths.
 
 **Why more than one path**
 
@@ -13,12 +13,11 @@ No single path covers all hardware. Measured:
 
 So the four paths are tried in order and the first success wins. When all fail
 the result is an empty dict — "this device has no temperature sensor" is normal,
-not an error (spec §6.9: never fabricate a value; the row simply does not
-appear).
+not an error.
 
 **Why not LibreHardwareMonitor**
 
-spec §2.9: LHM depends on the WinRing0 driver, which CVE-2020-14979 makes a
+LHM depends on the WinRing0 driver, which CVE-2020-14979 makes a
 privilege-escalation path, and which is on Microsoft's vulnerable-driver
 blocklist. On the HVCI-enabled government and hospital endpoints this targets it
 would not merely fail to work — it would raise Defender alerts and make the agent
@@ -398,8 +397,7 @@ def probe(drive_index: int) -> dict:
     """Try every path against one physical disk and merge the results.
 
     An exception from any one path must not stop the others: firmware support for
-    these IOCTLs varies enormously between vendors (spec §6.7: startup never
-    fails hard).
+    these IOCTLs varies enormously between vendors.
     """
     h, _access = open_disk(drive_index, want_write=True)
     if h is None:

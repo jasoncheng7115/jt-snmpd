@@ -1,4 +1,4 @@
-"""Pre-parse gate (spec §3.2) — the first line of defence, ahead of pysnmp.
+"""Pre-parse gate  — the first line of defence, ahead of pysnmp.
 
 **Why this is the highest-priority security item**
 
@@ -15,7 +15,7 @@ Known attack surface:
   - SNMPv3 engineID discovery is unauthenticated, and the
     usmStatsUnknownUserNames report PDU can be used to enumerate valid accounts
 
-**The order matters.** spec §3.2 notes that the original plan put the ACL in
+**The order matters.** The original plan put the ACL in
 `snmp.v2c.communities[].source`, which applies it *after* parsing — backwards.
 Every check here runs before pysnmp sees a single byte:
 
@@ -42,7 +42,7 @@ import ipaddress
 import time
 from dataclasses import dataclass, field
 
-# spec §3.2: a normal request is under 300 bytes, so 4096 is already generous
+# a normal request is under 300 bytes, so 4096 is already generous
 MAX_PACKET_BYTES = 4096
 # Packets per second allowed from a single source (token bucket)
 DEFAULT_RATE_PPS = 50
@@ -67,10 +67,10 @@ class _Bucket:
 @dataclass
 class PreAuthGate:
     """The gate in front of pysnmp. Around a hundred lines, written here rather
-    than pulled in (spec §3.2).
+    than pulled in.
 
     An empty `allowed_networks` means "not configured", and is treated as deny —
-    see `_ip_allowed`. spec §3.3 requires the installer to ask for the management
+    see `_ip_allowed`. The installer is required to ask for the management
     networks; the default is deny, and Any/Any is never acceptable.
     """
 
@@ -106,9 +106,9 @@ class PreAuthGate:
         except ValueError:
             return False
 
-        # Loopback is always allowed. The loopback self-test in spec §6.5 is the
+        # Loopback is always allowed. The loopback self-test is the
         # only thing that detects "service reports Running but the event loop is
-        # wedged", and the installer's health check (spec §5.7 step 7) relies on
+        # wedged", and the installer's health check  relies on
         # it too. With loopback behind the ACL, every site's installation fails
         # at the final step — which is exactly what happened once.
         #

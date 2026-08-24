@@ -6,14 +6,14 @@
     pyasn1 物件建構（apiPDU.set_varbinds）   84 µs/vb
     純 BER 編碼                              49 µs/vb
 
-——遠超 §4.2 的 80 µs/varbind 總預算，而且是線性成本，調高
+，遠超 §4.2 的 80 µs/varbind 總預算，而且是線性成本，調高
 max-repetitions 攤不掉（25 筆時 127 µs/vb，100 筆時 124 µs/vb）。
 
 snapshot + bisect 已經把 MIB 層降到 8 µs/vb，瓶頸完全在編碼層，
 正是 §1.3 預先點名的風險②「純 Python BER 的效能」。
 
 解法：既然 snapshot 是不可變的，就在**建立時**把每筆 varbind 編成 BER bytes，
-請求路徑上只做「切片 + 串接」。這也自然取代了原本只預存大小的做法——
+請求路徑上只做「切片 + 串接」。這也自然取代了原本只預存大小的做法，
 有了 wire bytes，長度就是 len()。
 """
 
@@ -47,7 +47,7 @@ def tlv(tag: int, content: bytes) -> bytes:
 
 def enc_int_content(v: int) -> bytes:
     """整數內容。刻意對齊 pyasn1 的行為（負數邊界會多一個多餘的前導位元組），
-    而非 DER 最短編碼——見 docs/phase0-findings.md §2.4。"""
+    而非 DER 最短編碼，見 docs/phase0-findings.md §2.4。"""
     n = v.bit_length() // 8 + 1
     return v.to_bytes(n, "big", signed=True)
 

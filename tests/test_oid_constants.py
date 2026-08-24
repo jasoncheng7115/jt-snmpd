@@ -1,6 +1,6 @@
 """Base OID 常數對照 RFC 標準值。
 
-為什麼需要這個測試：OID 打錯是**無聲**的。實測踩過一次——ifXTable 寫成
+為什麼需要這個測試：OID 打錯是**無聲**的。實測踩過一次，ifXTable 寫成
 `1.3.6.1.31.1.1.1`（少了 `2.1`），agent 照樣啟動、walk 照樣有回應，
 只是那張表整個掛在一個不存在的分支底下。LibreNMS 端的症狀是
 「Ports 頁沒有名稱、沒有 64-bit counters」，而 agent 這邊完全看不出異常。
@@ -80,7 +80,7 @@ def test_base_oid_matches_rfc(name: str, expected: tuple[int, ...], rfc_name: st
     assert got == expected, (
         f"{name} 應為 {rfc_name} = {'.'.join(map(str, expected))}，"
         f"實際為 {'.'.join(map(str, got))}"
-    )
+)
 
 
 def test_all_base_oids_are_under_iso_org_dod_internet():

@@ -161,9 +161,7 @@ jobs:
           $body += ""
           $body += '```powershell'
           $body += "# Command line / unattended - also the form to use for GPO software deployment"
-          $body += "msiexec /i $msi /qn ``"
-          $body += "  MANAGEMENTNETWORKS=10.0.0.0/24 ``"
-          $body += "  COMMUNITY=your-community"
+          $body += "msiexec /i $msi /qn MANAGEMENTNETWORKS=10.0.0.0/24 COMMUNITY=your-community"
           $body += '```'
           $body += ""
           $body += "The installer is fully self-contained and downloads nothing. It detects the built-in SNMP Service, carries over its community, sysContact and sysLocation, then disables it (disabled, not removed) and restores it on uninstall."

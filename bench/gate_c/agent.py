@@ -22,12 +22,12 @@ from pysnmp.proto.api import v2c
 
 from .snapshot import Snapshot, SnapshotMibInstrumController, build_synthetic_snapshot
 
-# spec §4.4：回應上限 1400 bytes，避免 IP 分片。扣掉 SNMP 訊息外層
+# 回應上限 1400 bytes，避免 IP 分片。扣掉 SNMP 訊息外層
 # （version / community / PDU header / request-id / error status+index /
 # 各層 SEQUENCE 標頭）的保留額度。
 MAX_RESPONSE_BYTES = 1400
 MESSAGE_OVERHEAD_RESERVE = 120
-MAX_REPETITIONS_CAP = 25  # spec §4.4：伺服器端對 max-repetitions 設上限
+MAX_REPETITIONS_CAP = 25  # 伺服器端對 max-repetitions 設上限
 
 
 class SliceableSnapshotController(SnapshotMibInstrumController):
@@ -69,7 +69,7 @@ class BatchedBulkCommandResponder(cmdrsp.BulkCommandResponder):
     """取代 pysnmp 原生的 GETBULK 處理。
 
     原生實作（cmdrsp.py:436）是 `while M and R: rspVarBinds.extend(mgmtFun(...))`
-    ——每個 repetition 都是一次獨立的 read_next_variables 呼叫，pysnmp 原始碼
+，每個 repetition 都是一次獨立的 read_next_variables 呼叫，pysnmp 原始碼
     自己也留著 `TODO: manage all PDU var-binds in a single call`。
 
     對 snapshot + bisect 架構而言這是純浪費：M=25 就是 25 次 bisect，
@@ -99,7 +99,7 @@ class BatchedBulkCommandResponder(cmdrsp.BulkCommandResponder):
                 MAX_RESPONSE_BYTES - MESSAGE_OVERHEAD_RESERVE,
                 self.verify_access,
                 ctx,
-            )
+)
         else:
             rspVarBinds = list(instrum.read_next_variables(*reqVarBinds[:N], **ctx)) if N else []
             varBinds = reqVarBinds[-R:] if R else []
@@ -119,7 +119,7 @@ def build_agent(snapshot: Snapshot, host: str, port: int, community: str, stock_
     snmpEngine = engine.SnmpEngine()
     config.add_transport(
         snmpEngine, udp.DOMAIN_NAME, udp.UdpTransport().open_server_mode((host, port))
-    )
+)
     config.add_v1_system(snmpEngine, "bench-area", community)
     config.add_vacm_user(snmpEngine, 2, "bench-area", "noAuthNoPriv", (1, 3, 6))
 
@@ -157,7 +157,7 @@ async def main() -> None:
         f"READY varbinds={len(snap)} build_ms={build_ms:.1f} "
         f"bulk={mode} listen={args.host}:{args.port}",
         flush=True,
-    )
+)
     await asyncio.get_running_loop().create_future()
 
 
