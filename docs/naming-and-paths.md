@@ -17,23 +17,29 @@
 
 ## 安裝路徑（程式與資料嚴格分離）
 
+以下是實機上的實際內容，不是規劃。標「（規劃）」的目前不存在。
+
 ```
 %ProgramFiles%\JT SNMP Agent\          ← 程式本體，唯讀。不放 ProgramData
     jt-snmpd.exe
-    jt-snmpdctl.exe
+    msi-configure.ps1                   安裝與解除安裝時由 MSI 呼叫
     _internal\                          PyInstaller one-folder 執行環境
-    mibs\                               MIB 檔（供 LibreNMS / snmpwalk）
+    jt-snmpdctl.exe                     （規劃）管理 CLI
+    mibs\                               （規劃）MIB 檔，供 LibreNMS / snmpwalk
 
 %ProgramData%\JT-SNMP\                 ← 設定與狀態，可寫
-    config.yaml
-    config.example.yaml
-    secrets\usm.dat                     SNMPv3 localized key（DPAPI machine scope）
+    config.json                         安裝程式寫入，agent 在進入點讀取
     state\index-map.json                ifIndex 保存（弄丟它，LibreNMS 會重建全部 port）
-    state\engine-state.json             engineID / engineBoots
-    state\ms-snmp-migration.json        Windows SNMP 移轉與還原資訊
+    state\engine.json                   engineID / engineBoots
+    state\ms-snmp-restore.json          內建 SNMP 的原始啟動類型與狀態，供解除安裝還原
+    state\disk-maxtemp.json             實際觀測到的磁碟最高溫，跨重新啟動保存
     logs\jt-snmpd.log                   輪替：5 MB × 5 份
-    logs\ms-snmp-migration-report.txt
+    logs\msi-configure.log              安裝程式自己的記錄
+    secrets\                            目錄已建立且 ACL 已收緊；SNMPv3 金鑰（規劃）
 ```
+
+> 這份清單曾經寫著 `config.yaml`、`engine-state.json`、`ms-snmp-migration.json`，
+> 三個名字都與實際不符。文件裡的路徑要跟實機核對過再寫。
 
 ## 硬性路徑規則
 

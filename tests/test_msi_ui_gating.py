@@ -1,0 +1,153 @@
+"""The graphical installation must survive its own launch conditions.
+
+**Why this file exists**
+
+0.9.2 shipped a graphical installer that could not install anything. Double-click
+the MSI and the Welcome page immediately raised "the management networks must be
+specified", with no way forward -- while the page that asks for the management
+networks sat two clicks further on.
+
+The cause is an ordering property of Windows Installer that is easy to miss:
+`LaunchConditions` runs at the very start of the **InstallUISequence**, before
+any dialog is shown. A launch condition that depends on a property the wizard is
+supposed to collect can therefore never be satisfied in a wizard install. The
+condition was correct for `/qn` and fatal for everything else.
+
+Nothing in the existing suite could catch it. The WiX source was valid, the build
+succeeded, the MSI installed cleanly under `/qn`, and the lifecycle test drives
+`msiexec /qn` throughout -- so every gate was green while the double-click path,
+the one an operator actually uses first, was completely broken.
+
+These assertions pin the shape of the fix rather than the wording:
+
+  1. the mandatory-property launch condition exempts the full-UI case
+  2. the dialog that collects the property still refuses to advance without it,
+     so the exemption gives nothing away
+  3. the configure script remains a backstop and fails closed
+"""
+
+from __future__ import annotations
+
+import re
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+WXS = ROOT / "packaging" / "wix" / "jt-snmpd.wxs"
+CONFIGURE = ROOT / "packaging" / "msi-configure.ps1"
+
+NS = {"w": "http://wixtoolset.org/schemas/v4/wxs"}
+
+SRC = WXS.read_text(encoding="utf-8")
+TREE = ET.fromstring(SRC)
+
+
+def _launch_conditions() -> list[str]:
+    return [e.get("Condition", "") for e in TREE.iter(f"{{{NS['w']}}}Launch")]
+
+
+def _condition_mentioning(prop: str) -> str:
+    for c in _launch_conditions():
+        if prop in c:
+            return c
+    pytest.fail(f"no <Launch> condition mentions {prop}")
+
+
+# --------------------------------------------------------------- the actual bug
+def test_mandatory_property_condition_exempts_the_full_ui_case():
+    """A launch condition on a wizard-collected property must exempt full UI.
+
+    Without this, LaunchConditions fires on the Welcome page and the wizard can
+    never reach the page that would satisfy it.
+    """
+    cond = _condition_mentioning("MANAGEMENTNETWORKS")
+    assert "UILevel" in cond, (
+        "the MANAGEMENTNETWORKS launch condition has no UILevel exemption, so it "
+        "fires before any dialog can collect the value and the graphical "
+        "installation aborts on its Welcome page (this shipped in 0.9.2)")
+    m = re.search(r"UILevel\s*>\s*(\d+)", cond)
+    assert m, f"expected a `UILevel > N` comparison, got: {cond}"
+    assert int(m.group(1)) == 4, (
+        "the exemption must be `UILevel > 4`. Only level 5 is the full wizard; "
+        "2 (/qn), 3 (/qb) and 4 (/qr) show no page that could ask, so the "
+        "condition still has to stop those")
+
+
+def test_condition_still_blocks_silent_installs():
+    """The exemption must not turn into a blanket pass."""
+    cond = _condition_mentioning("MANAGEMENTNETWORKS")
+    assert re.search(r"\bMANAGEMENTNETWORKS\b", cond), \
+        "the property itself must still be part of the condition"
+    assert "REMOVE" in cond, \
+        "uninstall has no management networks to supply and must not be blocked"
+
+
+def test_uninstall_is_exempt():
+    cond = _condition_mentioning("MANAGEMENTNETWORKS")
+    assert "REMOVE" in cond
+
+
+# ------------------------------------------- the dialog still enforces the rule
+def _jt_settings_dialog():
+    for d in TREE.iter(f"{{{NS['w']}}}Dialog"):
+        if d.get("Id") == "JtSettingsDlg":
+            return d
+    pytest.fail("JtSettingsDlg not found; the graphical settings page is gone")
+
+
+def test_settings_dialog_refuses_to_advance_without_networks():
+    """Exempting full UI is only safe because the dialog enforces it instead.
+
+    If this ever stops being true, the exemption becomes a hole: a wizard install
+    could complete with no ACL, and an agent that answers everyone is worse than
+    one that fails to install.
+    """
+    dlg = _jt_settings_dialog()
+    nxt = [c for c in dlg.iter(f"{{{NS['w']}}}Control") if c.get("Id") == "Next"]
+    assert nxt, "JtSettingsDlg has no Next control"
+    publishes = [(p.get("Value"), p.get("Condition") or "")
+                 for p in nxt[0].iter(f"{{{NS['w']}}}Publish")]
+    forward = [v for v, c in publishes if c.strip() == "MANAGEMENTNETWORKS"]
+    blocked = [v for v, c in publishes if c.strip().upper() == "NOT MANAGEMENTNETWORKS"]
+    assert forward, (
+        "Next must move on only when MANAGEMENTNETWORKS is set; "
+        f"conditions found: {publishes}")
+    assert blocked, (
+        "Next must do something visible when MANAGEMENTNETWORKS is empty, "
+        "rather than silently staying put")
+
+
+def test_settings_dialog_binds_an_editable_field_to_the_property():
+    """The page has to actually collect the value it is trusted to collect."""
+    dlg = _jt_settings_dialog()
+    edits = [c.get("Property") for c in dlg.iter(f"{{{NS['w']}}}Control")
+             if c.get("Type") == "Edit"]
+    assert "MANAGEMENTNETWORKS" in edits, \
+        "no Edit control is bound to MANAGEMENTNETWORKS"
+    assert "COMMUNITY" in edits, "no Edit control is bound to COMMUNITY"
+
+
+def test_settings_dialog_is_reachable_from_the_standard_flow():
+    """A page nobody routes to is the same as no page at all."""
+    targets = [p.get("Value") for p in TREE.iter(f"{{{NS['w']}}}Publish")
+               if p.get("Event") == "NewDialog"]
+    assert "JtSettingsDlg" in targets, \
+        "nothing publishes NewDialog=JtSettingsDlg, so the wizard never shows it"
+
+
+# ------------------------------------------------------- the backstop still holds
+def test_configure_script_fails_closed_on_empty_networks():
+    """Defence in depth: even if both gates above are wrong, this must stop.
+
+    Never migrate to Any/Any. An agent installed with no source ACL answers every
+    host on the network, which is the failure this project exists to avoid.
+    """
+    body = CONFIGURE.read_text(encoding="utf-8")
+    assert re.search(r"\$nets\.Count\s*-eq\s*0", body), \
+        "the configure script no longer checks for an empty network list"
+    idx = body.index("$nets.Count -eq 0")
+    tail = body[idx:idx + 400]
+    assert "exit 1" in tail, \
+        "an empty network list must abort the install, not continue"

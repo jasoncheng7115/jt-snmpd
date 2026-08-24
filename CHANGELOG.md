@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.3] - 2026-08-24
+
+### Fixed
+
+- **The graphical installation could not install anything.** Double-clicking the
+  MSI raised "the management networks must be specified" on the Welcome page,
+  with no way forward, while the page that asks for the management networks sat
+  two clicks further on. The cause is an ordering property of Windows Installer:
+  `LaunchConditions` runs at the very start of the InstallUISequence, before any
+  dialog is shown, so a launch condition that depends on a property the wizard is
+  meant to collect can never be satisfied in a wizard install. The condition now
+  exempts `UILevel > 4`, which is the full wizard and the only level where a page
+  exists to ask; every quieter level (`/qn`, `/qb`, `/qr`) still stops, and the
+  settings page enforces the same requirement itself by refusing to advance.
+
+  Nothing in the suite could have caught this: the WiX source was valid, the
+  build succeeded, `/qn` installs worked, and the lifecycle test drives `msiexec
+  /qn` throughout. Every gate was green while the path an operator uses first was
+  completely broken. `tests/test_msi_ui_gating.py` now pins the shape of the fix,
+  including that the dialog still refuses to advance without a value and that the
+  configure script still fails closed.
+- **`docs/naming-and-paths.md` named three files that do not exist**:
+  `config.yaml` (it is `config.json`), `engine-state.json` (`engine.json`) and
+  `ms-snmp-migration.json` (`ms-snmp-restore.json`). The layout is now what is
+  actually on disk, with the planned-but-absent entries marked as such.
+
+---
+
 ## [Unreleased]
 
 ### Added

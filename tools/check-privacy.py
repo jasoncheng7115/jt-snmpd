@@ -1,32 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""推上公開 repo 之前的個資 / 機密掃描。
+"""Personal-data and secret scan, to be run before pushing to the public repo.
 
-**為什麼需要這支程式**
+**Why this exists**
 
-本專案的開發環境是一個真實的內網，那正是它的價值，量測數字都來自實機。
-但同一件事也代表：量測結果、記錄檔、截圖、掃描報告裡到處都是主機名稱、
-IP、MAC、硬體序號、community 字串。推上 GitHub 之後這些**無法收回**：
-GitHub 會保留 fork、快取與 Git 歷史，事後刪除只是把它從畫面上拿掉。
+This project is developed against a real internal network, and that is where its
+value comes from: every measurement is taken on real hardware. The same fact
+means the measurements, logs, screenshots and scan reports are full of host
+names, addresses, MAC addresses, hardware serial numbers and community strings.
+Once any of that is on GitHub it **cannot be taken back**: GitHub retains forks,
+caches and Git history, and deleting something afterwards only removes it from
+the display.
 
-實際踩過的例子：為 README 拍的連接埠對照截圖裡，LibreNMS 把 SNMP 鄰居
-一起畫了出來，`host-101-ipmi`、`vas1`、`dc2`、`router-003.<內部網域>`、
-`ap-112`、`nas4`。那等於把整張內網拓撲圖公開。grep 抓不到，因為那是像素。
+This has already gone wrong once: the ports comparison screenshot taken for the
+README had LibreNMS's SNMP neighbours drawn into it -- `host-101-ipmi`, `vas1`,
+`dc2`, `router-003.<internal domain>`, `ap-112`, `nas4`. That is a map of the
+internal network, and grep cannot find it, because it is pixels.
 
-**這支程式檢查什麼**
+**What is checked**
 
-1. **文字檔**：以正規表示式找 IP、MAC、內部網域、序號、憑證、community。
-2. **二進位檔（圖片為主）**：無法用正規表示式檢查，改用「人工審閱 + 雜湊」，
-   每張圖必須列在 `docs/images/REVIEWED.md` 並附 SHA-256。圖片一改動雜湊就
-   對不上，掃描直接擋下，強迫重新審閱。
+1. **Text files**: regular expressions for addresses, MAC addresses, internal
+   domains, serial numbers, credentials and community strings.
+2. **Binaries (screenshots, mostly)**: a regular expression cannot inspect an
+   image, so these go through review-and-hash instead. Every image has to be
+   listed in `docs/images/REVIEWED.md` with its SHA-256. Change the image and the
+   hash no longer matches, the scan blocks the push, and the review has to happen
+   again.
 
-**掃描範圍**是「git 實際會推上去的檔案」（已追蹤 + 未被忽略的未追蹤檔），
-不是整個工作目錄，否則 `.venv` 會淹沒所有結果。
+**Scope** is the files git would actually push (tracked, plus untracked files
+that are not ignored), rather than the whole working directory -- otherwise
+`.venv` drowns out every real finding.
 
-用法::
+Usage::
 
-    python3 tools/check-privacy.py            # 掃描，有 HIGH 就 exit 1
-    python3 tools/check-privacy.py --update-images   # 重新產生圖片審閱清單
+    python3 tools/check-privacy.py            # scan; exits 1 on any HIGH
+    python3 tools/check-privacy.py --update-images   # regenerate the image review list
 """
 
 from __future__ import annotations
@@ -48,56 +56,63 @@ BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico",
 HIGH, MED, LOW = "HIGH", "MED", "LOW"
 
 
-# --- 規則 -------------------------------------------------------------------
-# 每條規則：(嚴重度, 名稱, 正規表示式, 說明)
+# --- Rules ------------------------------------------------------------------
+# Each rule is (severity, name, pattern, why).
 #
-# IPv4 特別麻煩：OID 長得跟 IP 一模一樣（`1.3.6.1.2.1` 的前四段是合法 IPv4）。
-# 因此比對後還要走 `_looks_like_real_ip()` 再判一次。
+# IPv4 is the awkward one: an OID looks exactly like an address (the first four
+# arcs of `1.3.6.1.2.1` are a valid IPv4 address). Matches therefore go through
+# `_looks_like_real_ip()` for a second opinion.
 RULES: list[tuple[str, str, re.Pattern, str]] = [
     (HIGH, "private-key", re.compile(
         r"-----BEGIN (?:RSA |EC |OPENSSH |PGP)?PRIVATE KEY-----"),
-     "私鑰不得進版控"),
+     "a private key must never be committed"),
     (HIGH, "password", re.compile(
         r"""(?ix)\b(?:password|passwd|pwd|secret)\s*[=:]\s*["']?[^\s"'{}$<>]{4,}"""),
-     "明文密碼"),
-    # 只抓「命令列 / 設定檔裡的實際值」，不抓程式碼中的變數指派。
-    # `community = v2c.apiMessage.get_community(msg)` 與 `COMMUNITY = "bench"`
-    # 都不是機密，前者是取值、後者是測試常數，第一版把兩者都報成 HIGH，
-    # 那種雜訊會讓人開始無視掃描結果，比不掃還糟。
+     "password in clear text"),
+    # Match values as they appear on a command line or in a configuration file,
+    # not variable assignments in source. Neither
+    # `community = v2c.apiMessage.get_community(msg)` nor `COMMUNITY = "bench"`
+    # is a secret -- one reads a value, the other is a test constant. The first
+    # version reported both as HIGH, and that kind of noise is how people start
+    # ignoring the scanner, which is worse than not scanning.
     (HIGH, "community", re.compile(
         r"""(?x)
-        \bCOMMUNITY=                     # 命令列 / MSI 屬性形式，無空白
-        # 佔位字不算洩漏。比對不分大小寫，第一版只擋大寫 YOUR，
-        # 於是文件裡的 `your-community` 被報成 HIGH。
+        \bCOMMUNITY=                     # command line / MSI property form, no spaces
+        # Placeholders are not leaks. The match is case-insensitive: the first
+        # version only excluded uppercase YOUR, so `your-community` in the
+        # documentation was reported as HIGH.
         (?![<$%{]|(?i:public|your|change|example|placeholder|xxx)\b)
         ["']? ([A-Za-z0-9_-]{2,})
         """),
-     "SNMP community 字串（等同密碼）"),
+     "SNMP community string (equivalent to a password)"),
     (HIGH, "mac-address", re.compile(
         r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b"),
-     "MAC 位址全球唯一，可識別特定硬體與廠商"),
+     "a MAC address is globally unique and identifies specific hardware and its vendor"),
     (HIGH, "api-token", re.compile(
         r"""(?ix)\b(?:api[_-]?key|access[_-]?token|bearer)\s*[=:]\s*["']?[A-Za-z0-9_\-]{16,}"""),
-     "API 憑證"),
+     "API credential"),
     (MED, "ipv4", re.compile(
         r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
-     "IP 位址（內網位址會洩漏網段規劃）"),
+     "IP address (an internal one discloses how the network is laid out)"),
     (MED, "ipv6", re.compile(
         r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"),
-     "IPv6 位址"),
-    # 主機名稱：專案擁有者已決定可以公開，因此列為 LOW（僅供知悉，不擋推送）。
-    # 保留規則而非刪除，是為了讓每次推送前仍看得到「這次帶出去了哪些名稱」，
-    # 決定可以公開，不等於不需要知道公開了什麼。
+     "IPv6 address"),
+    # Host names: the project owner has decided these may be published, so they
+    # are LOW -- reported for information, and they do not block a push. The rule
+    # is kept rather than deleted so that each push still shows which names went
+    # out. Deciding something may be published is not the same as not needing to
+    # know what was published.
     (LOW, "windows-hostname", re.compile(
         r"\b(?:DESKTOP|LAPTOP|WIN)-[A-Z0-9]{7}\b"),
-     "Windows 主機名稱（已決定可公開）"),
+     "Windows host name (approved for publication)"),
     (LOW, "internal-domain", re.compile(
         r"\b[A-Za-z0-9][A-Za-z0-9-]*\.(?:local|lan|internal|intranet|corp|home\.arpa)\b"),
-     "內部網域名稱（已決定可公開）"),
-    # 只抓「序號的值」，不抓程式碼中的欄位名稱。
-    # `SerialNumberOffset`、`serial_number` 這類識別字不是序號本身，
-    # 第一版把它們全報成 MED，雜訊會蓋掉真正的發現。
-    # 因此要求 serial 與值之間有明確的分隔（冒號、等號、空白 + 引號）。
+     "internal domain name (approved for publication)"),
+    # Match the serial number's value, not field names in source.
+    # `SerialNumberOffset` and `serial_number` are identifiers, not serials; the
+    # first version reported all of them as MED, and that noise buries the real
+    # findings. Hence the requirement for an explicit separator between the word
+    # and the value (a colon, an equals sign, or whitespace and a quote).
     (MED, "hardware-serial", re.compile(
         r"""(?x)
         \b(?:[Ss]erial(?:\s+[Nn](?:umber|o\.?))?|S/N)\b
@@ -105,28 +120,30 @@ RULES: list[tuple[str, str, re.Pattern, str]] = [
         ["']? (?![A-Za-z]*Offset\b|[A-Za-z]*Length\b)
         ([A-Z0-9]{6,24})\b
         """),
-     "硬體序號可追溯到保固與資產紀錄"),
+     "a hardware serial number can be traced back to warranty and asset records"),
     (MED, "email", re.compile(
         r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
-     "電子郵件位址"),
+     "email address"),
     (MED, "unc-path", re.compile(r"\\\\[A-Za-z0-9_.-]{2,}\\[A-Za-z0-9_$.-]+"),
-     "UNC 路徑會洩漏檔案伺服器名稱"),
+     "a UNC path discloses a file server's name"),
     (LOW, "user-profile-path", re.compile(
         r"(?i)[A-Z]:\\Users\\(?!Public\b|<|%)[A-Za-z0-9._-]+"),
-     "使用者設定檔路徑含帳號名稱"),
+     "a user profile path contains an account name"),
 ]
 
-# 這些是文件用的保留位址，出現在範例裡完全正常（RFC 5737 / RFC 3849 / RFC 7042）
+# Reserved ranges for documentation; entirely normal in an example
+# (RFC 5737 / RFC 3849 / RFC 7042)
 DOC_IPV4_PREFIXES = ("192.0.2.", "198.51.100.", "203.0.113.")
 DOC_IPV6_PREFIX = "2001:db8"
 DOC_MAC_PREFIX = "00:00:5e:00:53"
 
 
 def _looks_like_real_ip(text: str) -> bool:
-    """排除 OID、版本號等長得像 IP 的東西。
+    """Rule out OIDs, version numbers and anything else shaped like an address.
 
-    `1.3.6.1.2.1.25` 的前四段是合法 IPv4；`0.0.0.0` 與 `255.255.255.255`
-    是通配位址不算洩漏。判斷依據是「每段 0-255」加上「不是更長的點分數字串的一部分」。
+    The first four arcs of `1.3.6.1.2.1.25` are a valid IPv4 address, and
+    `0.0.0.0` and `255.255.255.255` are wildcards rather than leaks. The test is
+    "every octet in 0-255", plus "not part of a longer dotted-numeric string".
     """
     parts = text.split(".")
     if len(parts) != 4 or not all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
@@ -135,17 +152,18 @@ def _looks_like_real_ip(text: str) -> bool:
         return False
     if text.startswith(DOC_IPV4_PREFIXES):
         return False
-    # OID 常見前置碼
+    # Prefixes an OID commonly starts with
     if parts[0] in ("0", "1", "2") and parts[1] in ("0", "1", "2", "3", "4", "5", "6"):
         return False
     return True
 
 
 def load_allowlist() -> list[re.Pattern]:
-    """允許清單：每行一個正規表示式，`#` 開頭是註解。
+    """The allow-list: one regular expression per line, `#` starts a comment.
 
-    允許清單是**刻意做成需要理由的**，每一條都應該在旁邊寫清楚為什麼安全，
-    否則久了就會變成「把所有警告都關掉」的地方。
+    It is **deliberately built to require a reason**. Every entry should say
+    plainly beside it why the thing it matches is safe; without that, the file
+    turns over time into the place where all the warnings get switched off.
     """
     if not ALLOWLIST.exists():
         return []
@@ -156,12 +174,12 @@ def load_allowlist() -> list[re.Pattern]:
             try:
                 out.append(re.compile(line))
             except re.error as exc:
-                print(f"允許清單語法錯誤：{line}  ({exc})", file=sys.stderr)
+                print(f"invalid pattern in the allow-list: {line}  ({exc})", file=sys.stderr)
     return out
 
 
 def tracked_files() -> list[Path]:
-    """git 實際會推上去的檔案：已追蹤 + 未被忽略的未追蹤檔。"""
+    """The files git would actually push: tracked, plus untracked and not ignored."""
     files: set[str] = set()
     failures = []
     for cmd in (["git", "ls-files"],
@@ -174,20 +192,23 @@ def tracked_files() -> list[Path]:
             continue
         files.update(f for f in out.splitlines() if f.strip())
 
-    # **不能悄悄掃 0 個檔案。** 在還沒 git init 的目錄裡，兩個 git 指令都會
-    # 失敗，若把例外吞掉就會得到「未發現問題」，一個永遠說安全的掃描器，
-    # 比沒有掃描器更危險，因為它讓人以為檢查過了。實測踩過這個情況。
+    # **Scanning zero files must never pass quietly.** In a directory where git
+    # init has not been run, both commands fail; swallowing the exception yields
+    # "nothing found". A scanner that always reports safe is more dangerous than
+    # no scanner, because it convinces people the check happened. This has
+    # actually occurred.
     if not files:
-        detail = "\n  ".join(failures) if failures else "（git 回報 0 個檔案）"
+        detail = "\n  ".join(failures) if failures else "(git reported 0 files)"
         raise SystemExit(
-            f"無法取得檔案清單，掃描中止：\n  {detail}\n"
-            f"目錄：{ROOT}\n"
-            "若這是剛產生的公開 repo，請先 `git init -b main && git add -A` 再掃描。")
+            f"scan aborted: the file list could not be obtained:\n  {detail}\n"
+            f"directory: {ROOT}\n"
+            "If this is a freshly generated public repo, run "
+            "`git init -b main && git add -A` before scanning.")
     return sorted((ROOT / f) for f in files if (ROOT / f).is_file())
 
 
 def scan_text(path: Path, allow: list[re.Pattern]) -> list[tuple]:
-    """掃描一個文字檔。回傳 [(嚴重度, 規則, 行號, 內容片段, 說明)]。"""
+    """Scan one text file. Returns [(severity, rule, line, excerpt, why)]."""
     try:
         text = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
@@ -204,7 +225,8 @@ def scan_text(path: Path, allow: list[re.Pattern]) -> list[tuple]:
                 low = hit.lower()
                 if low.startswith(DOC_IPV6_PREFIX) or low in ("::1",) or ":" not in hit:
                     continue
-                # OID 或時間戳不會有兩個以上的冒號分段字母，這裡再保守一點
+                # An OID or a timestamp never has hex letters between the colons,
+                # so err on the conservative side here
                 if not re.search(r"[a-fA-F]", hit):
                     continue
             if name == "mac-address" and hit.lower().startswith(DOC_MAC_PREFIX):
@@ -226,7 +248,7 @@ def sha256(path: Path) -> str:
 
 
 def load_reviewed() -> dict[str, str]:
-    """讀取已人工審閱的圖片清單（路徑 → SHA-256）。"""
+    """Read the list of images a person has reviewed (path -> SHA-256)."""
     if not IMAGE_MANIFEST.exists():
         return {}
     out = {}
@@ -238,10 +260,11 @@ def load_reviewed() -> dict[str, str]:
 
 
 def check_binaries(files: list[Path]) -> list[tuple]:
-    """二進位檔（主要是截圖）走「人工審閱 + 雜湊」。
+    """Binaries -- screenshots, mostly -- go through review-and-hash.
 
-    正規表示式讀不到像素。唯一可靠的做法是要求每張圖被人看過並登記雜湊；
-    圖片一改動雜湊就對不上，掃描直接擋下。
+    A regular expression cannot inspect pixels. The only dependable approach is
+    to require that a person has looked at every image and recorded its hash;
+    change the image and the hash no longer matches, and the scan blocks.
     """
     reviewed = load_reviewed()
     problems = []
@@ -252,11 +275,13 @@ def check_binaries(files: list[Path]) -> list[tuple]:
         digest = sha256(f)
         if rel not in reviewed:
             problems.append((HIGH, "image-unreviewed", rel, digest,
-                             "未經人工審閱。圖片可能含 MAC、鄰居主機名稱、序號，"
-                             "正規表示式看不到像素"))
+                             "not reviewed by a person. An image can carry MAC "
+                             "addresses, neighbour host names and serial numbers, "
+                             "and a regular expression cannot see pixels"))
         elif reviewed[rel] != digest:
             problems.append((HIGH, "image-changed", rel, digest,
-                             f"內容已變動（登記為 {reviewed[rel][:12]}…），需重新審閱"))
+                             f"contents changed (recorded as {reviewed[rel][:12]}…); "
+                             "it has to be reviewed again"))
     return problems
 
 
@@ -266,36 +291,41 @@ def update_manifest(files: list[Path]) -> None:
         if f.suffix.lower() in BINARY_SUFFIXES:
             rows.append((str(f.relative_to(ROOT)), sha256(f)))
     body = [
-        "# 圖片人工審閱紀錄",
+        "# Image review record",
         "",
-        "正規表示式讀不到像素。README 的截圖曾經把 LibreNMS 畫出來的 SNMP 鄰居",
-        "一併帶了出去，MAC 位址、內部主機名稱、IPv6 位址，等於公開內網拓撲。",
+        "A regular expression cannot read pixels. A README screenshot once carried",
+        "the SNMP neighbours LibreNMS had drawn into it: MAC addresses, internal host",
+        "names and IPv6 addresses, which together map the internal network.",
         "",
-        "**每一張圖在加入或更新後都必須被人實際看過**，確認沒有：",
+        "**Every image has to be looked at by a person after it is added or changed**,",
+        "and confirmed to contain none of:",
         "",
-        "- MAC 位址",
-        "- 真實主機名稱與內部網域",
-        "- 內網 IP（自己網段的位址，而非文件用保留位址）",
-        "- 硬體序號、授權金鑰、community 字串",
-        "- 鄰居裝置名稱（LibreNMS 的連接埠頁會顯示 SNMP/LLDP 鄰居）",
-        "- 使用者姓名與帳號",
+        "- MAC addresses",
+        "- Real host names and internal domains",
+        "- Internal addresses (your own ranges, as opposed to the documentation ranges)",
+        "- Hardware serial numbers, licence keys, community strings",
+        "- Neighbour device names (LibreNMS's ports page shows SNMP and LLDP neighbours)",
+        "- User names and account names",
         "",
-        "確認後執行 `python3 tools/check-privacy.py --update-images` 更新下表。",
-        "雜湊對不上時掃描會擋下推送，強迫重新審閱。",
+        "Once confirmed, run `python3 tools/check-privacy.py --update-images` to refresh",
+        "the table below. When a hash no longer matches, the scan blocks the push and",
+        "the review has to happen again.",
         "",
-        "| 檔案 | SHA-256 |",
+        "| File | SHA-256 |",
         "|---|---|",
     ]
     body += [f"| `{p}` | `{h}` |" for p, h in rows]
     IMAGE_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
     IMAGE_MANIFEST.write_text("\n".join(body) + "\n", encoding="utf-8")
-    print(f"已更新 {IMAGE_MANIFEST.relative_to(ROOT)}（{len(rows)} 張圖）")
+    print(f"updated {IMAGE_MANIFEST.relative_to(ROOT)} ({len(rows)} images)")
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="推上公開 repo 前的個資 / 機密掃描")
+    ap = argparse.ArgumentParser(
+        description="Personal-data and secret scan, to run before pushing to the public repo")
     ap.add_argument("--update-images", action="store_true",
-                    help="重新產生圖片審閱清單（只在實際看過每張圖之後才用）")
+                    help="regenerate the image review list "
+                         "(only after actually looking at every image)")
     args = ap.parse_args()
 
     files = tracked_files()
@@ -313,7 +343,7 @@ def main() -> int:
             text_hits[str(f.relative_to(ROOT))] = hits
     bin_hits = check_binaries(files)
 
-    print(f"掃描範圍：{len(files)} 個檔案（git 實際會推上去的）\n")
+    print(f"scope: {len(files)} files (the ones git would actually push)\n")
 
     n_high = n_med = n_low = 0
     for rel, hits in sorted(text_hits.items()):
@@ -322,12 +352,12 @@ def main() -> int:
             n_high += sev == HIGH
             n_med += sev == MED
             n_low += sev == LOW
-            print(f"   [{sev:4}] {name:18} 第 {line_no} 行  {hit!r}")
+            print(f"   [{sev:4}] {name:18} line {line_no}  {hit!r}")
             print(f"          {context}")
         print()
 
     if bin_hits:
-        print("── 圖片 / 二進位檔")
+        print("── images / binaries")
         for sev, name, rel, digest, why in bin_hits:
             n_high += 1
             print(f"   [{sev:4}] {name:18} {rel}")
@@ -335,15 +365,17 @@ def main() -> int:
             print(f"          SHA-256 {digest}")
         print()
 
-    print(f"結果：HIGH={n_high}  MED={n_med}  LOW={n_low}")
+    print(f"result: HIGH={n_high}  MED={n_med}  LOW={n_low}")
     if n_high:
-        print("\n有 HIGH 等級的發現，**請勿推送**。")
-        print("修正後重跑；確認無誤的項目可加入 tools/privacy-allowlist.txt（要寫理由）。")
+        print("\nThere are HIGH findings. **Do not push.**")
+        print("Fix them and run again. Anything confirmed safe can go in "
+              "tools/privacy-allowlist.txt, with its reason written down.")
         return 1
     if n_med or n_low:
-        print("\n沒有 HIGH，但仍請逐項確認 MED / LOW 是否為文件用範例。")
+        print("\nNo HIGH findings, but read every MED and LOW and confirm each is "
+              "a documentation example.")
     else:
-        print("\n未發現問題。")
+        print("\nNothing found.")
     return 0
 
 

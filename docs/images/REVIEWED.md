@@ -1,21 +1,24 @@
-# 圖片人工審閱紀錄
+# Image review record
 
-正規表示式讀不到像素。README 的截圖曾經把 LibreNMS 畫出來的 SNMP 鄰居
-一併帶了出去，MAC 位址、內部主機名稱、IPv6 位址，等於公開內網拓撲。
+A regular expression cannot read pixels. A README screenshot once carried
+the SNMP neighbours LibreNMS had drawn into it: MAC addresses, internal host
+names and IPv6 addresses, which together map the internal network.
 
-**每一張圖在加入或更新後都必須被人實際看過**，確認沒有：
+**Every image has to be looked at by a person after it is added or changed**,
+and confirmed to contain none of:
 
-- MAC 位址
-- 真實主機名稱與內部網域
-- 內網 IP（自己網段的位址，而非文件用保留位址）
-- 硬體序號、授權金鑰、community 字串
-- 鄰居裝置名稱（LibreNMS 的連接埠頁會顯示 SNMP/LLDP 鄰居）
-- 使用者姓名與帳號
+- MAC addresses
+- Real host names and internal domains
+- Internal addresses (your own ranges, as opposed to the documentation ranges)
+- Hardware serial numbers, licence keys, community strings
+- Neighbour device names (LibreNMS's ports page shows SNMP and LLDP neighbours)
+- User names and account names
 
-確認後執行 `python3 tools/check-privacy.py --update-images` 更新下表。
-雜湊對不上時掃描會擋下推送，強迫重新審閱。
+Once confirmed, run `python3 tools/check-privacy.py --update-images` to refresh
+the table below. When a hash no longer matches, the scan blocks the push and
+the review has to happen again.
 
-| 檔案 | SHA-256 |
+| File | SHA-256 |
 |---|---|
 | `docs/brand/icon-128.png` | `95b9300a0ed8d7b9f56ddd623eb0905f02732ee7fd9c535d15b52504396b6199` |
 | `docs/brand/icon-16.png` | `856df776f154f92fe9d848e41c2685c73283f9b7ab196f348590a9aa7858cd1f` |
