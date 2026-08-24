@@ -77,8 +77,16 @@ jobs:
         shell: pwsh
         run: |
           $py = (Get-Command python).Source
-          .\packaging\build-exe.ps1 -Python $py -Source deploy\jt_agent.py
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $out = .\packaging\build-exe.ps1 -Python $py -Source deploy\jt_agent.py 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) {
+            foreach ($l in ($out -split "`n")) {
+              $t = $l.Trim()
+              if ($t -match 'FAIL|error|Error|ERROR|Traceback') { Write-Host "::error::$t" }
+            }
+            Write-Host "::error::build-exe.ps1 exited $LASTEXITCODE"
+            exit 1
+          }
 
       - name: 安裝 WiX 5
         shell: pwsh
@@ -88,8 +96,21 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
-          .\packaging\build-msi.ps1
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $out = .\packaging\build-msi.ps1 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) {
+            # WiX 的錯誤是 WIXnnnn 形式；建置腳本自己的失敗是 [FAIL]。
+            # 兩者都要送成註記——GitHub 的執行日誌需要認證才讀得到，
+            # 只有註記是公開的，而「exit code 1」不構成診斷。
+            foreach ($l in ($out -split "`n")) {
+              $t = $l.Trim()
+              if ($t -match 'WIX\d{3,4}|\[FAIL\]|\[!\]|error |Exception') {
+                Write-Host "::error::$t"
+              }
+            }
+            Write-Host "::error::build-msi.ps1 exited $LASTEXITCODE"
+            exit 1
+          }
 
       - name: 產生 SHA-256
         shell: pwsh

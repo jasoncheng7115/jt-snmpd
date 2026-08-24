@@ -189,6 +189,15 @@ if (-not $comm) {
         } else { Log "community access=$access（NONE/NOTIFY），不匯入" }
     }
 }
+if (-not $comm) {
+    # 走到這裡代表：沒有傳入 COMMUNITY，內建 SNMP 也沒有可移轉的唯讀 community。
+    # agent 沒有 community 會拒絕服務，接著健康檢查逾時、MSI 以 1603 回滾——
+    # 那個錯誤碼完全看不出原因。在這裡就講清楚。
+    Log "FAIL 無法決定 community：未指定 COMMUNITY，且內建 SNMP 沒有可移轉的唯讀 community。"
+    Log "     請以 msiexec /i jt-snmpd.msi /qn COMMUNITY=<你的 community> ... 重新安裝，"
+    Log "     或以圖形介面安裝並在設定畫面填入。"
+    exit 1
+}
 if ($comm -in @('public','private')) {
     Log "[!] community 為公認預設值，強烈建議改用 SNMPv3"
 }
