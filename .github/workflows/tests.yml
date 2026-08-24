@@ -27,7 +27,7 @@ jobs:
           pip install pysnmp pytest
 
       - name: 執行測試
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ -q --tb=short
 
       - name: 個資／機密掃描
         # 推上公開 repo 的每一次都要掃。圖片走「人工審閱 + 雜湊」，
