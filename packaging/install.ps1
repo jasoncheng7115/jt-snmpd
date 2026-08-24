@@ -1,25 +1,25 @@
 ﻿#Requires -Version 5.1
 <#
-    jt-snmpd 安裝程式
+    jt-snmpd installer
 
-    注意：本檔以 UTF-8 with BOM 儲存。Windows PowerShell 5.1 在沒有 BOM 時
-    會以系統 ANSI 代碼頁（正體中文為 cp950）讀取 .ps1，中文會打斷語法。
+    Note: saved as UTF-8 with BOM. Without one, Windows PowerShell 5.1 reads a
+    .ps1 using the system ANSI code page, which breaks parsing.
 
-    這是 MSI 之前的過渡安裝程式。行為刻意對齊未來 MSI 的流程，
-    讓現在驗證過的邏輯可以直接搬進 WiX 自訂動作：
+    This is the interim installer that predates the MSI. Its behaviour deliberately
+    mirrors the MSI flow, so logic verified here moves straight into the WiX
+    custom action:
+      1. Pre-checks (spec §5.6)
+      2. Detect the built-in Windows SNMP service and copy its settings (spec §5.9)
+      3. Stop and remove any previous version (the upgrade path, spec §5.7)
+      4. Copy files to %ProgramFiles%
+      5. Create %ProgramData% and fix its ACL (spec §3.7)
+      6. Disable the built-in SNMP service (spec §5.9.5; reversible)
+      7. Register the service, configure failure recovery and reduce privileges (spec §6.2)
+      8. Create firewall rules (spec §3.3: mandatory, never Any/Any)
+      9. Start it and run a loopback health check (spec §5.7 step 7, §6.5)
+     10. Print the migration report and the paths (spec §5.9.7, §5.10)
 
-      1. 前置檢查（spec §5.6）
-      2. 偵測 Windows 內建 SNMP，抄走設定（spec §5.9）
-      3. 停止並移除舊版（升級路徑，spec §5.7）
-      4. 複製檔案到 %ProgramFiles%
-      5. 建立 %ProgramData% 並修正 ACL（spec §3.7）
-      6. 停用內建 SNMP 服務（spec §5.9.5，可還原）
-      7. 註冊服務、設定失效復原與特權縮減（spec §6.2）
-      8. 建立防火牆規則（spec §3.3，強制、不得 Any/Any）
-      9. 啟動並做 loopback 健康檢查（spec §5.7 第 7 步、§6.5）
-     10. 輸出移轉報告與路徑資訊（spec §5.9.7、§5.10）
-
-    用法：
+    Usage:
       .\install.ps1 -ManagementNetworks 192.168.1.0/24
       .\install.ps1 -ManagementNetworks 10.0.0.0/8 -Community mon2 -Force
       .\install.ps1 -Uninstall [-Purge]
@@ -35,7 +35,7 @@ param(
     [switch]$KeepMsSnmp
 )
 
-# native 工具寫 stderr 不應中斷安裝（jt-doc-tools 踩過的坑）
+# Native tools write to stderr; that must not abort the install (a trap
 $ErrorActionPreference = 'Continue'
 
 $SERVICE_NAME  = 'jt-snmpd'
@@ -49,7 +49,7 @@ $EXE_NAME      = 'jt-snmpd.exe'
 $FW_RULE       = 'JT SNMP Agent (UDP 161)'
 $MSSNMP_PARAMS = 'HKLM:\SYSTEM\CurrentControlSet\Services\SNMP\Parameters'
 
-# --- 輸出（沿用 jt-doc-tools 的四段式）---------------------------------------
+# --- Output (the four-level style from jt-doc-tools) -------------------------
 function Log  { param($m) Write-Host "[*] $m" }
 function Ok   { param($m) Write-Host "[OK] $m"   -ForegroundColor Green }
 function Warn { param($m) Write-Host "[!] $m"    -ForegroundColor Yellow }
@@ -58,29 +58,29 @@ function Die  { param($m) Write-Host "[FAIL] $m" -ForegroundColor Red; exit 1 }
 $script:Report = @()
 function Report { param($m) $script:Report += $m }
 
-# --- 前置檢查（spec §5.6）----------------------------------------------------
+# --- Pre-checks (spec §5.6) --------------------------------------------------
 function Test-Prerequisites {
-    Log '前置檢查...'
+    Log 'running pre-checks ...'
 
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     if (-not (New-Object Security.Principal.WindowsPrincipal $id).IsInRole(
               [Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Die '需要系統管理員權限。請以系統管理員身分執行。'
+        Die 'Administrator rights are required. Run this as an administrator.'
     }
 
     $os = Get-CimInstance Win32_OperatingSystem
     $build = [int]$os.BuildNumber
     if ($build -lt 14393) {
-        Die "不支援的 OS 版本（build $build）。需要 Windows 10 / Server 2016 以上。"
+        Die "unsupported OS build ($build). Windows 10 / Server 2016 or newer is required."
     }
-    if (-not [Environment]::Is64BitOperatingSystem) { Die '僅支援 x64。' }
+    if (-not [Environment]::Is64BitOperatingSystem) { Die 'x64 only.' }
     Ok "OS: $($os.Caption) build $build"
 
-    # 磁碟空間
+    # Disk space
     $free = (Get-PSDrive -Name ($env:SystemDrive[0]) -ErrorAction SilentlyContinue).Free
-    if ($free -and $free -lt 200MB) { Die "系統磁碟剩餘空間不足（$([math]::Round($free/1MB)) MB）。" }
+    if ($free -and $free -lt 200MB) { Die "not enough free space on the system drive ($([math]::Round($free/1MB)) MB)." }
 
-    # UDP/161 佔用者（spec §5.6 / §5.9.6）
+    # Whatever holds UDP/161 (spec §5.6, §5.9.6)
     $ep = Get-NetUDPEndpoint -LocalPort 161 -ErrorAction SilentlyContinue
     if ($ep) {
         foreach ($e in $ep) {
@@ -89,24 +89,24 @@ function Test-Prerequisites {
             $isMsSnmp = $p.Path -and $p.Path -like "$env:SystemRoot\System32\snmp.exe"
             $isOurs   = $p.Path -and $p.Path -like "$INSTALL_DIR\*"
             if ($isMsSnmp) {
-                Log "UDP/161 由 Windows 內建 SNMP Service 佔用（PID $($p.Id)）——將依 §5.9 處理"
+                Log "UDP/161 is held by the built-in Windows SNMP Service (PID $($p.Id)); handling it per §5.9"
             } elseif ($isOurs) {
-                Log "UDP/161 由既有的 $SERVICE_NAME 佔用——走升級流程"
+                Log "UDP/161 is held by an existing $SERVICE_NAME; taking the upgrade path"
             } else {
-                # spec §5.9.6：絕不自動停用任何非 Microsoft 的服務
+                # spec §5.9.6: never automatically disable a non-Microsoft service
                 Die @"
-UDP/161 被非 Microsoft 程式佔用，安裝中止（不會動它）：
+UDP/161 is held by a non-Microsoft program. Installation stopped; nothing was changed.
     PID      : $($p.Id)
-    程序     : $($p.ProcessName)
-    完整路徑 : $($p.Path)
-請先手動停用該程式後重跑安裝。
+    process   : $($p.ProcessName)
+    full path : $($p.Path)
+Disable that program manually and run the installer again.
 "@
             }
         }
     }
 }
 
-# --- 抄走內建 SNMP 設定（spec §5.9）------------------------------------------
+# --- Copy the built-in SNMP settings (spec §5.9) -----------------------------
 function Get-MsSnmpConfig {
     $cfg = [ordered]@{
         service_exists = $false; status = $null; start_type = $null
@@ -159,7 +159,7 @@ function Get-MsSnmpConfig {
 function Resolve-Migration {
     param($MsCfg)
 
-    # community：優先 -Community 參數，其次移轉唯讀 community（spec §5.9.4）
+    # community: the -Community argument wins, otherwise migrate a read-only one (spec §5.9.4)
     $community = $Community
     if (-not $community) {
         foreach ($name in $MsCfg.communities.Keys) {
@@ -167,26 +167,26 @@ function Resolve-Migration {
             switch ($access) {
                 4  { if (-not $community) { $community = $name } }
                 8  { if (-not $community) { $community = $name }
-                     Warn "community '$name' 原為 READ WRITE，已降級為唯讀（本 agent 不支援 SET）"
-                     Report "[!] community '$name' 原為可寫，已降級為唯讀" }
+                     Warn "community $name was READ WRITE; downgraded to read-only (this agent does not support SET)"
+                     Report "[!] community $name was writable; downgraded to read-only" }
                 16 { if (-not $community) { $community = $name }
-                     Warn "community '$name' 原為 READ CREATE，已降級為唯讀"
-                     Report "[!] community '$name' 原為可寫，已降級為唯讀" }
-                default { Log "community '$name' 存取權限 $access（NONE/NOTIFY），不匯入" }
+                     Warn "community $name was READ CREATE; downgraded to read-only" }
+                     Report "[!] community $name was writable; downgraded to read-only" }
+                default { Log "community $name has access $access (NONE/NOTIFY); not imported" }
             }
         }
     }
     if ($community) {
-        Report "[OK] 已匯入 community"
+        Report "[OK] community imported"
         if ($community -in @('public','private')) {
-            Warn "community '$community' 是公認的預設值，強烈建議改用 SNMPv3"
-            Report "[!] community '$community' 為公認預設值，建議改用 SNMPv3"
+            Warn "community $community is a well-known default; SNMPv3 is strongly recommended"
+            Report "[!] community $community is a well-known default; consider SNMPv3"
         }
-        Report "[!] 本次安裝已啟用 SNMPv2c（本 agent 預設為停用）"
+        Report "[!] this installation enabled SNMPv2c (disabled by default in this agent)"
     }
 
-    # 管理網段：優先參數，其次 PermittedManagers（需解析主機名稱，spec §5.9.3）
-    $nets = @()
+    # Management networks: the argument wins, otherwise PermittedManagers, which
+    # need name resolution (spec §5.9.3)
     if ($ManagementNetworks) {
         $nets = $ManagementNetworks
     } elseif ($MsCfg.permitted_managers.Count -gt 0) {
@@ -203,21 +203,21 @@ function Resolve-Migration {
             }
             if ($ip) {
                 $nets += $ip
-                Log "PermittedManagers '$m' 解析為 $ip"
+                Log "PermittedManagers $m resolved to $ip"
             } else {
-                Warn "PermittedManagers '$m' 無法解析為 IP，已略過"
-                Report "[!] PermittedManagers '$m' 無法解析，未納入 ACL"
+                Warn "PermittedManagers $m could not be resolved to an address; skipped"
+                Report "[!] PermittedManagers $m could not be resolved; not added to the ACL"
             }
         }
-        if ($nets.Count -gt 0) { Report "[OK] 已匯入 $($nets.Count) 個 PermittedManagers 作為來源 ACL" }
+        if ($nets.Count -gt 0) { Report "[OK] imported $($nets.Count) PermittedManagers entries as the source ACL" }
     }
 
-    # spec §5.9.4 ①：PermittedManagers 為空 = 接受任何來源，絕不移轉為 Any/Any
+    # spec §5.9.4 (1): an empty PermittedManagers means "accept anything"; never migrate that as Any/Any
     if ($nets.Count -eq 0) {
         Die @"
-未提供管理網段，且無法從既有設定取得。
-本 agent 預設 deny，不允許 Any/Any（spec §3.3）。
-請以 -ManagementNetworks 指定，例如：
+No management networks were supplied and none could be taken from the existing configuration.
+This agent denies by default and does not allow Any/Any (spec §3.3).
+Specify them with -ManagementNetworks, for example:
     .\install.ps1 -ManagementNetworks 192.168.1.0/24
 "@
     }
@@ -225,16 +225,16 @@ function Resolve-Migration {
     return @{ community = $community; networks = $nets }
 }
 
-# --- 安裝 --------------------------------------------------------------------
+# --- Install -----------------------------------------------------------------
 function Stop-ExistingService {
     $svc = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
     if (-not $svc) { return $false }
-    Log '偵測到既有安裝，執行升級流程...'
+    Log 'existing installation detected; taking the upgrade path ...'
     if ($svc.Status -ne 'Stopped') {
         Stop-Service -Name $SERVICE_NAME -Force -ErrorAction SilentlyContinue
     }
-    # 停服務回來不代表檔案控制代碼已釋放（jt-doc-tools v1.1.66~69 的實際 bug）
-    $deadline = (Get-Date).AddSeconds(30)
+    # Stopping the service does not mean its file handles are released (the actual
+    # bug in jt-doc-tools v1.1.66-69)
     while ((Get-Date) -lt $deadline) {
         if (-not (Get-Process -Name $SERVICE_NAME -ErrorAction SilentlyContinue)) { break }
         Start-Sleep -Milliseconds 500
@@ -250,10 +250,10 @@ function Stop-ExistingService {
 
 function Install-Files {
     param($Src)
-    Log "複製檔案到 $INSTALL_DIR ..."
+    Log "copying files to $INSTALL_DIR ..."
     if (Test-Path $INSTALL_DIR) {
-        # Windows 對已載入為映像的 .pyd/.dll 回傳「拒絕存取」，刪不掉但改得了名
-        try {
+        # For a .pyd or .dll already loaded as an image Windows returns "access
+        # denied": it cannot be deleted, but it can be renamed
             Remove-Item $INSTALL_DIR -Recurse -Force -ErrorAction Stop
         } catch {
             $stamp = Get-Date -Format 'yyyyMMddHHmmss'
@@ -263,21 +263,21 @@ function Install-Files {
     New-Item -ItemType Directory -Force $INSTALL_DIR | Out-Null
     Copy-Item "$Src\*" $INSTALL_DIR -Recurse -Force
     if (-not (Test-Path (Join-Path $INSTALL_DIR $EXE_NAME))) {
-        Die "複製後找不到 $EXE_NAME"
+        Die "$EXE_NAME not found after copying"
     }
-    Ok "程式已安裝至 $INSTALL_DIR"
+    Ok "program installed to $INSTALL_DIR"
 }
 
 function Initialize-DataDir {
-    Log "建立資料目錄 $DATA_DIR ..."
+    Log "creating the data directory $DATA_DIR ..."
     foreach ($d in @($DATA_DIR, $STATE_DIR, $LOG_DIR, $SECRETS_DIR)) {
         if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force $d | Out-Null }
     }
-    # spec §3.7：C:\ProgramData 預設 ACL 允許 Users 建立子資料夾，
-    # 攻擊者可搶先建立目錄並保留寫入權。不能只 create-if-not-exists，
-    # 必須重設 ACL 為 SYSTEM/Administrators only。
-    $acl = New-Object System.Security.AccessControl.DirectorySecurity
-    $acl.SetAccessRuleProtection($true, $false)      # 停用繼承並移除既有規則
+    # spec §3.7: the default ACL on C:\ProgramData lets Users create
+    # subdirectories, so an attacker can create ours first and keep write access.
+    # Creating it only when absent is not enough; the ACL has to be reset to
+    # SYSTEM and Administrators only.
+    $acl.SetAccessRuleProtection($true, $false)      # disable inheritance and drop existing rules
     foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) { # LocalSystem, Administrators
         $account = (New-Object System.Security.Principal.SecurityIdentifier $sid)
         $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
@@ -285,62 +285,62 @@ function Initialize-DataDir {
     }
     $acl.SetOwner((New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'))
     Set-Acl -Path $DATA_DIR -AclObject $acl
-    Ok "資料目錄 ACL 已設為 SYSTEM/Administrators only"
+    Ok "data directory ACL set to SYSTEM and Administrators only"
 }
 
 function Disable-MsSnmp {
     param($MsCfg)
     if (-not $MsCfg.service_exists) { return $false }
     if ($KeepMsSnmp) {
-        Warn '依 -KeepMsSnmp，保留 Windows 內建 SNMP Service（161 會衝突）'
+    Warn '-KeepMsSnmp was given, so the built-in Windows SNMP Service stays (161 will conflict)'
         return $false
     }
-    Log '停用 Windows 內建 SNMP Service（不移除功能，可還原）...'
+    Log 'disabling the built-in Windows SNMP Service (disabled, not removed; reversible) ...'
     Stop-Service -Name SNMP -Force -ErrorAction SilentlyContinue
     Set-Service  -Name SNMP -StartupType Disabled -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
-    Ok "內建 SNMP Service 已停用（原為 $($MsCfg.start_type) / $($MsCfg.status)）"
-    Report "[OK] 已停用 Windows SNMP Service（原為 $($MsCfg.start_type) / $($MsCfg.status)）"
+    Ok "built-in SNMP Service disabled (was $($MsCfg.start_type) / $($MsCfg.status))"
+    Report "[OK] built-in Windows SNMP Service disabled (was $($MsCfg.start_type) / $($MsCfg.status))"
     return $true
 }
 
 function Register-Service {
     $exe = Join-Path $INSTALL_DIR $EXE_NAME
-    Log '註冊服務...'
-    # binPath 必須加引號 —— 預設安裝路徑本身含空白（unquoted service path）
-    & $exe --startup auto install | Out-Null
+    Log 'registering the service ...'
+    # binPath must be quoted: the default installation path contains a space
+    # (the unquoted service path finding)
     if (-not (Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue)) {
-        Die '服務註冊失敗'
+        Die 'service registration failed'
     }
-    & sc.exe description $SERVICE_NAME '以標準 MIB 提供 Windows 主機監控資料的 SNMP Agent' | Out-Null
-    # 失效自動復原三段式；failureflag 1 讓非零結束碼也觸發（spec §6.2）
+    & sc.exe description $SERVICE_NAME 'SNMP agent serving Windows host monitoring data over standard MIBs' | Out-Null
+    # Three-stage automatic recovery; failureflag 1 makes a non-zero exit code trigger it too (spec §6.2)
     & sc.exe failure $SERVICE_NAME reset= 86400 actions= restart/60000/restart/60000/restart/300000 | Out-Null
     & sc.exe failureflag $SERVICE_NAME 1 | Out-Null
-    # 特權縮減（spec §3.6）
+    # Privilege reduction (spec §3.6)
     & sc.exe privs $SERVICE_NAME SeChangeNotifyPrivilege/SeSystemProfilePrivilege/SeIncreaseQuotaPrivilege | Out-Null
     $svc = Get-CimInstance Win32_Service -Filter "Name='$SERVICE_NAME'"
-    Ok "服務已註冊：$($svc.StartName) / $($svc.StartMode)"
-    if ($svc.PathName -notmatch '^"') { Warn "服務 ImagePath 未加引號：$($svc.PathName)" }
+    Ok "service registered: $($svc.StartName) / $($svc.StartMode)"
+    if ($svc.PathName -notmatch '^"') { Warn "service ImagePath is not quoted: $($svc.PathName)" }
 }
 
 function Set-FirewallRule {
     param($Networks)
-    Log '建立防火牆規則...'
-    # 停用內建 SNMP 會連帶停用它的防火牆規則，故必須自建（實測）
+    Log 'creating firewall rules ...'
+    # Disabling the built-in service also disables its firewall rule, so ours has to be created (measured)
     Remove-NetFirewallRule -DisplayName "$FW_RULE*" -ErrorAction SilentlyContinue
     New-NetFirewallRule -DisplayName $FW_RULE -Direction Inbound -Protocol UDP `
         -LocalPort 161 -RemoteAddress $Networks -Action Allow -Profile Any `
         -Description 'jt-snmpd inbound SNMP' | Out-Null
-    Ok "防火牆規則已建立（來源限 $($Networks -join ', ')）"
+    Ok "firewall rules created (sources limited to $($Networks -join ', '))"
 }
 
 function Start-AndVerify {
     param($CommunityName)
-    Log '啟動服務...'
+    Log 'starting the service ...'
     Start-Service -Name $SERVICE_NAME
-    # spec §5.7 第 7 步：MSI 預設只確認「服務啟動成功」，
-    # 但服務啟動成功不等於能回應 SNMP（§6.5 的「假活著」）。
-    $deadline = (Get-Date).AddSeconds(30)
+    # spec §5.7 step 7: by default an MSI only confirms the service started, and
+    # a service that started is not one that answers SNMP (the "alive but dead"
+    # case in §6.5).
     $okResp = $false
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Seconds 2
@@ -348,17 +348,17 @@ function Start-AndVerify {
         if (Test-SnmpLoopback -CommunityName $CommunityName) { $okResp = $true; break }
     }
     if (-not $okResp) {
-        Warn '服務已啟動，但 30 秒內未能回應 loopback SNMP 查詢'
-        Warn "請檢查 $LOG_DIR\jt-snmpd.log"
+        Warn 'the service started but did not answer a loopback SNMP query within 30 seconds'
+        Warn "check $LOG_DIR\jt-snmpd.log"
         return $false
     }
-    Ok '服務已啟動並通過 loopback 自我測試'
+    Ok 'service started and passed the loopback self-test'
     return $true
 }
 
 function Test-SnmpLoopback {
     param($CommunityName)
-    # 手工組一個 v2c GET sysUpTime.0，不依賴任何外部 SNMP 工具
+    # A v2c GET of sysUpTime.0 assembled by hand, so no external SNMP tool is needed
     $comm = [Text.Encoding]::ASCII.GetBytes($CommunityName)
     $oid  = [byte[]](0x2B,0x06,0x01,0x02,0x01,0x01,0x03,0x00)   # 1.3.6.1.2.1.1.3.0
     $vb   = [byte[]](0x30, (2+$oid.Length+2)) + [byte[]](0x06, $oid.Length) + $oid + [byte[]](0x05,0x00)
@@ -391,7 +391,7 @@ function Write-Config {
     }
     $cfg | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $DATA_DIR 'config.json') -Encoding UTF8
 
-    # 還原資訊（spec §5.9.5）—— community 明文不寫入此檔
+    # Restore information (spec §5.9.5). The community is never written here in clear text
     $restore = [ordered]@{
         schema_version = 1
         migrated_at    = (Get-Date).ToString('s')
@@ -422,37 +422,37 @@ function Write-MigrationReport {
     param($MsCfg, $Resolved)
     $lines = @()
     $lines += '========================================================'
-    $lines += '  Windows SNMP Service 設定移轉報告'
+    $lines += '  Windows SNMP Service migration report'
     $lines += '========================================================'
     $lines += ''
     if ($MsCfg.service_exists -or (Test-Path $MSSNMP_PARAMS)) {
-        $lines += '來源設定位置：'
+        $lines += 'Source configuration:'
         $lines += '  HKLM\SYSTEM\CurrentControlSet\Services\SNMP\Parameters'
         $lines += ''
         $lines += $script:Report
         if ($MsCfg.sys_contact -or $MsCfg.sys_location) {
-            $lines += "[OK]   已沿用 sysContact / sysLocation"
+            $lines += "[OK]   sysContact and sysLocation carried over"
         }
         if ($MsCfg.sys_services -and $MsCfg.sys_services -ne 76) {
-            $lines += "[!]    原 sysServices 為 $($MsCfg.sys_services)，本 agent 固定為 76"
+            $lines += "[!]    sysServices was $($MsCfg.sys_services); this agent always reports 76"
         }
         foreach ($t in $MsCfg.trap_destinations) {
-            $lines += "[!]    trap 目的地未移轉，trap 將停止發送：$t"
+            $lines += "[!]    trap destination not migrated, traps will stop being sent: $t"
         }
         foreach ($e in $MsCfg.extension_agents) {
-            $lines += "[!]    ExtensionAgent '$e' 未移轉，其提供的 OID 將不再可用"
+            $lines += "[!]    ExtensionAgent $e not migrated; the OIDs it provided are no longer available"
         }
         $snmptrap = Get-Service -Name SNMPTRAP -ErrorAction SilentlyContinue
-        if ($snmptrap) { $lines += "[OK]   SNMPTRAP 服務未變更（目前 $($snmptrap.Status)）" }
+        if ($snmptrap) { $lines += "[OK]   the SNMPTRAP service was not changed (currently $($snmptrap.Status))" }
     } else {
-        $lines += '未偵測到 Windows 內建 SNMP Service，無須移轉。'
+        $lines += 'No built-in Windows SNMP Service was detected; nothing to migrate.'
     }
     $lines += ''
-    $lines += '本次設定：'
+    $lines += 'This installation:'
     $lines += "  community        $($Resolved.community)"
-    $lines += "  管理網段         $($Resolved.networks -join ', ')"
+    $lines += "  management networks  $($Resolved.networks -join ', ')"
     $lines += ''
-    $lines += '如需還原 Windows SNMP Service：'
+    $lines += 'To restore the Windows SNMP Service:'
     $lines += "  powershell -File install.ps1 -Uninstall"
     $lines += '========================================================'
 
@@ -469,32 +469,32 @@ function Write-Summary {
             Select-Object -ExpandProperty IPAddress) -join ', '
     Write-Host ''
     Write-Host '========================================================'
-    Write-Host '  JT SNMP Agent 安裝完成'
+    Write-Host '  JT SNMP Agent installed'
     Write-Host '========================================================'
     Write-Host ''
-    Write-Host "  服務名稱    $SERVICE_NAME（自動啟動，執行中）"
-    Write-Host "  監聽位址    ${ips}:161"
-    Write-Host "  通訊協定    SNMPv2c（community: $($Resolved.community)）"
-    Write-Host "  來源 ACL    $($Resolved.networks -join ', ')"
+    Write-Host "  service       $SERVICE_NAME (automatic start, running)"
+    Write-Host "  listening on  ${ips}:161"
+    Write-Host "  protocol      SNMPv2c (community: $($Resolved.community))"
+    Write-Host "  source ACL    $($Resolved.networks -join ', ')"
     Write-Host ''
-    Write-Host "  設定檔      $DATA_DIR\config.json"
-    Write-Host "  記錄檔      $LOG_DIR\"
-    Write-Host "  狀態檔      $STATE_DIR\"
-    Write-Host "  程式目錄    $INSTALL_DIR\"
+    Write-Host "  config file   $DATA_DIR\config.json"
+    Write-Host "  log files     $LOG_DIR\"
+    Write-Host "  state files   $STATE_DIR\"
+    Write-Host "  program dir   $INSTALL_DIR\"
     Write-Host ''
-    Write-Host '  下一步：在 LibreNMS 加入此裝置後，務必執行一次 discovery，'
-    Write-Host '          否則只會 poll 而抓不到完整的 OID 集合。'
+    Write-Host '  Next: after adding this device to LibreNMS, run a discovery once.'
+    Write-Host '        Without it LibreNMS only polls and never sees the full OID set.'
     Write-Host '========================================================'
 }
 
-# --- 解除安裝 ----------------------------------------------------------------
+# --- Uninstall ---------------------------------------------------------------
 function Invoke-Uninstall {
-    Log '解除安裝 jt-snmpd ...'
+    Log 'uninstalling jt-snmpd ...'
     Stop-ExistingService | Out-Null
     Remove-NetFirewallRule -DisplayName "$FW_RULE*" -ErrorAction SilentlyContinue
-    Ok '防火牆規則已移除'
+    Ok 'firewall rules removed'
 
-    # 還原內建 SNMP（spec §5.9.5）
+    # Restore the built-in SNMP service (spec §5.9.5)
     $restorePath = Join-Path $STATE_DIR 'ms-snmp-restore.json'
     if (Test-Path $restorePath) {
         try {
@@ -506,49 +506,49 @@ function Invoke-Uninstall {
                     if ($r.ms_snmp.original_status -eq 'Running') {
                         Start-Service -Name SNMP -ErrorAction SilentlyContinue
                     }
-                    Ok "Windows 內建 SNMP Service 已還原為 $orig"
+                    Ok "built-in Windows SNMP Service restored to $orig"
                 }
             }
-        } catch { Warn "還原內建 SNMP 失敗：$_" }
+        } catch { Warn "failed to restore the built-in SNMP service: $_" }
     }
 
     if (Test-Path $INSTALL_DIR) {
         try { Remove-Item $INSTALL_DIR -Recurse -Force -ErrorAction Stop }
         catch { Rename-Item $INSTALL_DIR "$INSTALL_DIR.old" -ErrorAction SilentlyContinue }
-        Ok '程式目錄已移除'
+        Ok 'program directory removed'
     }
 
     if ($Purge) {
         if (Test-Path $DATA_DIR) { Remove-Item $DATA_DIR -Recurse -Force -ErrorAction SilentlyContinue }
-        Ok '資料目錄已完整清除（PURGE）'
+        Ok 'data directory completely removed (PURGE)'
     } else {
-        # spec §5.7：預設保留 ProgramData 是刻意的。客戶常以「移除再重裝」
-        # 排除問題，若索引被清除，LibreNMS 會整組重新 discovery，舊 RRD 全變孤兒。
-        Ok "資料目錄已保留：$DATA_DIR（如需清除請加 -Purge）"
-    }
+        # spec §5.7: keeping ProgramData by default is deliberate. Customers
+        # commonly uninstall and reinstall to troubleshoot, and clearing the index
+        # map makes LibreNMS rediscover everything, orphaning the existing RRDs.
+        Ok "data directory kept: $DATA_DIR (add -Purge to remove it)"
     Write-Host ''
-    Ok '解除安裝完成，不需重新開機'
+    Ok 'uninstall complete; no reboot required'
 }
 
-# --- 主流程 ------------------------------------------------------------------
+# --- Main --------------------------------------------------------------------
 if ($Uninstall) { Invoke-Uninstall; exit 0 }
 
 if (-not $SourceDir) {
     $SourceDir = Join-Path (Split-Path -Parent $PSCommandPath) 'jt-snmpd'
 }
 if (-not (Test-Path (Join-Path $SourceDir $EXE_NAME))) {
-    Die "來源目錄找不到 $EXE_NAME：$SourceDir"
+    Die "$EXE_NAME not found in the source directory: $SourceDir"
 }
 
 Write-Host ''
-Write-Host "JT SNMP Agent 安裝程式" -ForegroundColor Cyan
+Write-Host "JT SNMP Agent installer" -ForegroundColor Cyan
 Write-Host ''
 
 Test-Prerequisites
 $msCfg = Get-MsSnmpConfig
 if ($msCfg.service_exists) {
-    Log "偵測到 Windows 內建 SNMP Service（$($msCfg.status) / $($msCfg.start_type)）"
-    Log "  community: $($msCfg.communities.Count) 組，PermittedManagers: $($msCfg.permitted_managers.Count) 筆"
+    Log "built-in Windows SNMP Service detected ($($msCfg.status) / $($msCfg.start_type))"
+    Log "  community: $($msCfg.communities.Count) entries, PermittedManagers: $($msCfg.permitted_managers.Count)"
 }
 $resolved = Resolve-Migration -MsCfg $msCfg
 $upgrade  = Stop-ExistingService
@@ -559,7 +559,7 @@ Disable-MsSnmp -MsCfg $msCfg | Out-Null
 Register-Service
 Set-FirewallRule -Networks $resolved.networks
 $healthy = Start-AndVerify -CommunityName $resolved.community
-if (-not $healthy) { Die '安裝完成但健康檢查未通過，請檢查記錄檔' }
+if (-not $healthy) { Die 'installation finished but the health check did not pass; check the log files' }
 
 Write-MigrationReport -MsCfg $msCfg -Resolved $resolved | Out-Null
 Write-Summary -Resolved $resolved

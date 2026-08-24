@@ -1,15 +1,16 @@
-﻿# jt-snmpd — PyInstaller 建置腳本
+﻿# jt-snmpd — PyInstaller build script
 #
-# 注意：本檔以 **UTF-8 with BOM** 儲存。
-# Windows PowerShell 5.1 在沒有 BOM 時會以系統 ANSI 代碼頁（正體中文為 cp950）
-# 讀取 .ps1，UTF-8 中文註解會變亂碼並打斷語法（ParserError: UnexpectedToken）。
-# 實測踩過。所有含中文的 .ps1 一律加 BOM。
+# Note: saved as **UTF-8 with BOM**. Without a BOM, Windows PowerShell 5.1 reads
+# a .ps1 using the system ANSI code page, which mangles any non-ASCII content and
+# breaks parsing (ParserError: UnexpectedToken). This happened.
 #
-# 為什麼要有這個檔案：建置參數手打過兩次，第二次漏掉 pysnmp 的 MIB 資料檔，
-# 產出的 exe 啟動即拋 MibNotFoundError——而 **服務狀態仍顯示 Running**
-# （spec §6.5 的「假活著」）。建置參數只能有一份來源。
+# Why this file exists: the build arguments were typed by hand twice, and the
+# second time pysnmp's MIB data files were left out. The resulting exe raised
+# MibNotFoundError on startup while **the service still reported Running** (the
+# "alive but dead" case in spec §6.5). There can be only one source for the build
+# arguments.
 #
-# 用法：
+# Usage:
 #   powershell -ExecutionPolicy Bypass -File build-exe.ps1 -Python C:\jtdev\Python312\python.exe -Source C:\jtdev\jt_snmpd.py
 
 param(
@@ -19,16 +20,19 @@ param(
     [string]$WorkDir = "build\.pyinstaller"
 )
 
-$ErrorActionPreference = 'Continue'   # native 工具寫 stderr 不應中斷建置
+$ErrorActionPreference = 'Continue'   # native tools write to stderr; that must
+                                      # not abort the build
 
 $name = "jt-snmpd"
 
-# --- 建置前：確保沒有行程佔用輸出目錄 ---------------------------------------
-# jt-doc-tools v1.1.66~69 踩過同一個坑：Stop-Service 回來了不代表檔案控制代碼已釋放。
-# PyInstaller 會先 rmtree 舊的 dist 目錄，控制代碼未釋放時丟
+# --- Before building: make sure nothing holds the output directory ----------
+# The same trap caught jt-doc-tools v1.1.66-69: Stop-Service returning does not
+# mean the file handles have been released. PyInstaller rmtree's the old dist
+# directory first, and with handles still open that raises
 #   PermissionError: [WinError 5] ... _internal\win32\servicemanager.pyd
-# 建置因此失敗，但**舊 exe 仍留在原地**——若只用 Test-Path 判定成功，
-# 會誤以為建置成功而實際部署了舊版本。實測踩過。
+# The build then fails, but **the old exe is still there** — and judging success
+# by Test-Path alone reports a successful build while deploying the previous
+# version. This happened.
 function Wait-ForProcessGone {
     param([string]$ProcName, [int]$TimeoutSec = 30)
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -42,23 +46,27 @@ function Wait-ForProcessGone {
 
 $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
 if ($svc -and $svc.Status -ne 'Stopped') {
-    Write-Host "[build] 停止服務 $name ..."
+    Write-Host "[build] stopping service $name ..."
     Stop-Service -Name $name -Force -ErrorAction SilentlyContinue
 }
 Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 if (-not (Wait-ForProcessGone -ProcName $name)) {
-    Write-Host "[build] FAILED: $name 行程仍在執行，檔案控制代碼未釋放"
+    Write-Host "[build] FAILED: the $name process is still running; file handles not released"
     exit 1
 }
 
-# 主動清掉輸出目錄，讓失敗就是失敗，不會留下舊 exe 混淆判定。
+# Clear the output directory deliberately, so a failure is a failure and no old
+# exe is left behind to confuse the verdict.
 #
-# 為什麼用「改名」而不是「刪除」：Windows 對**已載入為映像**的 .pyd/.dll
-# 回傳 ERROR_ACCESS_DENIED（訊息是「拒絕存取路徑」而非「檔案使用中」），
-# 即使服務已停止、行程已結束、服務註冊也已刪除，核心層的映像區段仍可能未回收
-# ——實測時 Get-Process 列不出任何持有者，但檔案就是刪不掉。
-# Windows 允許**改名**被鎖住的檔案，這也是 MSI 換檔的標準做法
-# （搭配 MOVEFILE_DELAY_UNTIL_REBOOT 在重開機時清掉）。
+# Why rename rather than delete: for a .pyd or .dll **already loaded as an
+# image**, Windows returns ERROR_ACCESS_DENIED — reported as "access to the path
+# is denied" rather than "the file is in use". Even with the service stopped, the
+# process gone and the service registration deleted, the kernel image section may
+# not have been reclaimed; measured, Get-Process listed no holder at all and the
+# file still could not be deleted.
+#
+# Windows does allow a locked file to be **renamed**, which is also how MSI
+# replaces files (with MOVEFILE_DELAY_UNTIL_REBOOT to clean up at the next boot).
 $target = Join-Path $OutDir $name
 if (Test-Path $target) {
     try {
@@ -66,19 +74,19 @@ if (Test-Path $target) {
     } catch {
         $stamp = Get-Date -Format 'yyyyMMddHHmmss'
         $old = "$target.old.$stamp"
-        Write-Host "[build] 舊目錄無法刪除（映像區段未回收），改名為 $old"
+        Write-Host "[build] old directory could not be deleted (image section still held); renamed to $old"
         Rename-Item -Path $target -NewName (Split-Path $old -Leaf) -ErrorAction Stop
     }
 }
 Remove-Item -Path "$name.spec" -Force -ErrorAction SilentlyContinue
 
-# 清掉先前留下的 .old 目錄（此時通常已可刪）
+# Clean up .old directories left by earlier builds (usually deletable by now)
 Get-ChildItem -Path $OutDir -Directory -Filter "$name.old.*" -ErrorAction SilentlyContinue |
     ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
 
-# spec §1.4：一律 one-folder，**禁用 one-file**。
-# one-file 會把內容解壓到 %TEMP%（服務身分下是 C:\Windows\Temp）再執行，
-# 那是已知的 DLL 劫持路徑，且在 WDAC/HVCI 環境更容易被擋。
+# spec §1.4: always one-folder, **never one-file**. one-file extracts itself into
+# %TEMP% (C:\Windows\Temp under the service account) before executing, which is a
+# known DLL hijacking path and more likely to be blocked under WDAC and HVCI.
 $args = @(
     "-m", "PyInstaller",
     "--noconfirm",
@@ -88,25 +96,28 @@ $args = @(
     "--distpath", $OutDir,
     "--workpath", $WorkDir,
 
-    # pywin32 服務相依。win32timezone 是 pywin32 的已知隱藏相依，
-    # 少了它服務會在啟動時 ImportError。
+    # pywin32 service dependencies. win32timezone is a known hidden dependency of
+    # pywin32; without it the service raises ImportError at startup.
     "--hidden-import", "win32timezone",
     "--hidden-import", "win32serviceutil",
     "--hidden-import", "win32service",
     "--hidden-import", "win32event",
     "--hidden-import", "servicemanager",
 
-    # pysnmp 在執行期以 **檔案** 形式載入 MIB 模組（DirMibSource 掃 .py/.pyc），
-    # 不是靠 import。因此必須用 collect-all 把資料檔一併打包，
-    # 只給 collect-submodules 會漏掉，症狀是啟動即 MibNotFoundError。
+    # pysnmp loads MIB modules as **files** at runtime (DirMibSource scans for
+    # .py/.pyc), not through import. So collect-all is required to bundle the
+    # data files; collect-submodules alone misses them, and the symptom is
+    # MibNotFoundError on startup.
     "--collect-all", "pysnmp",
-    # 圖示嵌進 exe：服務清單、工作管理員與檔案總管都看得到，
-    # 沒有圖示的服務在一長串系統服務裡完全認不出來
+    # Embed the icon in the exe: the service list, Task Manager and Explorer all
+    # show it, and a service without one is unrecognisable in a long list of
+    # system services
     "--icon", (Join-Path (Split-Path -Parent $PSScriptRoot) "docs\brand\jt-snmpd.ico"),
     "--collect-all", "pyasn1",
 
-    # version.py / preauth.py / smbios.py / diskhealth.py 與主程式同目錄，
-    # PyInstaller 的模組搜尋需要明確加入該路徑，否則 import 失敗。
+    # version.py, preauth.py, smbios.py and diskhealth.py sit beside the main
+    # script, and PyInstaller's module search needs that path added explicitly or
+    # the imports fail.
     "--paths", (Split-Path -Parent $Source),
 
     $Source
@@ -118,16 +129,16 @@ $code = $LASTEXITCODE
 
 $exe = Join-Path $OutDir "$name\$name.exe"
 if (-not (Test-Path $exe)) {
-    Write-Host "[build] FAILED: $exe 不存在 (exit=$code)"
+    Write-Host "[build] FAILED: $exe does not exist (exit=$code)"
     exit 1
 }
 
-# 只驗「exe 存在」不夠：建置失敗時舊 exe 可能還在原地。
-# 必須確認產物比來源新，否則就是拿到了殘留的舊版本。
+# "The exe exists" is not enough: after a failed build the old one may still be
+# there. The artefact has to be newer than the source, or this is a leftover.
 $srcTime = (Get-Item $Source).LastWriteTime
 $exeTime = (Get-Item $exe).LastWriteTime
 if ($exeTime -lt $srcTime) {
-    Write-Host "[build] FAILED: exe ($exeTime) 比來源 ($srcTime) 舊 —— 建置未實際執行"
+    Write-Host "[build] FAILED: the exe ($exeTime) is older than the source ($srcTime) - the build did not run"
     exit 1
 }
 
@@ -137,14 +148,15 @@ $mb = [math]::Round(((Get-ChildItem (Join-Path $OutDir $name) -Recurse -File |
 
 Write-Host "[build] OK exe=$exe files=$files size=${mb}MB"
 
-# 建置後煙霧測試：直接跑一次 snapshot 建立，確認打包完整。
-# 只驗 exe 存在是不夠的——MIB 資料檔漏打包時 exe 照樣產出。
-Write-Host "[build] 煙霧測試..."
+# Post-build smoke test: build a snapshot for real, to confirm the package is
+# complete. Checking the exe exists is not enough — it is produced just the same
+# when the MIB data files are missing.
+Write-Host "[build] smoke test ..."
 $smoke = & $exe --selftest 2>&1 | Out-String
 if ($smoke -match "SELFTEST_OK") {
-    Write-Host "[build] 煙霧測試通過"
+    Write-Host "[build] smoke test passed"
 } else {
-    Write-Host "[build] 煙霧測試失敗："
+    Write-Host "[build] smoke test FAILED:"
     Write-Host $smoke
     exit 1
 }

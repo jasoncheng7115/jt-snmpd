@@ -1,14 +1,16 @@
-﻿# jt-snmpd 發佈包建置腳本
+﻿# jt-snmpd release package builder
 #
-# 注意：本檔以 UTF-8 with BOM 儲存（PowerShell 5.1 無 BOM 時以 cp950 讀取）。
+# Note: saved as UTF-8 with BOM. Without it PowerShell 5.1 reads the file using
+# the system ANSI code page.
 #
-# 產生 dist/jt-snmpd-<版本>-x64/ 與同名 .zip，內容：
-#   install.ps1        安裝程式
-#   jt-snmpd/          PyInstaller one-folder 產物
-#   README.txt         給管理員的簡要說明
-#   VERSION            版本資訊
+# Produces dist/jt-snmpd-<version>-x64/ and a .zip of the same name, containing:
+#   install.ps1        the installer
+#   jt-snmpd/          the PyInstaller one-folder output
+#   README.txt         a short note for the administrator
+#   VERSION            version information
 #
-# 這是 MSI 之前的過渡發佈格式。完全自包含，安裝時不上網抓任何東西。
+# This is the interim format that predates the MSI. Fully self-contained: the
+# installer downloads nothing.
 
 param(
     [string]$Version = "0.1.0",
@@ -19,7 +21,7 @@ param(
 $ErrorActionPreference = 'Continue'
 
 if (-not (Test-Path (Join-Path $BuildDir 'jt-snmpd.exe'))) {
-    Write-Host "[FAIL] 找不到 $BuildDir\jt-snmpd.exe，請先執行 build-exe.ps1" -ForegroundColor Red
+    Write-Host "[FAIL] $BuildDir\jt-snmpd.exe not found; run build-exe.ps1 first" -ForegroundColor Red
     exit 1
 }
 
@@ -42,20 +44,23 @@ $commit = (& git rev-parse --short HEAD 2>$null)
 @(
     "JT SNMP Agent $Version"
     ""
-    "安裝（需系統管理員權限）："
+    "Install (requires administrator rights):"
     "  powershell -ExecutionPolicy Bypass -File install.ps1 -ManagementNetworks 192.168.1.0/24"
     ""
-    "解除安裝："
+    "Uninstall:"
     "  powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall"
-    "  加上 -Purge 可一併清除設定與狀態檔"
+    "  Add -Purge to remove the configuration and state files as well"
     ""
-    "安裝程式會："
-    "  - 偵測 Windows 內建 SNMP Service，沿用其 community / 管理主機 / sysContact / sysLocation"
-    "  - 停用內建 SNMP Service（不移除功能，解除安裝時自動還原）"
-    "  - 建立僅限管理網段的防火牆規則（預設 deny，不允許 Any/Any）"
-    "  - 啟動後做 loopback SNMP 自我測試，確認不是「服務 Running 但不回應」"
+    "The installer will:"
+    "  - detect the built-in Windows SNMP Service and carry over its community,"
+    "    permitted managers, sysContact and sysLocation"
+    "  - disable the built-in SNMP Service (disabled, not removed; restored on uninstall)"
+    "  - create a firewall rule scoped to the management networks (deny by default, never Any/Any)"
+    "  - run a loopback SNMP self-test after starting, to confirm the service is"
+    "    answering rather than merely reporting Running"
     ""
-    "本程式安裝後不會主動對外連線：不檢查更新、不回報遙測、不下載任何內容。"
+    "Once installed this program makes no outbound connections: no update checks,"
+    "no telemetry, no downloads."
 ) | Set-Content (Join-Path $stage 'README.txt') -Encoding UTF8
 
 $zip = Join-Path $OutDir "$name.zip"
