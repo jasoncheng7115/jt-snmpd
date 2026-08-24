@@ -132,10 +132,20 @@ def test_recovery_clears_status_but_keeps_error_count(health_ns):
     assert st["last_error"] == "", "恢復後 last_error 必須清空"
 
 
+# Windows' default timer granularity is about 15.6 ms, so a 20 ms sleep can be
+# measured as 14 ms. The floor here is deliberately loose: what these tests care
+# about is that a duration is recorded at all and that it reflects the sleep
+# rather than being zero — not that the clock is precise. Asserting >= 15 made
+# the Windows CI job fail on `assert 14 >= 15`, which says nothing about the
+# behaviour under test.
+SLEEP_MS = 20
+MIN_MEASURED_MS = 8
+
+
 def test_duration_is_recorded(health_ns):
     collector, health = health_ns["_collector"], health_ns["_health"]
-    collector("slow", lambda: time.sleep(0.02) or "x", None)
-    assert health["collectors"]["slow"]["duration_ms"] >= 15
+    collector("slow", lambda: time.sleep(SLEEP_MS / 1000) or "x", None)
+    assert health["collectors"]["slow"]["duration_ms"] >= MIN_MEASURED_MS
 
 
 def test_duration_recorded_even_on_failure(health_ns):
@@ -143,12 +153,12 @@ def test_duration_recorded_even_on_failure(health_ns):
     collector, health = health_ns["_collector"], health_ns["_health"]
 
     def slow_boom():
-        time.sleep(0.02)
+        time.sleep(SLEEP_MS / 1000)
         raise OSError("fail")
 
     collector("slowbad", slow_boom, None)
     st = health["collectors"]["slowbad"]
-    assert st["duration_ms"] >= 15
+    assert st["duration_ms"] >= MIN_MEASURED_MS
     assert st["status"] == 3
 
 
