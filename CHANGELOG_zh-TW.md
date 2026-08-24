@@ -9,6 +9,31 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
+## [0.9.3] - 2026-08-24
+
+### 修正
+
+- **圖形介面安裝完全裝不起來。** 點兩下 MSI 之後，Welcome 頁面直接跳出
+  「必須指定管理網段」而且沒有任何往下的路，但那個要求填管理網段的頁面
+  就在兩個按鍵之後。原因是 Windows Installer 的一個順序特性：
+  `LaunchConditions` 在 InstallUISequence 的最前面執行，早於任何對話框出現，
+  所以一個依賴「精靈之後才會收集到的屬性」的啟動條件，在精靈安裝裡永遠不可能成立。
+  條件現在對 `UILevel > 4` 豁免，那是完整精靈、也是唯一有頁面可以問的層級；
+  其餘較安靜的層級（`/qn`、`/qb`、`/qr`）照樣中止，而設定頁本身也會擋住
+  沒填就按下一步。
+
+  這個問題現有測試一個都抓不到：WiX 原始碼合法、建置成功、`/qn` 安裝正常，
+  而生命週期測試從頭到尾都用 `msiexec /qn`。所有閘門全綠，
+  但操作人員最先用到的那條路徑是全壞的。
+  `tests/test_msi_ui_gating.py` 現在把修法的形狀釘住，
+  包含「設定頁沒填值就不能前進」與「設定腳本仍然 fail closed」。
+- **`docs/naming-and-paths.md` 寫了三個不存在的檔名**：
+  `config.yaml`（實際是 `config.json`）、`engine-state.json`（`engine.json`）、
+  `ms-snmp-migration.json`（`ms-snmp-restore.json`）。
+  現在的內容是磁碟上實際有的東西，規劃中但尚未存在的項目已標註。
+
+---
+
 ## [未發行]
 
 ### 新增

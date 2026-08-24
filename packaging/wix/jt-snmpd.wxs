@@ -55,11 +55,26 @@
     <Launch Condition="Privileged"
             Message="Installing JT SNMP Agent requires administrator rights." />
 
-    <!-- The management networks are mandatory. deny by default, never
-         Any/Any. Without them the installation stops rather than quietly opening
-         the agent to the whole network. -->
+    <!-- The management networks are mandatory. Deny by default, never Any/Any.
+         Without them the installation stops rather than quietly opening the agent
+         to the whole network.
+
+         **The UILevel exemption is not optional.** LaunchConditions runs at the
+         very start of the InstallUISequence, long before any dialog can collect
+         a value, so without `UILevel > 4` this condition fires on the Welcome
+         page of every double-click installation and the settings page can never
+         be reached. That is exactly what happened: the graphical install path
+         shipped in 0.9.2 was unusable, aborting with "the management networks
+         must be specified" while the page that asks for them sat two clicks
+         away.
+
+         UILevel 5 is the full wizard, and only there does JtSettingsDlg exist to
+         ask. It enforces the same requirement itself by refusing to advance past
+         JtNeedNetworksDlg, so nothing is weakened. Every quieter level
+         (2 = /qn, 3 = /qb, 4 = /qr) shows no wizard, so the condition still has
+         to stop the install there. -->
     <Property Id="MANAGEMENTNETWORKS" Secure="yes" />
-    <Launch Condition="MANAGEMENTNETWORKS OR REMOVE"
+    <Launch Condition="MANAGEMENTNETWORKS OR REMOVE OR UILevel &gt; 4"
             Message="The management networks must be specified, for example: msiexec /i jt-snmpd.msi /qn MANAGEMENTNETWORKS=10.0.0.0/24" />
 
     <!-- The community is optional; without it the installer tries to migrate one
