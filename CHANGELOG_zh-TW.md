@@ -13,6 +13,12 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ### 新增
 
+- **一份手動移除文件**（`docs/manual-removal_zh-TW.md`），供安裝程式走不完時使用：
+  安裝倒回、解除安裝回報成功但服務還在跑，或是「應用程式與功能」裡已經看不到
+  這個產品但 UDP/161 還在回應。每一步都是安裝程式某個動作的手動版本，
+  順序也刻意安排成能把內建 SNMP Service 還原回去：那份「原本是什麼狀態」的記錄
+  就放在資料目錄裡，先刪目錄等於把唯一一份記錄丟掉。
+
 - **程式碼簽章文件補上「手動信任」章節**，涵蓋單機做法（SmartScreen 的
   「仍要執行」、`Unblock-File`、在 Defender 中允許被隔離的檔案）與整個網域的做法
   （從內部共用資料夾派送，或用自己的憑證簽章後以群組原則推送到受信任的發行者，
@@ -29,6 +35,13 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ### 變更
 
+- **README 的安裝段還停在 MSI 之前的版本。** 它以 `install.ps1` 和一個發行版本
+  早已不再提供的 ZIP 壓縮檔開頭，狀態表甚至把「供 GPO / Intune / SCCM 使用的 MSI」
+  寫成「未實作」，而它從 0.9.0 起就已發版並通過生命週期驗證。
+  兩份 README 現在都以下載 MSI 開頭，並涵蓋圖形介面、命令列、GPO 派送與解除安裝。
+- **VACM 補上解釋**，不再只是狀態表裡的一個縮寫：它是 RFC 3415 的檢視型存取控制，
+  用來限制某一組憑證看得到 OID 樹的哪幾段。
+
 - **程式碼簽章是規劃中，不是放棄。** 日後規劃透過開源專案的憑證方案取得簽章；
   在那之前，文件寫清楚會看到什麼，以及如何安全地通過。
 - **公開的檔案不再引用內部文件。** 所有指向內部規格書與內部工作筆記的引用，
@@ -39,6 +52,10 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   不相干應用程式，放在 SMART 對照旁邊會被當成對照的一部分。
 
 ### 修正
+
+- **程式碼簽章文件寫錯了安裝目錄。** 它寫成 `C:\Program Files\jt-snmpd\`，
+  但 MSI 實際安裝到 `C:\Program Files\JT SNMP Agent\`，
+  導致 WDAC 掃描路徑與 Defender 排除路徑兩處都是錯的。
 
 - **`prepare-public-repo.py` 只保留 `dist/` 與 `build/` 裡的 `README.md`**，
   兩個目錄的繁中版 README 因此從來沒被發佈過。

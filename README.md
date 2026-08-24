@@ -212,17 +212,43 @@ so real-world usage is around **0.004% CPU**.
 | Runtime dependencies | `pysnmp` → `pyasn1`. That is the whole list |
 | Packaging | PyInstaller one-folder → self-contained `jt-snmpd.exe`, no Python on the target |
 | Service | pywin32 service framework, LocalSystem, automatic start |
-| Deployment | ZIP + PowerShell installer today; MSI (WiX) for GPO / Intune / SCCM |
+| Deployment | MSI (WiX v5): double-click with a settings dialog, `/qn` unattended, GPO / Intune / SCCM |
 
 ## Install
 
-Requires an elevated PowerShell session. The management network is mandatory —
-the agent refuses to listen to `Any/Any`.
+Download `jt-snmpd-<version>-x64.msi` from
+[Releases](https://github.com/jasoncheng7115/jt-snmpd/releases/latest) and check
+it against the `.sha256` published alongside it.
+
+> This installer is not Authenticode signed yet, so SmartScreen warns on a
+> double-click and the UAC prompt shows an unknown publisher. A certificate
+> through an open-source code-signing programme is planned. For trusting it
+> manually, and for WDAC and AppLocker environments, see
+> [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html).
+
+The management network is mandatory: the agent refuses to listen to `Any/Any`.
+
+### Option 1 — double-click
+
+The installer asks for the install location and the monitoring settings. The two
+required values are the **management networks** and the **community string**;
+together they decide who may query this host. It will not continue without a
+management network, because an empty list means the agent answers only loopback:
+installed, but not monitoring.
+
+### Option 2 — command line and GPO deployment
+
+This is the **command-line / unattended** form; `/qn` means no interface at all.
+The same MSI and the same properties are what **Group Policy software
+deployment** uses, where the installation runs as SYSTEM with no prompts.
 
 ```powershell
-# Extract the release archive, then:
-.\install.ps1 -ManagementNetworks 192.168.1.0/24
+msiexec /i jt-snmpd-0.9.2-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=your-community
 ```
+
+For GPO, place the MSI on a domain file share and make sure computer accounts can
+read it. Installing from an internal share also avoids the Mark of the Web, so
+SmartScreen never appears.
 
 The installer will:
 
@@ -243,13 +269,21 @@ The installer will:
 If UDP/161 is held by something that is not the Microsoft SNMP Service, the
 installer stops and leaves it alone rather than disabling a third-party agent.
 
+### Uninstall
+
+Through Apps & Features, or from the command line:
+
 ```powershell
 # Uninstall (restores the built-in SNMP Service, keeps configuration and state)
-.\install.ps1 -Uninstall
+msiexec /x jt-snmpd-0.9.2-x64.msi /qn
 
 # Uninstall and remove everything
-.\install.ps1 -Uninstall -Purge
+msiexec /x jt-snmpd-0.9.2-x64.msi /qn PURGE=1
 ```
+
+If an install or uninstall will not complete,
+[Manual removal](https://jasoncheng7115.github.io/jt-snmpd/manual-removal.html)
+lists every step the installer performs and how to do each of them by hand.
 
 Configuration and state are kept by default on purpose: administrators often
 reinstall to troubleshoot, and discarding the interface index map would make
@@ -290,17 +324,24 @@ jt-snmpd/
 |---|---|
 | SNMPv2c, IF-MIB, HOST-RESOURCES, UCD-DISKIO, ENTITY-MIB, ENTITY-SENSOR, IP / TCP / UDP / ICMP, self-health OIDs | ✅ verified against production LibreNMS |
 | Windows service, boot start, migration from the built-in service | ✅ verified on Windows 10 and 11 |
-| PowerShell installer with health-check gate | ✅ verified, including the upgrade path |
 | Disk temperature and SMART health | ✅ verified on physical hardware |
-| SNMPv3 (SHA-256 + AES-128) | ⛔ not implemented |
-| VACM view presets | ⛔ not implemented |
-| MSI for GPO / Intune / SCCM | ⛔ not implemented |
+| **MSI installer** (double-click with a settings dialog, `/qn` unattended, GPO / Intune / SCCM deployment) | ✅ released; 40 lifecycle assertions covering install, upgrade, uninstall, reinstall and purge, all green on real hardware |
+| SNMPv3 (SHA-256 + AES-128) | ⛔ not implemented; v2c only today |
+| OID view presets (VACM) | ⛔ not implemented |
 | Authenticode signing | ⏳ planned via an open-source certificate programme — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
 | Windows Server, Server Core, domain controllers | ⛔ not yet verified |
 | Multi-homed source address selection | ⛔ not yet verified |
 
 Not planned for v1.0: SNMP traps and informs, SNMP SET, ARM64, IPv6-only
 deployments, cluster awareness.
+
+**VACM** is the SNMP standard's View-based Access Control Model (RFC 3415),
+which restricts *which parts of the OID tree* a given set of credentials can
+reach. Today jt-snmpd serves the whole tree read-only and controls disclosure by
+choosing which subtrees to publish at all. View presets would add a finer layer:
+a `librenms-minimal` view, for instance, exposing only the subtrees LibreNMS
+actually reads and nothing else. That matters when several monitoring systems
+share one host, which is why it sits behind SNMPv3 in priority.
 
 ## License
 

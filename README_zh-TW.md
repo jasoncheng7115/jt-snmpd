@@ -205,17 +205,38 @@ pysnmp（只負責 message / USM / VACM / transport）
 | 執行時相依 | `pysnmp` → `pyasn1`。就這樣 |
 | 打包 | PyInstaller one-folder → 自包含的 `jt-snmpd.exe`，目標機不需安裝 Python |
 | 服務 | pywin32 服務框架，LocalSystem，自動啟動 |
-| 部署 | 目前為 ZIP + PowerShell 安裝程式；MSI（WiX）供 GPO / Intune / SCCM |
+| 部署 | MSI（WiX v5）：點兩下有設定對話框、`/qn` 無訊息安裝、GPO / Intune / SCCM 派送 |
 
 ## 安裝
 
-需要以系統管理員身分執行 PowerShell。**管理網段是必填的**，
-agent 不接受監聽 `Any/Any`。
+從 [Releases](https://github.com/jasoncheng7115/jt-snmpd/releases/latest) 下載
+`jt-snmpd-<版本>-x64.msi`，並以同一個版本附的 `.sha256` 核對雜湊。
+
+> 本安裝檔目前未經 Authenticode 簽章，點兩下安裝時 SmartScreen 會出現警告，
+> UAC 提示的發行者會顯示為「不明」。日後規劃透過開源專案的憑證方案申請簽章。
+> 手動信任的做法與 WDAC / AppLocker 環境的處理，見
+> [程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html)。
+
+**管理網段是必填的**，agent 不接受監聽 `Any/Any`。
+
+### 方式一：點兩下安裝
+
+安裝程式會逐步詢問安裝路徑與監控設定。兩個必填的設定是**管理網段**與
+**community**，它們決定誰查得到這台主機。沒有填管理網段就不讓繼續，
+因為空清單等於只回應 loopback：裝好了，但沒有在監控。
+
+### 方式二：命令列與 GPO 派送
+
+下面這道指令是**命令列 / 無人值守**安裝用的，`/qn` 表示不顯示任何介面。
+同一顆 MSI 與同一組屬性也直接適用於**群組原則（GPO）軟體派送**，
+安裝過程以 SYSTEM 身分執行，不會有任何提示。
 
 ```powershell
-# 解開發佈壓縮檔後：
-.\install.ps1 -ManagementNetworks 192.168.1.0/24
+msiexec /i jt-snmpd-0.9.2-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=你的community
 ```
+
+以 GPO 派送時，把 MSI 放在網域內的共用資料夾，並確保電腦帳戶對該資料夾有讀取權限。
+從內部共用資料夾安裝也不會帶網頁標記，因此不會遇到 SmartScreen。
 
 安裝程式會：
 
@@ -235,13 +256,20 @@ agent 不接受監聽 `Any/Any`。
 若 UDP/161 被「非 Microsoft SNMP Service」的程式佔用，安裝程式會**中止並且
 不動它**，而不是去停用第三方 agent。
 
+### 解除安裝
+
+從「應用程式與功能」移除，或以命令列：
+
 ```powershell
 # 解除安裝（還原內建 SNMP Service，保留設定與狀態）
-.\install.ps1 -Uninstall
+msiexec /x jt-snmpd-0.9.2-x64.msi /qn
 
 # 解除安裝並清除全部資料
-.\install.ps1 -Uninstall -Purge
+msiexec /x jt-snmpd-0.9.2-x64.msi /qn PURGE=1
 ```
+
+萬一安裝或解除安裝走不完，[手動移除](https://jasoncheng7115.github.io/jt-snmpd/manual-removal_zh-TW.html)
+逐步列出安裝程式做過的每一件事，以及如何用手做完。
 
 預設保留設定與狀態是刻意的：管理員常以「移除再重裝」來排除問題，
 若把介面索引映射一起清掉，LibreNMS 會重新 discovery 每一個 port，
@@ -282,17 +310,22 @@ jt-snmpd/
 |---|---|
 | SNMPv2c、IF-MIB、HOST-RESOURCES、UCD-DISKIO、ENTITY-MIB、ENTITY-SENSOR、IP / TCP / UDP / ICMP、自我健康 OID | ✅ 已在正式 LibreNMS 驗證 |
 | Windows 服務、開機自啟、從內建服務移轉 | ✅ 已在 Windows 10 與 11 驗證 |
-| 含健康檢查閘門的 PowerShell 安裝程式 | ✅ 已驗證，含升級路徑 |
 | 磁碟溫度與 SMART 健康度 | ✅ 已在實體硬體驗證 |
-| SNMPv3（SHA-256 + AES-128）| ⛔ 未實作 |
-| VACM 檢視預設集 | ⛔ 未實作 |
-| 供 GPO / Intune / SCCM 使用的 MSI | ⛔ 未實作 |
+| **MSI 安裝程式**（點兩下的圖形介面、`/qn` 無訊息安裝、GPO / Intune / SCCM 派送）| ✅ 已發版；安裝、升級、解除安裝、重裝、清除移除共 40 項生命週期檢查在實機全綠 |
+| SNMPv3（SHA-256 + AES-128）| ⛔ 未實作，目前只有 v2c |
+| OID 檢視範圍預設集（VACM）| ⛔ 未實作 |
 | Authenticode 簽章 | ⏳ 日後規劃申請開源專案憑證，見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | Windows Server、Server Core、網域控制站 | ⛔ 尚未驗證 |
 | 多網路卡來源位址選擇 | ⛔ 尚未驗證 |
 
 v1.0 不列入計畫：SNMP trap 與 inform、SNMP SET、ARM64、純 IPv6 部署、
 叢集感知。
+
+**VACM** 是 SNMP 標準裡的檢視型存取控制（RFC 3415），用來限制某一組憑證
+「看得到 OID 樹的哪幾段」。目前 jt-snmpd 的做法是整棵樹唯讀，
+資訊揭露則以「哪些子樹預設不輸出」來控制。VACM 預設集要做的是更細的一層：
+例如一組 `librenms-minimal` 檢視，只開放 LibreNMS 實際會取用的子樹，
+其餘一律取不到。這在多個監控系統共用同一台主機時才有意義，因此排在 SNMPv3 之後。
 
 ## 授權
 

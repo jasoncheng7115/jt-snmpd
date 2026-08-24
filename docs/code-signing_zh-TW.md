@@ -127,7 +127,7 @@ SmartScreen 不會攔截，而且 WDAC 與 AppLocker 的發行者規則也會直
 ```powershell
 # CLI，規則必須涵蓋的路徑
 .\jt-snmpd-0.9.2-x64.msi
-C:\Program Files\jt-snmpd\jt-snmpd.exe
+C:\Program Files\JT SNMP Agent\jt-snmpd.exe
 ```
 
 WDAC 可以從安裝後的資料夾產生原則片段，再併入既有原則：
@@ -135,7 +135,7 @@ WDAC 可以從安裝後的資料夾產生原則片段，再併入既有原則：
 ```powershell
 # CLI
 New-CIPolicy -Level Hash -FilePath .\jt-snmpd.xml `
-  -ScanPath 'C:\Program Files\jt-snmpd' -UserPEs
+  -ScanPath 'C:\Program Files\JT SNMP Agent' -UserPEs
 Merge-CIPolicy -PolicyPaths .\existing.xml,.\jt-snmpd.xml -OutputFilePath .\merged.xml
 ```
 
@@ -174,7 +174,7 @@ PyInstaller 產生的執行檔會週期性地被啟發式規則標記，而不�
 2. 到
    [Microsoft Security Intelligence](https://www.microsoft.com/en-us/wdsi/filesubmission)
    以疑似誤判送件。通常數日內處理完成，修正會送達所有 Defender。
-3. 過渡期間可對 `C:\Program Files\jt-snmpd\` 加入路徑排除項目，
+3. 過渡期間可對 `C:\Program Files\JT SNMP Agent\` 加入路徑排除項目，
    並在送件處理完成後移除，因為對一個目錄長期排除本身就是弱點。
 
 不要以關閉即時保護作為因應方式。
