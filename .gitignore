@@ -1,0 +1,87 @@
+# ============================================================================
+# jt-snmpd — 版本控制排除清單
+#
+# 這個檔案的用途不只是「別把垃圾推上去」，更重要的是**別把不該公開的東西
+# 推上去**。本專案的開發環境是真實的內網（政府與醫院客戶的縮影），
+# 量測結果、記錄檔、掃描報告裡都可能含有主機名稱、IP、MAC、序號。
+#
+# 推版本前請執行：  python3 tools/check-privacy.py
+# 完整流程見：      docs/release-checklist.md
+# ============================================================================
+
+# --- Python ---------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- 建置產物與發佈成品 ---------------------------------------------------
+# 保留目錄說明，忽略實際產物。MSI 由 GitHub Release 提供，不進 git。
+build/*
+!build/README.md
+dist/*
+!dist/README.md
+*.msi
+*.exe
+*.wixpdb
+*.wixobj
+
+# --- 掃描報告與量測輸出 ---------------------------------------------------
+# Bandit / pip-audit / SBOM / 效能量測。內容含本機路徑與相依版本，
+# 每次執行都會變動，且對讀者無價值。
+reports/
+bench/results/
+*.rrd
+
+# --- 含現場資料的檔案（**公開前必須人工確認**）---------------------------
+# agent 記錄檔會寫入介面名稱、磁碟型號、序號
+*.log
+logs/
+# 執行時期狀態：index-map 含網卡 LUID 與名稱、engine.json 含 engineID
+state/
+*-restore.json
+index-map.json*
+engine.json*
+disk-maxtemp.json*
+# 實機抓下來的原始 walk 輸出
+*.walk
+*.snmpwalk
+walk-*.txt
+
+# --- 憑證與金鑰 -----------------------------------------------------------
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
+!tests/**/fixtures/*.pem
+.env
+.env.*
+*.local.*
+secrets/
+.shotpw
+
+# --- 內部文件（不對外）---------------------------------------------------
+# spec.md 是內部規格書，不隨專案公開。
+spec.md
+# CLAUDE.md 含正式環境的 IP 與操作紀律，屬內部工作筆記。
+# 若要公開，請先執行 tools/check-privacy.py 並清除環境專屬資訊。
+CLAUDE.md
+# 測試環境的機器清單、憑證位置
+docs/lab-*.md
+docs/internal-*.md
+
+# --- 編輯器與作業系統 -----------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

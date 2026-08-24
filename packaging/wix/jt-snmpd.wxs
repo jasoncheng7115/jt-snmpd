@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  jt-snmpd MSI 定義（WiX v5）
+
+  為什麼一定要 MSI（spec §5.4）：
+    **GPO 的軟體安裝原則上只接受 MSI**——這一條就決定了選型。
+    Inno Setup / NSIS 產生的 EXE 不支援 GPO 軟體安裝、沒有交易式 rollback、
+    不會出現在「加入或移除程式」。
+
+  MSI 另外免費提供：
+    - UpgradeCode 升級處理：把新版 MSI 丟過去就是升級，不必先移除舊版
+    - 安裝失敗自動回滾
+    - 出現在「加入或移除程式」（客戶資產盤點看得到，hrSWInstalledTable 亦看得到）
+
+  重要決定：
+    - UpgradeCode 一旦發布就**永不變更**，否則升級會變成並存安裝
+    - ProductCode 每個版本都不同（WiX 的 * 會自動產生）
+    - 設定與狀態放 %ProgramData%，**不在 MSI 的元件清單內**，
+      所以解除安裝時不會被 MSI 移除（spec §5.7：預設保留是刻意的）
+    - 服務由自訂動作註冊，不用 ServiceInstall——因為我們需要
+      sc failure / failureflag / privs，這些 WiX 的 ServiceInstall 不提供
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="JT SNMP Agent"
+           Manufacturer="Jason Tools"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="7B3E9C24-5A61-4F8D-9E27-1C4A8B6D3F50"
+           Language="1033"
+           Codepage="65001"
+           InstallerVersion="500"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <!-- 相同 UpgradeCode 的舊版一律先移除再安裝（major upgrade）。
+         AfterInstallInitialize 讓檔案替換發生在新檔案複製之前，
+         避免「舊版移除時把新版檔案一起刪掉」的經典 MSI 陷阱。 -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="已安裝較新版本的 JT SNMP Agent。"
+                  Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- 平台與 OS 版本限制（spec §5.6 前置檢查） -->
+    <Launch Condition="VersionNT >= 603"
+            Message="需要 Windows 10 / Server 2016 或更新版本。" />
+    <Launch Condition="Privileged"
+            Message="安裝 JT SNMP Agent 需要系統管理員權限。" />
+
+    <!-- 管理網段為必填。spec §3.3：預設 deny，不允許 Any/Any。
+         未提供即中止安裝，而不是靜默開放全網。 -->
+    <Property Id="MANAGEMENTNETWORKS" Secure="yes" />
+    <Launch Condition="MANAGEMENTNETWORKS OR REMOVE"
+            Message="必須指定管理網段，例如：msiexec /i jt-snmpd.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24" />
+
+    <!-- community 為選填；未提供時安裝程式會嘗試從內建 SNMP 移轉。
+         spec §5.5：**不要用 MSI 屬性傳遞密碼**——MSI 屬性會出現在
+         msiexec 記錄檔與 Event ID 1033/11707。community 只是唯讀存取字串，
+         風險等級與 v3 金鑰不同；v3 金鑰一律走 ADMX 原則，絕不走 MSI 屬性。 -->
+    <Property Id="COMMUNITY" Secure="yes" />
+    <Property Id="KEEPMSSNMP" Secure="yes" Value="0" />
+    <Property Id="PURGE" Secure="yes" Value="0" />
+
+    <!-- 出現在「加入或移除程式」的資訊 -->
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://jason.tools" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="JT SNMP Agent" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="JT SNMP Agent" Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="AgentFiles" />
+    </Feature>
+
+    <!-- ============ 自訂動作 ============
+         流程刻意對齊 install.ps1，讓兩者行為一致。
+         PowerShell 以 -ExecutionPolicy Bypass 呼叫，因為目標機的
+         execution policy 常是 Restricted（實測 Win11 預設就是）。 -->
+
+    <!-- [INSTALLFOLDER] 展開後**帶尾端反斜線**（"C:\Program Files\JT SNMP Agent\"）。
+         直接寫成 &quot;[INSTALLFOLDER]&quot; 會讓那個反斜線跳脫結尾的引號，
+         PowerShell 收到的路徑因此多一個引號字元：
+             找不到 C:\Program Files\JT SNMP Agent"\jt-snmpd.exe
+         這是 MSI 的經典陷阱，實測踩過。解法是把腳本完整路徑先組好，
+         參數本身就不需要目錄路徑。 -->
+    <!-- 必須在 CostFinalize **之後**：目錄屬性（INSTALLFOLDER）在 CostFinalize
+         才被解析成實際路徑。放在之前會得到只有檔名、沒有目錄的值
+         （實測：CONFIGSCRIPT = "msi-configure.ps1"），自訂動作因此找不到腳本。 -->
+    <SetProperty Id="CONFIGSCRIPT" Value="[INSTALLFOLDER]msi-configure.ps1"
+                 After="CostFinalize" Sequence="execute" />
+
+    <!-- 安裝：抄走內建 SNMP 設定 → 停用它 → 寫 config → 建 ACL → 註冊服務
+              → 防火牆 → 啟動 → loopback 健康檢查 -->
+    <SetProperty Id="ConfigureAgent"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[CONFIGSCRIPT]&quot; -ManagementNetworks &quot;[MANAGEMENTNETWORKS]&quot; -Community &quot;[COMMUNITY]&quot; -KeepMsSnmp &quot;[KEEPMSSNMP]&quot;"
+                 Before="ConfigureAgent"
+                 Sequence="execute" />
+    <CustomAction Id="ConfigureAgent"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <!-- 解除安裝：停服務 → 移除防火牆 → 還原內建 SNMP -->
+    <SetProperty Id="UnconfigureAgent"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[CONFIGSCRIPT]&quot; -Uninstall -Purge &quot;[PURGE]&quot;"
+                 Before="UnconfigureAgent"
+                 Sequence="execute" />
+    <CustomAction Id="UnconfigureAgent"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <!-- 移除必須在檔案被刪掉之前 -->
+      <Custom Action="UnconfigureAgent" Before="RemoveFiles"
+              Condition="REMOVE=&quot;ALL&quot;" />
+      <!-- 設定必須在檔案複製完成之後 -->
+      <Custom Action="ConfigureAgent" After="InstallFiles"
+              Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
+
+    <Icon Id="AppIcon" SourceFile="$(var.IconFile)" />
+
+  </Package>
+</Wix>
