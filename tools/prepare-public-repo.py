@@ -63,10 +63,22 @@ def main() -> int:
         print(__doc__)
         return 2
     dest = Path(sys.argv[1]).resolve()
-    if dest.exists() and any(dest.iterdir()):
-        print(f"目的地非空：{dest}\n請先清空，避免混入舊內容。", file=sys.stderr)
+    existing_git = (dest / ".git").is_dir()
+    if dest.exists() and any(dest.iterdir()) and not existing_git:
+        print(f"目的地非空且不是 git repo：{dest}\n請先清空，避免混入舊內容。",
+              file=sys.stderr)
         return 1
     dest.mkdir(parents=True, exist_ok=True)
+
+    # 已是公開 repo 時做增量同步：保留 .git（remote、歷史都在裡面），
+    # 但先清掉舊檔，否則來源刪掉的檔案會留在公開 repo 裡不會消失——
+    # 那正是「以為移除了、其實還在」的洩漏路徑。
+    if existing_git:
+        for item in dest.iterdir():
+            if item.name == ".git":
+                continue
+            shutil.rmtree(item) if item.is_dir() else item.unlink()
+        print(f"已保留 .git，清除舊檔後重新同步")
 
     # 以 git 的視角列出檔案：已追蹤 + 未被忽略的未追蹤檔。
     # 直接走檔案系統會把 .venv 之類一併帶進來。

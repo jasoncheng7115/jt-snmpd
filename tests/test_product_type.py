@@ -83,7 +83,7 @@ def test_all_branches_use_microsoft_pen():
     否則 LibreNMS 的三個分支全部落空，Version 欄位會空白。
     """
     for ptype, oid in _sysobjid_map().items():
-        assert oid[:6] == (1, 3, 6, 1, 4, 1), f"{ptype} 前綴錯誤"
+        assert oid[:6] == (1, 3, 6, 1, 4, 1), f"{ptype} 前置碼錯誤"
         assert oid[6] == 311, f"{ptype} 必須用 Microsoft 的 PEN 311，實際 {oid[6]}"
 
 

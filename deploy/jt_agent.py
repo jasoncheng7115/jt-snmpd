@@ -208,7 +208,7 @@ U32 = 0xFFFFFFFF
 
 def octet(s) -> rfc1902.OctetString:
     """SNMP OCTET STRING 是位元組串，不是文字。pyasn1 預設以 latin-1 編碼 str，
-    遇到非 ASCII 會丟 PyAsn1UnicodeEncodeError——台灣環境的網卡別名就是中文
+    遇到非 ASCII 會丟 PyAsn1UnicodeEncodeError——台灣環境的網路卡別名就是中文
     （「乙太網路」），這在正體中文 Windows 上是必踩的。一律明確編成 UTF-8。"""
     if isinstance(s, bytes):
         return rfc1902.OctetString(s)
@@ -220,7 +220,7 @@ def _reg(path: str, name: str, root=winreg.HKEY_LOCAL_MACHINE):
         return winreg.QueryValueEx(key, name)[0]
 
 
-# --- 自身程序資源（spec §7.1 / §6.4 自我重啟門檻）---------------------------
+# --- 自身程序資源（spec §7.1 / §6.4 自我重新啟動門檻）---------------------------
 class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
     _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
                 ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
@@ -236,7 +236,7 @@ def _proc_rss_bytes() -> int | None:
 
     spec §6.9：絕不捏造數值。回 0 會讓 LibreNMS 圖表顯示「RSS = 0」，
     看起來像正常讀數，而實際上是量測失敗——比該 OID 不存在更糟。
-    §6.4 的自我重啟門檻（RSS > 250 MB）也會因此永遠不觸發。
+    §6.4 的自我重新啟動門檻（RSS > 250 MB）也會因此永遠不觸發。
     Bandit S110 指出這個 try/except/pass，查證後確認是真正的規格違反。
     """
     try:
@@ -488,7 +488,7 @@ def get_inventory() -> dict:
     return _inventory_cache
 
 # --- 自我健康狀態（spec §7）------------------------------------------------
-# 本 agent 的失效是靜默的：服務顯示 Running、LibreNMS 圖表卻是斷的。
+# 本 agent 的失效是無聲的：服務顯示 Running、LibreNMS 圖表卻是斷的。
 # 這組狀態讓 LibreNMS 能監控 agent 本身，是判斷「活著但壞了」與「死了」的唯一依據。
 _health = {
     "start_monotonic": time.monotonic(),
@@ -1193,7 +1193,7 @@ def _extend_index(token: str) -> tuple[int, ...]:
 def _machine_guid() -> str:
     """取 Windows 的 MachineGuid，作為 engineID 的穩定來源。
 
-    engineID 必須跨重開機、跨服務重啟保持不變（RFC 3411），
+    engineID 必須跨重開機、跨服務重新啟動保持不變（RFC 3411），
     SNMPv3 的使用者金鑰是以它做 localization 的——變了就全部失效。
     """
     try:
@@ -1227,7 +1227,7 @@ def _engine_boots() -> int:
 
     RFC 3414 要求 (snmpEngineBoots, snmpEngineTime) 這組值永不重複。
     我們把 snmpEngineTime 定義為「系統開機至今的秒數」而非「服務啟動至今」，
-    理由見 snmpEngineTime 的輸出處——服務重啟時時間不歸零，因此開機次數
+    理由見 snmpEngineTime 的輸出處——服務重新啟動時時間不歸零，因此開機次數
     不必跟著加，兩者合起來仍嚴格遞增。
 
     以「開機時刻」判定是否換了一次開機：開機時刻改變 → 計數加一。
@@ -1556,7 +1556,7 @@ def uptime_centis() -> int:
 
 
 # --------------------------------------------------------------- Snapshot
-# JT 私有 subtree。IANA PEN 尚未取得，暫用 Microsoft 相容前綴下的保留分支，
+# JT 私有 subtree。IANA PEN 尚未取得，暫用 Microsoft 相容前置碼下的保留分支，
 # 取得 PEN 後遷移並提供對照表（spec §7.1）。
 JT = (1, 3, 6, 1, 4, 1, 99999, 1)
 JTAGENT = JT + (1,)          # 純量
@@ -1580,7 +1580,7 @@ HRPART = HR + (3, 7, 1)                    # hrPartitionTable
 HRFS = HR + (3, 8, 1)                      # hrFSTable
 IPROUTE = (1, 3, 6, 1, 2, 1, 4, 21, 1)     # RFC1213 ipRouteTable
 HRDISK = HR + (3, 6, 1)                    # hrDiskStorageTable
-HRDEVTYPE = HR + (3, 1)                    # hrDeviceTypes 前綴
+HRDEVTYPE = HR + (3, 1)                    # hrDeviceTypes 前置碼
 DIO = (1, 3, 6, 1, 4, 1, 2021, 13, 15, 1, 1)  # UCD-DISKIO
 UCDLA = (1, 3, 6, 1, 4, 1, 2021, 10, 1)    # UCD laTable（負載平均）
 UCDSS = (1, 3, 6, 1, 4, 1, 2021, 11)       # UCD systemStats
@@ -2026,7 +2026,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         return tuple(raw)
 
     def _prefix_mask(plen: int) -> str:
-        """IPv4 前綴長度 → 點分十進位遮罩（ipAdEntNetMask 需要）。"""
+        """IPv4 前置碼長度 → 點分十進位遮罩（ipAdEntNetMask 需要）。"""
         m = (0xFFFFFFFF << (32 - plen)) & 0xFFFFFFFF if plen else 0
         return ".".join(str((m >> sh) & 0xFF) for sh in (24, 16, 8, 0))
 
@@ -2054,7 +2054,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         aidx = (atype, len(a["raw"])) + idx
         add(IPADDRESS + (3,) + aidx, rfc1902.Integer32(our_if))           # ipAddressIfIndex
         add(IPADDRESS + (4,) + aidx, rfc1902.Integer32(1))                # ipAddressType unicast
-        add(IPADDRESS + (5,) + aidx, rfc1902.Integer32(a["prefix_len"]))  # 前綴長度（簡化）
+        add(IPADDRESS + (5,) + aidx, rfc1902.Integer32(a["prefix_len"]))  # 前置碼長度（簡化）
         add(IPADDRESS + (6,) + aidx, rfc1902.Integer32(1))                # ipAddressOrigin
         add(IPADDRESS + (7,) + aidx, rfc1902.Integer32(1))                # ipAddressStatus preferred
         add(IPADDRESS + (10,) + aidx, rfc1902.Integer32(1))               # ipAddressRowStatus
@@ -2114,7 +2114,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
 
     # --- ipRouteTable（RFC1213）---
     # RFC1213 的 ipRouteTable 以**目的位址單獨**當索引，因此同一個目的位址
-    # 只能有一筆。但真實主機常有多張網卡各自的多播路由（224.0.0.0）、
+    # 只能有一筆。但真實主機常有多張網路卡各自的多播路由（224.0.0.0）、
     # 廣播路由（255.255.255.255）、甚至等價多路徑 —— 實測在一台有 7 個 IP 的
     # 筆電上，224.0.0.0 出現了多次，觸發「重複 OID」護欄而讓 agent 無法啟動。
     #

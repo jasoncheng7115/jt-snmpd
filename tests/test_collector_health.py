@@ -7,7 +7,7 @@
   到現場一看服務是 Running。
 - **§6.9 絕不捏造數值**：collector 失敗時該列必須從 snapshot 消失，
   不得回傳 0 或前一次的值。回傳 default（空 list）讓該表不出現，是正確行為。
-- **§7.1 jtAgentCollectorTable**：agent 的失效是靜默的，必須能用 LibreNMS
+- **§7.1 jtAgentCollectorTable**：agent 的失效是無聲的，必須能用 LibreNMS
   監控 agent 自己。錯誤計數是累計值，恢復後不歸零——否則間歇性故障
   （最難查的那種）在圖表上會完全看不出來。
 

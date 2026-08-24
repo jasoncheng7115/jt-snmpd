@@ -68,7 +68,7 @@ diskIODevice = PhysicalDrive0            ← UCD-DISKIO
 ### 編碼鐵則（從實測 bug 得出）
 
 **SNMP OCTET STRING 是位元組串，不是文字。** pyasn1 預設以 latin-1 編碼 `str`，
-遇到非 ASCII 直接丟 `PyAsn1UnicodeEncodeError`。正體中文 Windows 的網卡別名就是
+遇到非 ASCII 直接丟 `PyAsn1UnicodeEncodeError`。正體中文 Windows 的網路卡別名就是
 中文（「乙太網路」），所以這在台灣環境是**必踩**的，不是邊緣案例。
 
 一律經過 `octet()` 包裝明確編成 UTF-8，禁止裸用 `rfc1902.OctetString(str)`。

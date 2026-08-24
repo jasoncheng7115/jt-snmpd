@@ -14,6 +14,8 @@
 >
 > By Jason Cheng (Jason Tools) · License: GPL-3.0-or-later · 繁體中文: [README_zh-TW.md](README_zh-TW.md)
 
+> **Project page: [https://jasoncheng7115.github.io/jt-snmpd/](https://jasoncheng7115.github.io/jt-snmpd/)** — comparison screenshots, measured numbers and the design rationale, in English and Traditional Chinese.
+
 ---
 
 ## Why jt-snmpd?

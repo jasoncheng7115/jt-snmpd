@@ -74,7 +74,7 @@ def test_overridden_methods_actually_exist_on_parent():
 
 def test_datagram_received_is_the_hook_point():
     """釘死掛點名稱。pysnmp 若改名，這個測試會先失敗，
-    而不是等到資安控制在正式環境靜默失效。"""
+    而不是等到資安控制在正式環境無聲失效。"""
     assert "datagram_received" in _gated_transport_methods(), (
         "必須覆寫 datagram_received —— 這是 pysnmp 7.x 的封包接收掛點")
     assert hasattr(udp.UdpTransport, "datagram_received")

@@ -122,7 +122,7 @@ def build_disk_entry(health: dict, max_temp: int | None = None) -> dict:
     #
     # Windows 的儲存 API 給的是**門檻值**（warning / critical），不是
     # 「這顆碟這輩子到過的最高溫」，拿門檻值去填是標錯標籤。
-    # 因此改用我們自己實際觀測到的最高溫（跨重啟持久化），
+    # 因此改用我們自己實際觀測到的最高溫（跨重新啟動持久化），
     # 語意是「jt-snmpd 安裝以來觀測到的最高溫」，這是真的量到的數字。
     if isinstance(max_temp, int):
         out["max_temp"] = max_temp

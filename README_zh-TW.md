@@ -14,6 +14,8 @@
 >
 > 作者 Jason Cheng (Jason Tools) · 授權 GPL-3.0-or-later · English: [README.md](README.md)
 
+> **專案頁面：[https://jasoncheng7115.github.io/jt-snmpd/](https://jasoncheng7115.github.io/jt-snmpd/)** —— 對照截圖、實測數字與設計取捨，英文與繁體中文可切換。
+
 ---
 
 ## 為什麼要有 jt-snmpd？
@@ -53,7 +55,7 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 | Disk I/O | UCD-DISKIO，來源 `IOCTL_DISK_PERFORMANCE` | ✅ |
 | 溫度 | ENTITY-SENSOR-MIB —— 磁碟溫度，走 SMART / NVMe | ✅ |
 | Inventory | ENTITY-MIB `entPhysicalTable`，解析 SMBIOS 而得 | ✅ |
-| 設備 | `hrDeviceTable` —— 處理器、網卡、實體磁碟 | ✅ |
+| 設備 | `hrDeviceTable` —— 處理器、網路卡、實體磁碟 | ✅ |
 | IP 位址 | `ipAddrTable` + `ipAddressTable`（IPv4 + IPv6）| ✅ |
 | Netstats | `ip` / `icmp` / `tcp` / `udp` / `snmp` 群組 | ✅ |
 | Agent 自我健康 | JT 私有 OID（見下）| ✅ |
@@ -61,7 +63,7 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 
 ### Agent 自我健康 OID
 
-這個 agent 的失效是**靜默的**：服務顯示「執行中」，而圖表卻是平的。
+這個 agent 的失效是**無聲的**：服務顯示「執行中」，而圖表卻是平的。
 因此我們用一組私有 OID 把 agent 自己的狀態暴露出來，讓 LibreNMS
 可以監控 agent 本身——版本、服務執行時間、RSS、執行緒與 handle 數、
 快照年齡與建立耗時、設定來源與各路徑，加上一張逐 collector 的健康表
@@ -123,7 +125,7 @@ SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`——
 `GET` 是一次 `bisect_left`、`GETNEXT` 是一次 `bisect_right`、
 `GETBULK` 是一段連續切片。
 
-這不是微優化，而是**讓協定正確性變成結構性質**。字典序、無重複 OID、
+這不是微幅調校，而是**讓協定正確性變成結構性質**。字典序、無重複 OID、
 無 GETNEXT 迴圈、正確的 `endOfMibView`，全都直接來自「陣列是排序的」這件事，
 所以不會因為某個 collector 改動而悄悄退步。測試套件負責驗證這個聲稱，
 而不是相信它。
@@ -213,7 +215,7 @@ agent 不接受監聽 `Any/Any`。
 1. 檢查 OS 版本、架構、磁碟空間，以及 UDP/161 目前由誰佔用
 2. 讀取既有的 Microsoft SNMP Service 設定，沿用 community、允許的管理主機、
    sysContact 與 sysLocation
-3. 停止任何舊版本，並**等待其檔案句柄真的釋放**
+3. 停止任何舊版本，並**等待其檔案控制代碼真的釋放**
 4. 安裝到 `%ProgramFiles%\JT SNMP Agent\`，建立 `%ProgramData%\JT-SNMP\`
    並收緊 ACL
 5. 停用內建 SNMP Service——是**停用，不是移除**，並記錄足以還原的資訊
@@ -280,7 +282,7 @@ jt-snmpd/
 | 供 GPO / Intune / SCCM 使用的 MSI | ⛔ 未實作 |
 | Authenticode 簽章 | ⛔ 待 SignPath |
 | Windows Server、Server Core、網域控制站 | ⛔ 尚未驗證 |
-| 多網卡來源位址選擇 | ⛔ 尚未驗證 |
+| 多網路卡來源位址選擇 | ⛔ 尚未驗證 |
 
 v1.0 不列入計畫：SNMP trap 與 inform、SNMP SET、ARM64、純 IPv6 部署、
 叢集感知。

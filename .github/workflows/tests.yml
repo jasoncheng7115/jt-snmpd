@@ -1,0 +1,35 @@
+# 跨平台測試。測試以 ast 靜態解析原始碼，不需要 Windows 也不需要 SNMP，
+# 因此可以在 Linux 上跑完整套——包含那些「用惡意位元組餵解析器」的測試。
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安裝相依
+        run: |
+          python -m pip install --upgrade pip
+          pip install pysnmp pytest
+
+      - name: 執行測試
+        run: python -m pytest tests/ -q
+
+      - name: 個資／機密掃描
+        # 推上公開 repo 的每一次都要掃。圖片走「人工審閱 + 雜湊」，
+        # 雜湊對不上會擋下——正規表示式讀不到像素。
+        run: python3 tools/check-privacy.py

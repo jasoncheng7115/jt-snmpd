@@ -1,33 +1,51 @@
-# dist/ — 發佈成品（安裝檔）
+# dist/ — Release artefacts (installers)
 
-對外交付的成品。**不進版本控制**（見 `.gitignore`），由 release 流程產生。
+繁體中文：[README_zh-TW.md](README_zh-TW.md)
+
+What ships to customers. **Not under version control** (see `.gitignore`);
+produced by the release process and attached to GitHub Releases.
 
 ```
 dist/
-├── jt-snmpd-<版本>-x64.msi           主要交付。GPO / Intune / SCCM / msiexec
-├── jt-snmpd-<版本>-x64.msi.sha256
-├── jt-snmpd-<版本>.intunewin          Intune 現成包
-└── jt-snmpd-<版本>-admx.zip           ADMX / ADML 原則範本
+├── jt-snmpd-<version>-x64.msi           the deliverable — GPO / Intune / SCCM / msiexec
+├── jt-snmpd-<version>-x64.msi.sha256
+└── releases/<version>/                  per-version archive (MSI + sha256 + BUILDINFO.txt)
 ```
 
-## 為什麼是 MSI
+## Why MSI
 
-spec §5.4：**GPO 的軟體安裝原則上只接受 MSI**，這一條即決定選型。
-MSI 另外免費提供 UpgradeCode 升級處理、安裝失敗自動回滾，
-以及出現在「加入或移除程式」（客戶資產盤點看得到，`hrSWInstalledTable` 亦看得到）。
+Group Policy software installation accepts MSI and nothing else, which settles the
+choice on its own. MSI also brings UpgradeCode-based upgrades, transactional
+rollback on failure, and an entry in Add/Remove Programs — visible both to customer
+asset inventories and to `hrSWInstalledTable`.
 
-Inno Setup / NSIS 產生的 EXE 不支援 GPO 軟體安裝、無交易式 rollback，
-不是同一個層級的選項。
+EXE installers produced by Inno Setup or NSIS support neither GPO software
+installation nor transactional rollback. They are not in the same category.
 
-## 交付原則
+## Delivery rules
 
-- **完全自包含**：安裝時不上網抓任何東西，所有內容（含任何第三方 binary）
-  直接打進 MSI（CLAUDE.md 鐵則 6）
-- **必須簽章**：無 Authenticode 簽章在 WDAC 環境完全無法部署，
-  且政府標案資安審查會退件（spec §1.4）
-- **Release Gate 全綠才可產出**：見 `TEST_PLAN.md` §10
+- **Fully self-contained.** The installer downloads nothing; everything, including
+  any third-party binary, is inside the MSI.
+- **Must be signed.** Without an Authenticode signature the package cannot be
+  deployed in a WDAC environment at all, and government tenders reject it at
+  security review.
+- **Release Gate green before it ships.** See `TEST_PLAN.md` §10.
 
-## 狀態
+## Status
 
-MSI 打包尚未實作（Phase 3.5）。目前僅有 `build/` 的 one-folder 產物，
-以手動方式部署至測試機。
+The MSI is implemented and verified on real hardware: install, upgrade, uninstall,
+reinstall and PURGE uninstall — 40 lifecycle assertions, all green
+(`tests/lifecycle.ps1`).
+
+Each release is archived under `dist/releases/<version>/` with the MSI, its
+`.sha256`, and `BUILDINFO.txt`. BUILDINFO records the SHA-256 of three sources —
+the configure script, the WiX source, and the agent. That exists because a machine
+once held two copies of `msi-configure.ps1` and the build used the one that had not
+been edited: the build succeeded, the version number advanced, and the fix was
+simply not in the MSI. The fingerprints are how you answer "which version of the
+script is inside the package the customer is holding".
+
+**Authenticode signing is not yet in place** (SignPath Foundation application
+pending). Signing must happen before any WDAC deployment.
+
+The installer itself does not go into git; it is attached to the GitHub Release.

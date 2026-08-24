@@ -1,17 +1,19 @@
-# build/ — 建置產物（執行檔）
+# build/ — Build output (executable)
 
-PyInstaller one-folder 的輸出。**不進版本控制**（見 `.gitignore`）。
+繁體中文：[README_zh-TW.md](README_zh-TW.md)
+
+PyInstaller one-folder output. **Not under version control** (see `.gitignore`).
 
 ```
 build/
 └── jt-snmpd/
-    ├── jt-snmpd.exe        服務主程式（同時是 CLI 進入點）
-    └── _internal/          自帶的 Python runtime、pysnmp、pywin32 等
+    ├── jt-snmpd.exe        the service (and the CLI entry point)
+    └── _internal/          bundled Python runtime, pysnmp, pywin32
 ```
 
-## 產生方式
+## How it is produced
 
-在 Windows 目標機上執行：
+On the Windows target:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build-exe.ps1 `
@@ -20,14 +22,20 @@ powershell -ExecutionPolicy Bypass -File packaging\build-exe.ps1 `
     -OutDir build
 ```
 
-建置腳本內含三道閘門，任一失敗即 exit 1：
+The build script has three gates; failing any of them exits 1:
 
-1. **停服務並等待行程消失** —— `Stop-Service` 回來不代表檔案句柄已釋放
-2. **產物必須比來源新** —— 只驗「exe 存在」會在建置失敗時取到殘留的舊版本
-3. **`--selftest`** —— 實際初始化 SNMP engine 並建立快照，攔截「exe 產出但缺資料檔」
+1. **Stop the service and wait for the process to disappear.** `Stop-Service`
+   returning does not mean the file handles have been released.
+2. **The artefact must be newer than the source.** Checking only that the exe
+   exists picks up a stale copy when the build has actually failed — this happened.
+3. **`--selftest`.** Actually initialises the SNMP engine and builds a snapshot.
+   Catches the case where the exe is produced but a data file is missing: pysnmp's
+   MIB files were once left out, the exe built fine, and the service reported
+   Running while raising `MibNotFoundError` on every request.
 
-## 為什麼是 one-folder 而非 one-file
+## Why one-folder rather than one-file
 
-spec §1.4 硬性規則。one-file 會把內容解壓到 `%TEMP%`（服務身分下是
-`C:\Windows\Temp`）再執行，那是已知的 DLL 劫持路徑，在 WDAC / HVCI
-環境也更容易被擋。
+One-file extracts itself into `%TEMP%` (under the service account, that is
+`C:\Windows\Temp`) before executing. That is a known DLL hijacking path, and it is
+also more likely to be blocked under WDAC and HVCI. This is a hard rule for the
+project, not a preference.
