@@ -12,7 +12,7 @@ description: Security assessment - what installing jt-snmpd adds to a Windows ho
 | 量測項目 | 內容 |
 |---|---|
 | 量測日期 | 2026-08-24 |
-| 版本 | jt-snmpd 0.9.5 |
+| 版本 | jt-snmpd 0.9.6 |
 | 受測主機 | Dell Latitude E5270 / Windows 10 22H2 |
 | 量測端 | LibreNMS 26.8.1 |
 
@@ -68,7 +68,7 @@ JT SNMP Agent (ICMPv4):  Allow proto=ICMPv4         from=192.168.1.0/255.255.255
   **全部在 pysnmp 的 BER 解碼器之前**執行。
 
 第二層的存在理由是第一層可能被設寬（客戶自行改防火牆），
-以及**深度防禦**：BER 解碼器是攻擊面最大的一塊，能不讓未授權封包碰到它最好。
+以及**深度防禦**：BER 解碼器是攻擊面最大的一塊，能避免未授權封包碰到它最好。
 
 ---
 

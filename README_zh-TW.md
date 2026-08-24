@@ -1,4 +1,4 @@
-# jt-snmpd v0.9.5
+# jt-snmpd v0.9.6
 
 [![License](https://img.shields.io/badge/License-GPL--3.0--or--later-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
@@ -222,17 +222,17 @@ pysnmp（只負責 message / USM / VACM / transport）
 ### 方式一：點兩下安裝
 
 安裝程式會逐步詢問安裝路徑與監控設定。兩個必填的設定是**管理網段**與
-**community**，它們決定誰查得到這台主機。沒有填管理網段就不讓繼續，
+**community**，它們決定誰查得到這台主機。沒有填管理網段就無法繼續，
 因為空清單等於只回應 loopback：裝好了，但沒有在監控。
 
 ### 方式二：命令列與 GPO 派送
 
 下面這道指令是**命令列 / 無人值守**安裝用的，`/qn` 表示不顯示任何介面。
-同一顆 MSI 與同一組屬性也直接適用於**群組原則（GPO）軟體派送**，
+同一個 MSI 與同一組屬性也直接適用於**群組原則（GPO）軟體派送**，
 安裝過程以 SYSTEM 身分執行，不會有任何提示。
 
 ```powershell
-msiexec /i jt-snmpd-0.9.5-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=你的community
+msiexec /i jt-snmpd-0.9.6-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=你的community
 ```
 
 以 GPO 派送時，把 MSI 放在網域內的共用資料夾，並確保電腦帳戶對該資料夾有讀取權限。
@@ -262,10 +262,10 @@ msiexec /i jt-snmpd-0.9.5-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNIT
 
 ```powershell
 # 解除安裝（還原內建 SNMP Service，保留設定與狀態）
-msiexec /x jt-snmpd-0.9.5-x64.msi /qn
+msiexec /x jt-snmpd-0.9.6-x64.msi /qn
 
 # 解除安裝並清除全部資料
-msiexec /x jt-snmpd-0.9.5-x64.msi /qn PURGE=1
+msiexec /x jt-snmpd-0.9.6-x64.msi /qn PURGE=1
 ```
 
 萬一安裝或解除安裝走不完，[手動移除](https://jasoncheng7115.github.io/jt-snmpd/manual-removal_zh-TW.html)

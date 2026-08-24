@@ -271,7 +271,7 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 |---|---|---|---|
 | 6.1b.1 | `build-exe.ps1`：產物必須比原始碼新 | PyInstaller 失敗，舊 exe 還在，只檢查存在會誤判成功 | **[已驗]** |
 | 6.1b.2 | `build-exe.ps1`：`--selftest` | exe 產出但缺 pysnmp 的 MIB 資料檔，服務顯示 Running 卻每次請求都拋 `MibNotFoundError` | **[已驗]** |
-| 6.1b.3 | `build-msi.ps1`：`wix build` 的結束碼 | 缺 WiX 擴充導致建置失敗，卻取到上一顆 MSI 並以舊版本號回報成功 | **[已驗]** 實測攔下 |
+| 6.1b.3 | `build-msi.ps1`：`wix build` 的結束碼 | 缺 WiX 擴充導致建置失敗，卻取到上一個 MSI 並以舊版本號回報成功 | **[已驗]** 實測攔下 |
 | 6.1b.4 | `build-msi.ps1`：MSI 必須是本次產出 | 殘留檔案冒充本次建置的成果 | **[已驗]** |
 | 6.1b.5 | `build-msi.ps1`：執行檔必須比原始碼新 | 忘了先跑 build-exe，修正沒進 MSI，但版本號、SHA-256、歸檔目錄全是新的 | **[已驗]** 實測攔下 |
 | 6.1b.6 | BUILDINFO 記錄 configure / wxs / agent 三份來源指紋 | 同一台機器上有兩份 `msi-configure.ps1`，改到不被用的那份 | **[已驗]** |

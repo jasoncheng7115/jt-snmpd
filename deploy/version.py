@@ -13,5 +13,5 @@ The build reads VERSION from here for all of:
   - the release archive file name
 """
 
-VERSION = "0.9.5"
+VERSION = "0.9.6"
 BUILD_DATE = "2026-08-24"

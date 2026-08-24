@@ -295,6 +295,44 @@ def test_licence_shown_by_the_installer_is_the_repository_licence():
         "license.rtf and LICENSE disagree; regenerate with packaging/make-ui-assets.py"
 
 
+# The banner bitmap is 370 dialog units wide and the icon sits in roughly the
+# last 40 of them, so text on the banner may run to about unit 325 before it
+# collides. Measured from a rendered dialog: at unit 355 the settings page's
+# description came within 4 px of the icon and read as running underneath it.
+BANNER_TEXT_LIMIT = 325
+
+
+def _banner_text_controls():
+    """Text controls that sit on the banner strip, which is 44 units tall."""
+    out = []
+    for d in TREE.iter(f"{{{NS['w']}}}Dialog"):
+        for c in d.iter(f"{{{NS['w']}}}Control"):
+            if c.get("Type") != "Text":
+                continue
+            try:
+                y = int(c.get("Y", "999")); x = int(c.get("X", "0"))
+                w = int(c.get("Width", "0"))
+            except ValueError:
+                continue
+            if y < 44:
+                out.append((d.get("Id"), c.get("Id"), x, w))
+    return out
+
+
+def test_banner_text_does_not_reach_the_icon():
+    """Text on the banner must stop before the icon, or it reads as overlapping.
+
+    This is not caught by anything that parses the dialog: the control is valid,
+    the build succeeds, and the collision only exists once the text is drawn.
+    """
+    controls = _banner_text_controls()
+    assert controls, "no text controls found on any banner"
+    for dlg, ctl, x, w in controls:
+        assert x + w <= BANNER_TEXT_LIMIT, (
+            f"{dlg}/{ctl} spans units {x}..{x + w}, past the banner icon at "
+            f"~{BANNER_TEXT_LIMIT}; the text will run under it")
+
+
 @pytest.mark.parametrize("name,size", [("banner.bmp", (493, 58)),
                                        ("dialog.bmp", (493, 312))])
 def test_artwork_is_the_size_wix_requires(name, size):

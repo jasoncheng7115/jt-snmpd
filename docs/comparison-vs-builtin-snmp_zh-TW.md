@@ -73,7 +73,7 @@ Windows 內建 SNMP Service 沒有實作。
 會拋 `PyAsn1UnicodeEncodeError`，整個快照建不起來，agent 看起來是「啟動了但沒資料」。
 
 處理方式是所有 OCTET STRING 一律先自行編成 UTF-8 位元組再交給 pysnmp，
-不讓它自己去猜編碼。這條規則涵蓋磁碟區標籤、介面描述、
+避免讓它自己猜編碼。這條規則涵蓋磁碟區標籤、介面描述、
 `sysContact` / `sysLocation`，以及 SMBIOS 解析出來的字串。
 
 實測結果：一個標籤為「乙太網路」的磁碟區，在 LibreNMS 的 Disk Usage 頁面
