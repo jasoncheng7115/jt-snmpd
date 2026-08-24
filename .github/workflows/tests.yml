@@ -1,5 +1,12 @@
-# 跨平台測試。測試以 ast 靜態解析原始碼，不需要 Windows 也不需要 SNMP，
-# 因此可以在 Linux 上跑完整套——包含那些「用惡意位元組餵解析器」的測試。
+# Cross-platform tests. The suite parses the source with ast rather than running
+# it, so it needs neither Windows nor SNMP and the whole thing runs on Linux --
+# including the tests that feed the parsers malicious bytes.
+#
+# The MSI is built here too, on every push. It used to be built only when a tag
+# was pushed, which meant a WiX error could not be discovered until the release
+# was already tagged. That happened: v0.9.4 was tagged and its build failed on
+# three WIX0103 errors. Building on every push moves that discovery to where it
+# belongs.
 name: tests
 
 on:
@@ -21,31 +28,172 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 安裝 net-snmp
-        # 協定正確性測試以真實的 net-snmp 用戶端驅動 agent。缺了它們會跳過，
-        # 而那正是驗 GETNEXT／GETBULK 的那一批——悄悄不跑比沒有還糟，
-        # 所以這裡裝好並確認存在。
+      - name: Install net-snmp
+        # The protocol-correctness tests drive the agent with a real net-snmp
+        # client. Without it they skip -- and they are the GETNEXT and GETBULK
+        # ones. Skipping quietly is worse than not having them, so install it
+        # and confirm it is there.
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq snmp
-          command -v snmpbulkwalk || { echo "::error::snmpbulkwalk 未安裝"; exit 1; }
+          command -v snmpbulkwalk || { echo "::error::snmpbulkwalk is not installed"; exit 1; }
 
-      - name: 安裝相依
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pysnmp pytest
 
-      - name: 執行測試
+      - name: Run tests
         run: python -m pytest tests/ -q --tb=short
 
-      - name: 確認協定正確性測試沒有被跳過
+      - name: Confirm the protocol-correctness tests actually ran
         run: |
           python -m pytest tests/test_walk_correctness.py -q --tb=line \
             | tee /tmp/walk.txt
           grep -qE '[0-9]+ passed' /tmp/walk.txt || {
             echo "::error::walk correctness tests did not run"; exit 1; }
 
-      - name: 個資／機密掃描
-        # 推上公開 repo 的每一次都要掃。圖片走「人工審閱 + 雜湊」，
-        # 雜湊對不上會擋下——正規表示式讀不到像素。
+      - name: Privacy and secret scan
+        # Run on every push to the public repo. Images go through
+        # review-and-hash: a hash that no longer matches blocks the push,
+        # because a regular expression cannot read pixels.
         run: python3 tools/check-privacy.py
+
+  build-msi:
+    # The WiX source is checked statically by tests/test_msi_ui_gating.py, but
+    # static checks cannot tell whether wix.exe will accept it. Three classes of
+    # failure only appear at build time: a missing binary the UI extension needs,
+    # an extension version mismatch, and an ICE validation error. Each has cost a
+    # release, so the build runs on every push rather than only on a tag.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install pysnmp pywin32 pyinstaller
+
+      - name: Confirm the generated wizard assets are current
+        # banner.bmp, dialog.bmp and license.rtf are committed, and generated
+        # from docs/brand/icon-512.png and LICENSE. If either source changes and
+        # nobody regenerates, the installer keeps showing the previous artwork or
+        # -- far worse -- a licence that no longer matches the repository's.
+        shell: pwsh
+        run: |
+          pip install pillow
+          $before = Get-ChildItem packaging/wix/banner.bmp, packaging/wix/dialog.bmp, packaging/wix/license.rtf |
+                    ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash }
+          python packaging/make-ui-assets.py
+          $after = Get-ChildItem packaging/wix/banner.bmp, packaging/wix/dialog.bmp, packaging/wix/license.rtf |
+                   ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash }
+          if (Compare-Object $before $after) {
+            Write-Host "::error::the committed wizard assets do not match what packaging/make-ui-assets.py produces; regenerate and commit them"
+            exit 1
+          }
+          Write-Host "wizard assets are current"
+
+      - name: Build the executable
+        shell: pwsh
+        run: |
+          $py = (Get-Command python).Source
+          $out = .\packaging\build-exe.ps1 -Python $py -Source deploy\jt_agent.py 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) {
+            foreach ($l in ($out -split "`n")) {
+              $t = $l.Trim()
+              if ($t -match 'FAIL|error|Error|ERROR|Traceback') { Write-Host "::error::$t" }
+            }
+            exit 1
+          }
+
+      - name: Install WiX 5 and its extensions
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.*
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+
+      - name: Build the MSI
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          $out = .\packaging\build-msi.ps1 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) {
+            foreach ($l in ($out -split "`n")) {
+              $t = $l.Trim()
+              if ($t -match 'WIX\d{3,4}|\[FAIL\]|\[!\]|error |Exception') {
+                Write-Host "::error::$t"
+              }
+            }
+            Write-Host "::error::build-msi.ps1 exited $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Confirm the wizard routes through the settings page
+        # Static analysis says the source is right; this says the *built MSI* is.
+        # 0.9.3 shipped with the route to the settings page published at an Order
+        # that WixUI's own row overruled, so the page never appeared and the
+        # install failed with nothing configured. The source looked fine. Read
+        # the ControlEvent table out of the artefact instead.
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\jt-snmpd-*-x64.msi | Select-Object -First 1).FullName
+          $bt  = [char]96
+          $si = New-Object -ComObject WindowsInstaller.Installer
+          $db = $si.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$si,@($msi,0))
+          $sql = "SELECT ${bt}Event${bt},${bt}Argument${bt},${bt}Ordering${bt} FROM ${bt}ControlEvent${bt} WHERE ${bt}Dialog_${bt}='InstallDirDlg' AND ${bt}Control_${bt}='Next'"
+          $vw = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@($sql))
+          $vw.GetType().InvokeMember('Execute','InvokeMethod',$null,$vw,$null)
+          $rows = @()
+          while ($true) {
+            $rec = $vw.GetType().InvokeMember('Fetch','InvokeMethod',$null,$vw,$null)
+            if ($null -eq $rec) { break }
+            $rows += ,@(
+              [string]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,1),
+              [string]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,2),
+              [int]$rec.GetType().InvokeMember('IntegerData','GetProperty',$null,$rec,3))
+          }
+          $rows | ForEach-Object { Write-Host ("  {0} | {1} | {2}" -f $_[0], $_[1], $_[2]) }
+          $ours = $rows | Where-Object { $_[0] -eq 'NewDialog' -and $_[1] -eq 'JtSettingsDlg' }
+          $wix  = $rows | Where-Object { $_[0] -eq 'NewDialog' -and $_[1] -eq 'VerifyReadyDlg' }
+          if (-not $ours) {
+            Write-Host "::error::the built MSI has no route from InstallDirDlg to JtSettingsDlg"
+            exit 1
+          }
+          if ($wix -and $ours[2] -le $wix[2]) {
+            Write-Host ("::error::JtSettingsDlg is published at Order {0} but WixUI publishes VerifyReadyDlg at Order {1}; the settings page will be skipped" -f $ours[2], $wix[2])
+            exit 1
+          }
+          Write-Host "the settings page is on the route"
+
+      - name: Confirm the licence page is not a placeholder
+        # WiX substitutes Lorem ipsum when WixUILicenseRtf is unset, and 0.9.3
+        # shipped exactly that: a document presented as terms of use, saying
+        # nothing, for GPL-3.0-or-later software.
+        shell: pwsh
+        run: |
+          $rtf = Get-Content packaging\wix\license.rtf -Raw
+          if ($rtf -match 'Lorem ipsum') {
+            Write-Host "::error::the licence page is still WiX's placeholder text"
+            exit 1
+          }
+          if ($rtf -notmatch 'GNU GENERAL PUBLIC LICENSE') {
+            Write-Host "::error::the licence page does not show the GPL"
+            exit 1
+          }
+          Write-Host "the licence page shows the repository's own LICENSE"
+
+      - name: Keep the MSI for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: msi-${{ github.sha }}
+          path: dist/jt-snmpd-*-x64.msi
+          retention-days: 14
