@@ -226,11 +226,36 @@ def test_buffer_allocation_is_bounded():
     assert 0 < sensors.MAX_PROCESSORS <= 4096
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="Windows 上這些函式會真的呼叫 API 並回傳實機資料")
 def test_module_imports_on_non_windows():
-    """agent 的測試在 Linux 上跑；本模組必須能被匯入且回空值。"""
+    """agent 的測試在 Linux 上跑；本模組必須能被匯入且回空值。
+
+    在 Windows 上跳過而非改寫斷言：這裡要驗的是「非 Windows 平台也能匯入」，
+    在 Windows 上驗這件事沒有意義。CI 同時在 Linux 與 Windows 執行器上跑，
+    第一版沒加這個條件，Linux 全綠、Windows 直接失敗。
+    """
     assert sensors.read_thermal_zones() == []
     assert sensors.read_battery() is None
     assert sensors.read_cpu_frequencies() == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="需要 Windows")
+def test_windows_collectors_return_sane_shapes():
+    """在 Windows 上改驗**型別與範圍**，而不是「一定是空的」。
+
+    虛擬機沒有熱區與電池是正常的，所以不能斷言一定有值；
+    但只要有值，就必須落在合理範圍內。
+    """
+    for z in sensors.read_thermal_zones():
+        assert -40 <= z.celsius <= 200
+        assert isinstance(z.name, str)
+    bat = sensors.read_battery()
+    if bat is not None:
+        assert 0 <= bat.percent <= 100
+    for f in sensors.read_cpu_frequencies():
+        assert 0 < f.current_mhz <= 100_000
+        assert 0 < f.max_mhz <= 100_000
 
 
 def test_processor_buffer_uses_group_aware_count():
