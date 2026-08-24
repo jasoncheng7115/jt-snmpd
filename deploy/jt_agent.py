@@ -1,14 +1,17 @@
-"""jt-snmpd — JT SNMP Agent for Windows (Phase 0.5 端到端可部署版)
+"""jt-snmpd — JT SNMP Agent for Windows (Phase 0.5, deployable end to end)
 
-單檔自足。可前景執行（除錯）或由 pywin32 註冊為 Windows 服務（開機自啟、LocalSystem）。
+Self-contained in one file. Runs in the foreground for debugging, or is
+registered by pywin32 as a Windows service (automatic start, LocalSystem).
 
-架構依 spec.md §4.3：snapshot + bisect。整份 MIB 是一個依 OID 字典序排好的陣列，
-GET 用 bisect_left、GETNEXT 用 bisect_right，故 §36 的 ordering / 無重複 OID /
-無 GETNEXT loop / 正確 endOfMibView 成為結構保證。
+The architecture follows spec.md §4.3: snapshot + bisect. The entire MIB is one
+array sorted in OID lexicographic order; GET uses bisect_left and GETNEXT uses
+bisect_right, which makes the §36 requirements — ordering, no duplicate OIDs, no
+GETNEXT loops, correct endOfMibView — structural rather than something to
+remember.
 
-用法：
+Usage:
     python jt_agent.py --foreground [--port 161] [--community <community>]
-    python jt_agent.py install|start|stop|remove       (pywin32 服務)
+    python jt_agent.py install|start|stop|remove       (pywin32 service)
 """
 from __future__ import annotations
 
@@ -35,7 +38,7 @@ from pysnmp.smi.instrum import AbstractMibInstrumController
 
 from preauth import PreAuthGate
 
-# ---------------------------------------------------------------- 設定 / 記錄
+# ------------------------------------------------------------ config / logging
 STATE_DIR = r"C:\ProgramData\JT-SNMP"
 LOG_DIR = os.path.join(STATE_DIR, "logs")
 STATE_FILE = os.path.join(STATE_DIR, "state", "index-map.json")
@@ -78,7 +81,8 @@ def load_config() -> None:
     """
     global CFG_SOURCE
     if CFG_SOURCE != "defaults":
-        return          # 已載入。兩個進入點都會呼叫，重複讀檔只會重複記錄
+        return          # already loaded; both entry points call this, and
+                        # re-reading would only log the same line twice
     try:
         # utf-8-sig, not utf-8: Windows PowerShell 5.1's `Set-Content -Encoding
         # UTF8` writes a BOM, and so does Notepad when an operator edits the file
@@ -122,33 +126,37 @@ def load_config() -> None:
     CFG_SOURCE = CFG_PATH
     log(f"config loaded from {CFG_PATH}: {', '.join(applied) or 'nothing usable'}")
 
-# 版本來自 deploy/version.py（單一來源）。硬編碼在此會與 MSI 版本脫節——
-# 實測發生過：MSI 已是 0.1.6，jtAgentVersion 仍回報 0.1.0-dev。
+# The version comes from deploy/version.py, the single source. Hardcoding it here
+# drifts from the MSI version — which happened: the MSI reached 0.1.6 while
+# jtAgentVersion still reported 0.1.0-dev.
 try:
     from version import VERSION as AGENT_VERSION, BUILD_DATE as AGENT_BUILD_DATE
-except ImportError:                     # 打包後 version.py 已併入，理論上不會發生
+except ImportError:                     # version.py is bundled after packaging,
+                                        # so this should not happen
     AGENT_VERSION, AGENT_BUILD_DATE = "unknown", "unknown"
 
 try:
-    import sensors as _sensors          # ACPI 熱區 / 電池 / CPU 頻率
+    import sensors as _sensors          # ACPI thermal zones, battery, CPU freq
 except ImportError:
     _sensors = None
 try:
-    import smartjson as _smartjson      # LibreNMS smart 應用程式的 JSON
+    import smartjson as _smartjson      # JSON for LibreNMS's smart application
 except ImportError:
     _smartjson = None
 
 
-LOG_MAX_BYTES = 5 * 1024 * 1024     # 單檔上限
-LOG_KEEP = 3                        # 保留 .1 ~ .3
+LOG_MAX_BYTES = 5 * 1024 * 1024     # cap per file
+LOG_KEEP = 3                        # keep .1 through .3
 
 
 def _rotate_log(path: str) -> None:
-    """記錄檔輪替。
+    """Rotate the log file.
 
-    無上限成長在數百台、跑數年的部署下會把系統碟寫滿——**監控代理程式把被監控
-    的主機弄掛**是最不可接受的失敗模式。快照重建失敗時每 5 秒一行，一天就是
-    一萬七千行，這不是假設性情境。
+    Unbounded growth fills the system drive on a deployment of hundreds of
+    machines running for years — **a monitoring agent taking down the host it
+    monitors** is the least acceptable failure there is. A repeated snapshot
+    failure writes a line every five seconds, which is seventeen thousand lines a
+    day; this is not hypothetical.
     """
     try:
         oldest = f"{path}.{LOG_KEEP}"
@@ -160,16 +168,19 @@ def _rotate_log(path: str) -> None:
                 os.replace(src, f"{path}.{n + 1}")
         os.replace(path, f"{path}.1")
     except OSError:
-        # 輪替失敗只會讓記錄檔繼續長，不該影響 agent 本身。
+        # A failed rotation only means the log keeps growing; it must not
+        # affect the agent itself.
         pass
 
 
 def _event_log_error(msg: str) -> None:
-    """錯誤同時寫進 Windows 事件檢視器（來源 jt-snmpd）。
+    """Also write errors to the Windows Event Log, under the source jt-snmpd.
 
-    現場人員與稽核工具第一個看的是事件檢視器，不是 %ProgramData% 下的文字檔；
-    遠端診斷數百台時 `Get-WinEvent` 可以集中撈，散落各機的記錄檔不行。
-    servicemanager 在模組後段才 import，此處以 globals() 延遲取得。
+    Field staff and audit tooling look at the Event Viewer first, not at a text
+    file under %ProgramData%. Diagnosing hundreds of machines remotely,
+    `Get-WinEvent` can collect centrally; log files scattered across machines
+    cannot. servicemanager is imported further down this module, so it is fetched
+    lazily through globals().
     """
     sm = globals().get("servicemanager")
     if sm is None:
@@ -177,20 +188,24 @@ def _event_log_error(msg: str) -> None:
     try:
         sm.LogErrorMsg(f"jt-snmpd: {msg}")
     except Exception:   # noqa: BLE001, S110
-        # 寫事件記錄失敗（權限、事件來源未註冊）不得讓 agent 跟著倒。
+        # Failing to write to the Event Log (permissions, unregistered event
+        # source) must not bring the agent down with it.
         pass
 
 
 def log(msg: str, *, error: bool = False) -> None:
-    """所有檔案 I/O 一律明確 encoding="utf-8"。
+    """All file I/O states encoding="utf-8" explicitly.
 
-    安裝路徑可能含中文（例如 C:\\程式集\\JT SNMP Agent）。Python 的 open() 在
-    Windows 上預設使用系統 ANSI 代碼頁（正體中文為 cp950），寫入含非 cp950 字元
-    的內容會丟 UnicodeEncodeError；而路徑本身 Python 3 以 str 處理（內部 UTF-16），
-    只要不自行編碼就安全。真正會出事的是「內容編碼」與「子行程參數傳遞」。
+    The installation path may contain non-ASCII characters. Python's open() on
+    Windows defaults to the system ANSI code page (cp950 for Traditional
+    Chinese), and writing content outside that page raises UnicodeEncodeError.
+    The path itself is safe — Python 3 handles it as str, internally UTF-16 — as
+    long as nothing encodes it by hand. What actually breaks is content encoding
+    and argument passing to subprocesses.
 
-    `error=True` 另外寫入事件檢視器——保留給「使用者需要知道」的事件，
-    不是每個 collector 的小失敗，否則事件記錄會被洗掉而失去價值。
+    `error=True` additionally writes to the Event Log. That is reserved for
+    things the operator needs to know, not for every small collector failure —
+    otherwise the Event Log fills with noise and stops being worth reading.
     """
     size = 0
     try:
@@ -199,7 +214,7 @@ def log(msg: str, *, error: bool = False) -> None:
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} pid={os.getpid()} "
                      f"{'ERROR ' if error else ''}{msg}\n")
-            size = fh.tell()        # tell() 免費，不必額外 stat
+            size = fh.tell()        # tell() is free; no extra stat needed
     except (OSError, UnicodeError):
         pass
     if size > LOG_MAX_BYTES:
@@ -208,9 +223,10 @@ def log(msg: str, *, error: bool = False) -> None:
         _event_log_error(msg)
 
 
-# ------------------------------------------------------- Win32 函式簽名宣告
-# 鐵則：所有 Win32 呼叫必須宣告 argtypes/restype。否則 64 位回傳值會被 ctypes
-# 預設的 c_int 截斷——實測過 C: 磁碟顯示 0 GB、GetTickCount64 超過 24.8 天溢位。
+# ------------------------------------------------- Win32 function signatures
+# Rule: every Win32 call declares argtypes and restype. Without them ctypes
+# truncates 64-bit return values through its default c_int — observed as drive C:
+# reporting 0 GB, and GetTickCount64 overflowing past 24.8 days.
 _k32 = ctypes.windll.kernel32
 _k32.GetTickCount64.restype = ctypes.c_ulonglong
 _k32.GetTickCount64.argtypes = []
@@ -245,29 +261,36 @@ _k32.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _k32.SetThreadPriority.restype = wintypes.BOOL
 _k32.GetCurrentThread.restype = ctypes.c_void_p
 
-# 讓路用的優先權常數
+# Priority constants used to get out of the way
 BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
 THREAD_MODE_BACKGROUND_BEGIN = 0x00010000
 THREAD_MODE_BACKGROUND_END = 0x00020000
 
 
 def lower_process_priority() -> bool:
-    """把整個 agent 程序降為 BELOW_NORMAL。
+    """Drop the whole agent process to BELOW_NORMAL.
 
-    使用者的硬性要求：poll 時不得讓 Windows 變慢。實測在 7,000 倍真實負載下，
-    未降優先權時 host 上的固定工作負載退化 4.2%（目標 < 3%）。
-    SNMP agent 對延遲不敏感（LibreNMS 每 5 分鐘才 poll 一次，逾時以秒計），
-    把 CPU 讓給前景工作是正確取捨。
+    A hard requirement: polling must not make Windows feel slower. Measured at
+    7,000 times the real load, a fixed workload on the host degraded by 4.2%
+    without this (the target is under 3%).
+
+    An SNMP agent is not latency-sensitive — LibreNMS polls every five minutes
+    and its timeouts are in seconds — so yielding CPU to foreground work is the
+    right trade.
     """
     return bool(_k32.SetPriorityClass(_k32.GetCurrentProcess(),
                                       BELOW_NORMAL_PRIORITY_CLASS))
 
 
 def begin_background_mode() -> bool:
-    """讓當前執行緒進入背景模式：同時降低 CPU **與磁碟 I/O** 優先權。
+    """Put the current thread into background mode, lowering both CPU **and disk
+    I/O** priority.
 
-    只用於 collector 執行緒。SNMP 回應路徑不套用，否則會拖慢回應。
-    注意：THREAD_MODE_BACKGROUND_BEGIN 只能對自己的執行緒呼叫。
+    Only for collector threads. The SNMP response path does not use it, since
+    that would slow responses down.
+
+    Note that THREAD_MODE_BACKGROUND_BEGIN can only be called on the calling
+    thread itself.
     """
     return bool(_k32.SetThreadPriority(_k32.GetCurrentThread(),
                                        THREAD_MODE_BACKGROUND_BEGIN))
@@ -278,9 +301,11 @@ U32 = 0xFFFFFFFF
 
 
 def octet(s) -> rfc1902.OctetString:
-    """SNMP OCTET STRING 是位元組串，不是文字。pyasn1 預設以 latin-1 編碼 str，
-    遇到非 ASCII 會丟 PyAsn1UnicodeEncodeError——台灣環境的網路卡別名就是中文
-    （「乙太網路」），這在正體中文 Windows 上是必踩的。一律明確編成 UTF-8。"""
+    """An SNMP OCTET STRING is bytes, not text. pyasn1 encodes str as latin-1 by
+    default and raises PyAsn1UnicodeEncodeError on anything outside it — and a
+    network adapter alias on a Traditional Chinese Windows install is Chinese
+    ("乙太網路"), so this is guaranteed to be hit in the target environment.
+    Everything is encoded explicitly as UTF-8."""
     if isinstance(s, bytes):
         return rfc1902.OctetString(s)
     return rfc1902.OctetString(str(s).encode("utf-8"))
@@ -291,7 +316,7 @@ def _reg(path: str, name: str, root=winreg.HKEY_LOCAL_MACHINE):
         return winreg.QueryValueEx(key, name)[0]
 
 
-# --- 自身程序資源（spec §7.1 / §6.4 自我重新啟動門檻）---------------------------
+# --- Own process resources (spec §7.1, §6.4 self-restart thresholds) ---------
 class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
     _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
                 ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
@@ -303,12 +328,15 @@ class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
 
 
 def _proc_rss_bytes() -> int | None:
-    """自身 RSS。取不到時回 None，**不回 0**。
+    """Own RSS. Returns None when it cannot be read — **not 0**.
 
-    spec §6.9：絕不捏造數值。回 0 會讓 LibreNMS 圖表顯示「RSS = 0」，
-    看起來像正常讀數，而實際上是量測失敗——比該 OID 不存在更糟。
-    §6.4 的自我重新啟動門檻（RSS > 250 MB）也會因此永遠不觸發。
-    Bandit S110 指出這個 try/except/pass，查證後確認是真正的規格違反。
+    spec §6.9: never fabricate a value. Returning 0 makes the LibreNMS graph show
+    "RSS = 0", which looks like a valid reading when it is actually a measurement
+    failure — worse than the OID not existing at all. It would also mean the
+    §6.4 self-restart threshold (RSS > 250 MB) could never fire.
+
+    Bandit S110 flagged this try/except/pass, and on investigation it was a real
+    violation of the spec rather than a false positive.
     """
     try:
         psapi = ctypes.windll.psapi
@@ -318,23 +346,24 @@ def _proc_rss_bytes() -> int | None:
         c.cb = ctypes.sizeof(c)
         if psapi.GetProcessMemoryInfo(_k32.GetCurrentProcess(), ctypes.byref(c), c.cb):
             return min(int(c.WorkingSetSize), U32)
-        log("GetProcessMemoryInfo 回傳失敗，jtAgentRssBytes 將不輸出")
+        log("GetProcessMemoryInfo failed; jtAgentRssBytes will not be emitted")
     except Exception as exc:  # noqa: BLE001
-        log(f"_proc_rss_bytes 失敗: {exc!r}")
+        log(f"_proc_rss_bytes failed: {exc!r}")
     return None
 
 
 def _proc_handle_count() -> int | None:
-    """自身 handle 數。取不到時回 None，理由同 _proc_rss_bytes。"""
+    """Own handle count. None when unreadable, for the same reason as
+    _proc_rss_bytes."""
     try:
         _k32.GetProcessHandleCount.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD)]
         _k32.GetProcessHandleCount.restype = wintypes.BOOL
         n = wintypes.DWORD(0)
         if _k32.GetProcessHandleCount(_k32.GetCurrentProcess(), ctypes.byref(n)):
             return int(n.value)
-        log("GetProcessHandleCount 回傳失敗，jtAgentHandleCount 將不輸出")
+        log("GetProcessHandleCount failed; jtAgentHandleCount will not be emitted")
     except Exception as exc:  # noqa: BLE001
-        log(f"_proc_handle_count 失敗: {exc!r}")
+        log(f"_proc_handle_count failed: {exc!r}")
     return None
 
 
@@ -342,13 +371,13 @@ def _proc_thread_count() -> int:
     return threading.active_count()
 
 
-# --------------------------------------------- 設定來源（ADMX 原則 / MS SNMP 移轉）
+# ------------------------- Configuration sources (ADMX policy / MS SNMP migration)
 POLICY_KEY = r"SOFTWARE\Policies\JasonTools\JTSNMPD"
 MSSNMP_KEY = r"SYSTEM\CurrentControlSet\Services\SNMP\Parameters"
 
 
 def _reg_opt(path: str, name: str, default=None):
-    """讀取單一登錄檔值，不存在回傳 default（不拋出）。"""
+    """Read a single registry value; return default if absent, never raise."""
     try:
         return _reg(path, name)
     except OSError:
@@ -356,22 +385,26 @@ def _reg_opt(path: str, name: str, default=None):
 
 
 def load_system_identity() -> dict:
-    """決定 sysContact / sysLocation 的生效值。
+    """Decide the effective sysContact and sysLocation.
 
-    優先序（spec §5.5：原則值**覆寫**本機設定，與 Windows 其他元件行為一致）：
+    Precedence (spec §5.5: policy **overrides** local settings, matching how the
+    rest of Windows behaves):
 
-      1. ADMX 原則  HKLM\\SOFTWARE\\Policies\\JasonTools\\JTSNMPD
-      2. Windows 內建 SNMP 的既有設定（spec §5.9.3 移轉來源）
-      3. 空字串
+      1. ADMX policy at HKLM\\SOFTWARE\\Policies\\JasonTools\\JTSNMPD
+      2. Whatever the built-in Windows SNMP service already had (spec §5.9.3,
+         the migration source)
+      3. Empty string
 
-    第 2 項是刻意的：客戶原本就在用內建 SNMP，換過來時不該要求他們
-    重新填一次 sysContact / sysLocation（spec §5.9 的核心使用者體驗）。
-    即使內建 SNMP 已被停用，登錄檔仍在，設定仍值得沿用（§5.9.1）。
+    Point 2 is deliberate. The customer was already running the built-in service;
+    switching over should not make them retype sysContact and sysLocation — that
+    is the core of the migration experience in spec §5.9. The registry values
+    remain even after the built-in service is disabled, and are still worth
+    carrying over (§5.9.1).
     """
     out = {"contact": "", "location": "", "contact_source": "none",
            "location_source": "none"}
 
-    # 2) 先讀 MS SNMP 的既有值當底
+    # 2) Start from whatever MS SNMP already had
     ms = MSSNMP_KEY + r"\RFC1156Agent"
     v = _reg_opt(ms, "sysContact")
     if v:
@@ -380,7 +413,7 @@ def load_system_identity() -> dict:
     if v:
         out["location"], out["location_source"] = str(v), "ms-snmp"
 
-    # 1) ADMX 原則覆寫
+    # 1) ADMX policy overrides it
     v = _reg_opt(POLICY_KEY, "SysContact")
     if v:
         out["contact"], out["contact_source"] = str(v), "policy"
@@ -392,17 +425,20 @@ def load_system_identity() -> dict:
 
 
 def _install_dir() -> str:
-    """spec §5.10：安裝目錄必須能從 SNMP 查到，不必登入該機。"""
+    """spec §5.10: the installation directory must be answerable over SNMP,
+    without logging in to the machine."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 
 def _config_warnings() -> str:
-    """目前生效設定的安全性警告摘要（spec §7.1 jtAgentConfigWarnings）。
+    """Security warnings about the effective configuration
+    (spec §7.1 jtAgentConfigWarnings).
 
-    §5.9.4：從 Windows SNMP 移轉時匯入 community 會使 v2c 從預設的停用變成啟用，
-    這是一次明確的安全性降級，必須在此反映。
+    §5.9.4: importing a community during migration from Windows SNMP turns v2c on
+    where it was off by default. That is an explicit downgrade in security and
+    has to be surfaced here.
     """
     warns = []
     if CFG["community"]:
@@ -414,7 +450,7 @@ def _config_warnings() -> str:
     return "; ".join(warns)
 
 
-# --------------------------------------------------------------- 記憶體
+# ----------------------------------------------------------------------- Memory
 class MEMORYSTATUSEX(ctypes.Structure):
     _fields_ = [("dwLength", wintypes.DWORD), ("dwMemoryLoad", wintypes.DWORD),
                 ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
@@ -424,12 +460,14 @@ class MEMORYSTATUSEX(ctypes.Structure):
 
 
 class PERFORMANCE_INFORMATION(ctypes.Structure):
-    """psapi GetPerformanceInfo —— 一次取得 Windows 全部記憶體面向。
+    """psapi GetPerformanceInfo — every memory figure Windows has, in one call.
 
-    比 GlobalMemoryStatusEx 多出 SystemCache、KernelPaged、KernelNonpaged，
-    以及 ProcessCount / ThreadCount / HandleCount。
-    後者讓 hrSystemProcesses 不必再跑 Toolhelp32 快照（那要列舉全部程序，
-    300 個程序約 50–300 ms，而這裡是單次呼叫、數十 µs）。
+    Beyond GlobalMemoryStatusEx it also gives SystemCache, KernelPaged,
+    KernelNonpaged, and ProcessCount / ThreadCount / HandleCount.
+
+    The last of those means hrSystemProcesses no longer needs a Toolhelp32
+    snapshot, which enumerates every process and costs 50-300 ms with 300
+    processes running. This is a single call taking tens of microseconds.
     """
     _fields_ = [("cb", wintypes.DWORD),
                 ("CommitTotal", ctypes.c_size_t), ("CommitLimit", ctypes.c_size_t),
@@ -462,16 +500,17 @@ def get_memory() -> MEMORYSTATUSEX:
     return m
 
 
-# --------------------------------------------------------------- 磁碟區
+# ---------------------------------------------------------------------- Volumes
 DRIVE_FIXED = 3
 
 
 def _volume_info(root: str) -> tuple[str, str, str]:
-    """回傳 (磁碟區標籤, 序號十六進位, 檔案系統)。
+    """Return (volume label, serial in hex, file system).
 
-    標籤可能是中文（例如「資料」）。GetVolumeInformationW 是寬字元 API，
-    回傳 UTF-16，Python 直接得到 str；真正的風險在後續編成 OCTET STRING 時，
-    必須經 octet() 明確轉 UTF-8，否則 pyasn1 會以 latin-1 編碼而拋
+    The label may be non-ASCII. GetVolumeInformationW is a wide-character API
+    returning UTF-16, so Python gets a str directly; the risk comes later, when
+    it is encoded into an OCTET STRING. That has to go through octet() to become
+    explicit UTF-8, or pyasn1 encodes it as latin-1 and raises
     PyAsn1UnicodeEncodeError。
     """
     name = ctypes.create_unicode_buffer(261)
@@ -487,7 +526,8 @@ def _volume_info(root: str) -> tuple[str, str, str]:
 
 
 def get_fixed_volumes() -> list[dict]:
-    """只列 fixed 磁碟。spec §4.5：絕不列舉網路磁碟與光碟（斷線網芳會阻塞 30 秒以上）。"""
+    """Fixed disks only. spec §4.5: never enumerate network drives or optical
+    media — a disconnected network share blocks for 30 seconds or more."""
     buf = ctypes.create_unicode_buffer(1024)
     _k32.GetLogicalDriveStringsW(1024, buf)
     drives, cur = [], ""
@@ -516,7 +556,8 @@ def get_fixed_volumes() -> list[dict]:
 
 
 def storage_units(total_bytes: int) -> int:
-    """spec §2.1：hrStorageSize/Used 是 Integer32，必須動態放大 allocation unit。"""
+    """spec §2.1: hrStorageSize and hrStorageUsed are Integer32, so the
+    allocation unit has to be scaled up dynamically."""
     unit = 4096
     while total_bytes // unit > INT32_MAX:
         unit *= 2
@@ -540,8 +581,10 @@ _ntdll.NtQuerySystemInformation.argtypes = [wintypes.ULONG, ctypes.c_void_p,
 _ntdll.NtQuerySystemInformation.restype = ctypes.c_long
 _prev_cpu: dict[int, tuple[int, int]] = {}
 
-# spec §2.7：硬體 inventory 啟動時取一次，**永久快取**。SMBIOS 開機後不會變，
-# 實體磁碟型號/容量亦然。每次快照重建都重取是純粹浪費。
+# spec §2.7: hardware inventory is read once at startup and **cached for the
+# lifetime of the process**. SMBIOS does not change after boot, and neither do
+# physical disk models or capacities. Re-reading it on every snapshot rebuild
+# would be pure waste.
 _inventory_cache: dict | None = None
 
 
@@ -552,15 +595,16 @@ def get_inventory() -> dict:
             import smbios
             info = smbios.collect()
         except Exception as exc:  # noqa: BLE001
-            log(f"SMBIOS 讀取失敗: {exc!r}")
+            log(f"SMBIOS read failed: {exc!r}")
             info = {}
         info["disks"] = get_physical_disks()
         _inventory_cache = info
     return _inventory_cache
 
-# --- 自我健康狀態（spec §7）------------------------------------------------
-# 本 agent 的失效是無聲的：服務顯示 Running、LibreNMS 圖表卻是斷的。
-# 這組狀態讓 LibreNMS 能監控 agent 本身，是判斷「活著但壞了」與「死了」的唯一依據。
+# --- Self-health (spec §7) ---------------------------------------------------
+# This agent fails quietly: the service reports Running while the LibreNMS graphs
+# go flat. These values let LibreNMS monitor the agent itself, and they are the
+# only way to tell "alive but broken" from "dead".
 _health = {
     "start_monotonic": time.monotonic(),
     "snapshot_generation": 0,
@@ -572,11 +616,13 @@ _health = {
 
 
 def _collector(name: str, fn, default):
-    """執行一個 collector 並記錄其健康狀態（spec §7.1 jtAgentCollectorTable）。
+    """Run one collector and record its health (spec §7.1
+    jtAgentCollectorTable).
 
-    §10-25：每一個新的 collector 都必須同時實作其在 jtAgentCollectorTable 中的健康狀態。
-    失敗時回傳 default 而非拋出——spec §6.7「啟動絕不硬失敗」、
-    §6.9「collector 失敗時該列從 snapshot 消失，不得捏造數值」。
+    §10-25: every new collector must also implement its entry in
+    jtAgentCollectorTable. On failure this returns the default rather than
+    raising — spec §6.7 ("startup never fails hard") and §6.9 ("when a collector
+    fails its rows disappear from the snapshot; never fabricate a value").
     """
     st = _health["collectors"].setdefault(
         name, {"status": 1, "last_ok": 0.0, "duration_ms": 0, "errors": 0, "last_error": ""})
@@ -590,15 +636,16 @@ def _collector(name: str, fn, default):
         st["status"] = 3                      # failed
         st["errors"] += 1
         st["last_error"] = repr(exc)[:200]
-        log(f"collector {name} 失敗: {exc!r}")
+        log(f"collector {name} failed: {exc!r}")
         result = default
     st["duration_ms"] = int((time.monotonic() - t0) * 1000)
     return result
 
 
 def get_cpu_loads() -> list[int]:
-    """每核使用率 %。spec §4.5：用 NtQuerySystemInformation 一次取得全部 CPU，
-    比 PDH 在多核上做 wildcard 展開便宜得多。"""
+    """Per-core utilisation as a percentage. spec §4.5: NtQuerySystemInformation
+    returns every CPU in one call, far cheaper than PDH wildcard expansion on a
+    many-core machine."""
     ncpu = os.cpu_count() or 1
     buf = (_SPPI * ncpu)()
     ret = wintypes.ULONG(0)
@@ -608,7 +655,7 @@ def get_cpu_loads() -> list[int]:
     loads = []
     for i in range(ncpu):
         idle = buf[i].IdleTime.QuadPart
-        total = buf[i].KernelTime.QuadPart + buf[i].UserTime.QuadPart  # KernelTime 已含 idle
+        total = buf[i].KernelTime.QuadPart + buf[i].UserTime.QuadPart  # KernelTime includes idle
         pi, pt = _prev_cpu.get(i, (0, 0))
         di, dt = idle - pi, total - pt
         loads.append(0 if dt <= 0 else max(0, min(100, int(round((1 - di / dt) * 100)))))
@@ -639,8 +686,9 @@ FILE_SHARE_RW = 3
 
 
 def get_disk_io() -> list[tuple[int, int, int, int, int]]:
-    """spec §4.5：IOCTL_DISK_PERFORMANCE。需系統管理權限，服務以 LocalSystem 執行。
-    回傳 (drive_no, BytesRead, BytesWritten, ReadCount, WriteCount) 皆為累積值。"""
+    """spec §4.5: IOCTL_DISK_PERFORMANCE. Needs administrative rights, which the
+    service has as LocalSystem. Returns (drive_no, BytesRead, BytesWritten,
+    ReadCount, WriteCount), all cumulative."""
     out = []
     for n in range(16):
         h = _k32.CreateFileW(f"\\\\.\\PhysicalDrive{n}", 0, FILE_SHARE_RW,
@@ -659,9 +707,10 @@ def get_disk_io() -> list[tuple[int, int, int, int, int]]:
     return out
 
 
-# ------------------------------------- 網路協定統計（IP / TCP / UDP / ICMP）
-# 這些是 LibreNMS「Netstats」整組圖表的來源。全部走 iphlpapi，
-# 一次呼叫取得整組計數器，成本極低（§10-32：不用 wmic、不用 PowerShell）。
+# ------------------------------- Network protocol statistics (IP/TCP/UDP/ICMP)
+# These feed the whole LibreNMS "Netstats" graph group. All through iphlpapi: one
+# call returns an entire counter block, at negligible cost (§10-32: no wmic, no
+# PowerShell).
 AF_INET = 2
 _iph = ctypes.windll.iphlpapi
 
@@ -736,7 +785,7 @@ def get_icmp_stats():
     return st
 
 
-# ----------------------------------------- IP 位址表 / 鄰居表（ARP / ND）
+# --------------------------------- IP address table / neighbour table (ARP, ND)
 class SOCKADDR_IN(ctypes.Structure):
     _fields_ = [("sin_family", ctypes.c_ushort), ("sin_port", ctypes.c_ushort),
                 ("sin_addr", ctypes.c_ubyte * 4), ("sin_zero", ctypes.c_ubyte * 8)]
@@ -757,7 +806,7 @@ AF_INET6 = 23
 
 
 def _inet_str(sa: SOCKADDR_INET):
-    """把 SOCKADDR_INET 轉成 (family, 位址字串, 位址位元組)。"""
+    """Convert a SOCKADDR_INET into (family, address string, address bytes)."""
     import socket as _sock
     fam = sa.si_family
     if fam == AF_INET:
@@ -806,10 +855,11 @@ AF_UNSPEC = 0
 
 
 def get_ip_addresses() -> list[dict]:
-    """本機單播 IP 位址（IPv4 + IPv6）。
+    """Local unicast IP addresses, both IPv4 and IPv6.
 
-    對應 LibreNMS 的 ipv4-addresses / ipv6-addresses 探索模組。
-    這是**本機自己的位址**，揭露風險低；ARP 表才是內網拓撲（見 get_ip_neighbors）。
+    Feeds LibreNMS's ipv4-addresses and ipv6-addresses discovery modules. These
+    are **this machine's own addresses**, so the disclosure risk is low. It is the
+    ARP table that maps the internal network (see get_ip_neighbors).
     """
     ptr = ctypes.POINTER(MIB_UNICASTIPADDRESS_TABLE)()
     if _iph.GetUnicastIpAddressTable(AF_UNSPEC, ctypes.byref(ptr)) != 0:
@@ -832,17 +882,18 @@ def get_ip_addresses() -> list[dict]:
         _iph.FreeMibTable(ptr)
 
 
-# ipNetToPhysicalState: 依 RFC 4293 —— reachable(1) stale(2) delay(3)
+# ipNetToPhysicalState, per RFC 4293: reachable(1) stale(2) delay(3)
 # probe(4) invalid(5) unknown(6) incomplete(7)
 _NDSTATE_TO_MIB = {0: 7, 1: 7, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 1}
 
 
 def get_ip_neighbors() -> list[dict]:
-    """鄰居快取（ARP / IPv6 ND）。
+    """Neighbour cache (ARP and IPv6 ND).
 
-    spec §3.5 明確警告：ipNetToPhysicalTable 是**內網 ARP 表**，
-    等同橫向移動的目標清單，攻擊價值高。因此預設**停用**，
-    需在設定中明確開啟（對應 VACM 的 standard preset 而非 librenms-minimal）。
+    spec §3.5 warns about this explicitly: ipNetToPhysicalTable is the **local
+    ARP table**, which is a ready-made target list for lateral movement and is of
+    real value to an attacker. It is therefore **off by default** and has to be
+    switched on deliberately (the VACM standard preset, not librenms-minimal).
     """
     ptr = ctypes.POINTER(MIB_IPNET_TABLE2)()
     if _iph.GetIpNetTable2(AF_UNSPEC, ctypes.byref(ptr)) != 0:
@@ -864,7 +915,7 @@ def get_ip_neighbors() -> list[dict]:
         _iph.FreeMibTable(ptr)
 
 
-# --------------------------------------------------------- 路由表
+# ------------------------------------------------------------------ Route table
 class MIB_IPFORWARD_ROW2(ctypes.Structure):
     _fields_ = [
         ("InterfaceLuid", ctypes.c_ulonglong), ("InterfaceIndex", wintypes.ULONG),
@@ -890,12 +941,13 @@ _iph.GetIpForwardTable2.restype = wintypes.DWORD
 
 
 def get_routes() -> list[dict]:
-    """IPv4 路由表。
+    """IPv4 route table.
 
-    spec §3.5 把 ipForwardTable 列為「完整內部路由拓撲」，攻擊價值高，
-    因此歸在 VACM 的 standard preset。但它不像 ARP 表那樣直接是
-    橫向移動的目標清單（路由是網段層級，ARP 是主機層級），
-    且 LibreNMS 的部分功能會用到，故預設輸出、可由設定關閉。
+    spec §3.5 classifies ipForwardTable as "the complete internal routing
+    topology" and of value to an attacker, which places it in the VACM standard
+    preset. It is not, however, a direct target list the way the ARP table is —
+    routes describe subnets, ARP describes hosts — and parts of LibreNMS use it.
+    So it is emitted by default and can be turned off in the configuration.
     """
     ptr = ctypes.POINTER(MIB_IPFORWARD_TABLE2)()
     if _iph.GetIpForwardTable2(AF_INET, ctypes.byref(ptr)) != 0:
@@ -915,14 +967,16 @@ def get_routes() -> list[dict]:
             out.append({
                 "dest": dest, "dest_raw": draw, "prefix_len": plen,
                 "mask": ".".join(str((mask >> sh) & 0xFF) for sh in (24, 16, 8, 0)),
-                # 直連路由沒有下一跳，RFC1213 的 ipRouteNextHop 以 0.0.0.0 表示。
-                # 這不是綁定位址，Bandit 的 B104 在此為誤報。
+                # A directly-connected route has no next hop, and RFC1213
+                # represents ipRouteNextHop as 0.0.0.0. This is not a bind
+                # address, so Bandit's B104 is a false positive here.
                 "next_hop": nexthop if nv == 4 else "0.0.0.0",  # nosec B104
                 "if_index": int(r.InterfaceIndex), "metric": int(r.Metric),
                 # RFC1213 ipRouteProto: other(1) local(2) netmgmt(3) ... 
-                # Windows 的 NL_ROUTE_PROTOCOL: 1=Other 2=Local 3=NetMgmt
+                # Windows NL_ROUTE_PROTOCOL: 1=Other 2=Local 3=NetMgmt
                 "proto": 2 if r.Protocol == 2 else (3 if r.Protocol == 3 else 1),
-                # ipRouteType: direct(3) 表示目的地在本地網段，indirect(4) 需經閘道
+                # ipRouteType: direct(3) means the destination is on a local
+                # subnet; indirect(4) means it goes via a gateway
                 "type": 3 if nv != 4 or nexthop == "0.0.0.0" else 4,  # nosec B104
             })
         return out
@@ -930,13 +984,15 @@ def get_routes() -> list[dict]:
         _iph.FreeMibTable(ptr)
 
 
-# ------------------------------------ UCD-SNMP systemStats（LibreNMS System 圖表）
+# ------------------- UCD-SNMP systemStats (the LibreNMS System graph group)
 class _SYSTEM_PERFORMANCE_INFORMATION(ctypes.Structure):
     """NtQuerySystemInformation(SystemPerformanceInformation)。
 
-    Windows 未公開文件化這個結構，但它自 NT 以來版面穩定，
-    工作管理員與 perfmon 都靠它。實測 Win11 26200 回傳 312 bytes，
-    與此定義相符——若未來版面改變，回傳長度會不符，我們據此拒用而非誤讀。
+    Windows does not document this structure, but its layout has been stable
+    since NT and both Task Manager and perfmon depend on it. Measured on Win11
+    26200 it returns 312 bytes, matching this definition. If a future layout
+    changes, the returned length will not match and the data is refused rather
+    than misread.
     """
     _fields_ = [
         ("IdleProcessTime", ctypes.c_longlong),
@@ -993,7 +1049,8 @@ SYSTEM_PERFORMANCE_INFORMATION_CLASS = 2
 
 
 def get_system_perf():
-    """整機層級的效能計數器。回傳 None 表示無法取得（不捏造）。"""
+    """Machine-wide performance counters. None when unavailable — nothing is
+    fabricated."""
     buf = _SYSTEM_PERFORMANCE_INFORMATION()
     ret = wintypes.ULONG(0)
     st = _ntdll.NtQuerySystemInformation(
@@ -1001,20 +1058,21 @@ def get_system_perf():
         ctypes.sizeof(buf), ctypes.byref(ret))
     if st != 0:
         return None
-    # 結構版面若在未來 Windows 改變，回傳長度會不符——此時拒用而非誤讀。
+    # If the layout changes in a future Windows the returned length will not
+    # match, and the data is refused rather than misread.
     if ret.value != ctypes.sizeof(buf):
-        log(f"SystemPerformanceInformation 長度不符（{ret.value} != "
-            f"{ctypes.sizeof(buf)}），不輸出 UCD systemStats")
+        log(f"SystemPerformanceInformation length mismatch ({ret.value} != "
+            f"{ctypes.sizeof(buf)}); UCD systemStats will not be emitted")
         return None
     return buf
 
 
 def get_cpu_times_total() -> dict | None:
-    """全機累計的 CPU 時間與中斷數（100ns 單位）。
+    """Machine-wide cumulative CPU time and interrupt counts, in 100 ns units.
 
-    UCD 的 ssCpuRaw* 單位是 **USER_HZ（1/100 秒）**，與 Windows 的
-    100ns 單位差 10^5 倍，換算時不可搞錯——否則 LibreNMS 的
-    Detailed Processor Usage 會顯示荒謬的百分比。
+    UCD's ssCpuRaw* counters are in **USER_HZ (hundredths of a second)**, which
+    differs from Windows' 100 ns unit by a factor of 10^5. Getting the conversion
+    wrong makes LibreNMS's Detailed Processor Usage show nonsensical percentages.
     """
     ncpu = os.cpu_count() or 1
     arr = (_SPPI * ncpu)()
@@ -1027,12 +1085,13 @@ def get_cpu_times_total() -> dict | None:
     user = sum(arr[i].UserTime.QuadPart for i in range(ncpu))
     intr = sum(arr[i].InterruptTime.QuadPart for i in range(ncpu))
     icount = sum(arr[i].InterruptCount for i in range(ncpu))
-    # KernelTime 已含 idle（Windows 的慣例），system 時間需扣掉
+    # KernelTime includes idle (a Windows convention), so idle is subtracted to
+    # get system time
     return {"idle": idle, "system": max(kernel - idle, 0), "user": user,
             "interrupt": intr, "interrupt_count": icount}
 
 
-# ------------------------------------------------- 程序數（hrSystemProcesses）
+# ------------------------------------------- Process count (hrSystemProcesses)
 TH32CS_SNAPPROCESS = 0x00000002
 
 
@@ -1055,11 +1114,11 @@ _k32.Process32Next.restype = wintypes.BOOL
 
 
 def get_process_count() -> int:
-    """hrSystemProcesses。只數數量，不列舉細節。
+    """hrSystemProcesses. Counts only; nothing is enumerated.
 
-    spec §3.5：完整的 hrSWRunTable 是資訊揭露來源（哪套 EDR 在跑、裝在哪），
-    預設停用。但**單純的程序數量**沒有揭露價值，而 LibreNMS 的
-    System → Processes 圖需要它。
+    spec §3.5: a full hrSWRunTable is an information-disclosure source — which
+    EDR is running and where it is installed — and is off by default. A **bare
+    count** discloses nothing, and LibreNMS's System → Processes graph needs it.
     """
     snap = _k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
     if not snap or snap == INVALID_HANDLE:
@@ -1077,7 +1136,7 @@ def get_process_count() -> int:
         _k32.CloseHandle(snap)
 
 
-# --------------------------------------------------- 實體磁碟（hrDiskStorage）
+# --------------------------------------------- Physical disks (hrDiskStorage)
 class _STORAGE_PROPERTY_QUERY(ctypes.Structure):
     _fields_ = [("PropertyId", ctypes.c_int), ("QueryType", ctypes.c_int),
                 ("AdditionalParameters", ctypes.c_ubyte * 1)]
@@ -1102,7 +1161,8 @@ _BUS_TYPE = {0: "Unknown", 1: "SCSI", 2: "ATAPI", 3: "ATA", 4: "1394", 5: "SSA",
 
 
 def _asciiz(buf: bytes, off: int) -> str:
-    """從 descriptor buffer 的位移取出 NUL 結尾字串。offset 為 0 代表無此欄位。"""
+    """Read a NUL-terminated string at an offset into a descriptor buffer. An
+    offset of 0 means the field is absent."""
     if not off or off >= len(buf):
         return ""
     end = buf.find(b"\x00", off)
@@ -1110,10 +1170,11 @@ def _asciiz(buf: bytes, off: int) -> str:
 
 
 def get_physical_disks() -> list[dict]:
-    """列舉實體磁碟並取得型號、序號、容量、匯流排類型。
+    """Enumerate physical disks and read model, serial, capacity and bus type.
 
-    spec §4.5：handle 需快取，反覆開關實體磁碟裝置是浪費。
-    此處為 inventory 用途，取一次即可（§2.7：硬體 inventory 永久快取）。
+    spec §4.5: handles should be cached, since repeatedly opening and closing a
+    physical disk device is wasteful. This is inventory data, so once is enough
+    (§2.7: hardware inventory is cached for the lifetime of the process).
     """
     out = []
     for n in range(16):
@@ -1124,7 +1185,7 @@ def get_physical_disks() -> list[dict]:
         try:
             info = {"index": n, "model": "", "serial": "", "bus": "",
                     "removable": False, "size_bytes": 0}
-            # 裝置描述子：型號 / 序號 / 匯流排
+            # Device descriptor: model, serial, bus
             q = _STORAGE_PROPERTY_QUERY()
             q.PropertyId = 0          # StorageDeviceProperty
             q.QueryType = 0           # PropertyStandardQuery
@@ -1141,9 +1202,10 @@ def get_physical_disks() -> list[dict]:
                 info["serial"] = _asciiz(raw, d.SerialNumberOffset)
                 info["bus"] = _BUS_TYPE.get(d.BusType, str(d.BusType))
                 info["removable"] = bool(d.RemovableMedia)
-            # 容量：IOCTL_DISK_GET_LENGTH_INFO 需要 FILE_READ_ACCESS，
-            # 但我們刻意以 dwDesiredAccess=0 開檔（最小權限，spec §3.6）。
-            # GET_DRIVE_GEOMETRY_EX 在零存取權下即可取得，故列為主要來源。
+            # Capacity: IOCTL_DISK_GET_LENGTH_INFO needs FILE_READ_ACCESS, but
+            # the handle is deliberately opened with dwDesiredAccess=0 (least
+            # privilege, spec §3.6). GET_DRIVE_GEOMETRY_EX works with no access
+            # rights at all, so it is the primary source.
             geo = ctypes.create_string_buffer(64)
             if _k32.DeviceIoControl(h, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, None, 0,
                                     geo, ctypes.sizeof(geo), ctypes.byref(ret), None):
@@ -1155,12 +1217,15 @@ def get_physical_disks() -> list[dict]:
                                         ctypes.byref(length), ctypes.sizeof(length),
                                         ctypes.byref(ret), None):
                     info["size_bytes"] = int(length.value)
-            # 溫度與健康度（spec §2.9：原生路徑，不需核心驅動）。
-            # 各家韌體對這兩個 IOCTL 的支援程度差異極大，單一裝置的異常
-            # 不得讓整個磁碟列舉失敗（spec §6.7 啟動絕不硬失敗）。
-            # 溫度與健康度交給 diskhealth 模組（多路徑，見該模組說明）。
-            # 這裡不共用 handle：diskhealth 需要 READ|WRITE 才能下 SMART，
-            # 而本函式刻意以最小權限開檔（spec §3.6）。
+            # Temperature and health (spec §2.9: native paths, no kernel
+            # driver). Firmware support for these IOCTLs varies enormously, and
+            # one misbehaving device must not fail the whole enumeration
+            # (spec §6.7: startup never fails hard). The work is delegated to the
+            # diskhealth module, which tries several paths — see its docstring.
+            #
+            # The handle is not shared: diskhealth needs READ|WRITE to issue
+            # SMART commands, while this function deliberately opens with least
+            # privilege (spec §3.6).
             try:
                 import diskhealth
                 hl = diskhealth.probe(n)
@@ -1169,7 +1234,7 @@ def get_physical_disks() -> list[dict]:
                         info["temp_c"] = hl["temp_c"]
                     info["health"] = hl
             except Exception as exc:  # noqa: BLE001
-                log(f"PhysicalDrive{n} 溫度/健康度查詢失敗: {exc!r}")
+                log(f"PhysicalDrive{n} temperature/health query failed: {exc!r}")
             if not info["model"]:
                 info["model"] = f"PhysicalDrive{n}"
             out.append(info)
@@ -1246,45 +1311,52 @@ _iph.FreeMibTable.restype = None
 IF_TYPE_SOFTWARE_LOOPBACK = 24
 
 
-# --------------------------------------------------- SNMP engine 身分與時間
+# ------------------------------------------- SNMP engine identity and time
 ENGINE_FILE = os.path.join(STATE_DIR, "state", "engine.json")
 
 
 def _extend_index(token: str) -> tuple[int, ...]:
-    """NET-SNMP-EXTEND-MIB 各表以 nsExtendToken（OCTET STRING）為索引。
+    """The NET-SNMP-EXTEND-MIB tables are indexed by nsExtendToken, an OCTET
+    STRING.
 
-    SMI 的字串索引編碼是「長度 + 每個位元組一個子識別碼」，
-    所以 "smart" → (5, 115, 109, 97, 114, 116)。
-    LibreNMS 端對應 `Oid::encodeString('smart')`。
+    SMI encodes a string index as the length followed by one sub-identifier per
+    byte,
+    so "smart" becomes (5, 115, 109, 97, 114, 116). On the LibreNMS side this is
+    `Oid::encodeString('smart')`.
     """
     raw = token.encode("ascii", errors="ignore")
     return (len(raw),) + tuple(raw)
 
 
 def _machine_guid() -> str:
-    """取 Windows 的 MachineGuid，作為 engineID 的穩定來源。
+    """Read Windows' MachineGuid as a stable basis for the engineID.
 
-    engineID 必須跨重開機、跨服務重新啟動保持不變（RFC 3411），
-    SNMPv3 的使用者金鑰是以它做 localization 的——變了就全部失效。
+    RFC 3411 requires the engineID to stay the same across reboots and service
+    restarts. SNMPv3 user keys are localised against it, so if it changes every
+    key stops working.
     """
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
                             r"SOFTWARE\Microsoft\Cryptography", 0,
                             winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
             return str(winreg.QueryValueEx(k, "MachineGuid")[0])
-    except Exception:  # noqa: BLE001 - 註冊表不可用時退回主機名稱
+    except Exception:  # noqa: BLE001 - fall back to the hostname if the
+                       # registry is unavailable
         return socket.gethostname()
 
 
 def _engine_id() -> bytes:
-    """RFC 3411 §5 的 SnmpEngineID。
+    """SnmpEngineID as defined in RFC 3411 §5.
 
-    格式：最高位元為 1 表示採用 RFC 3411 的新格式，其後 31 位是企業編號，
-    第 5 個位元組是格式碼（4 = 管理者自訂文字），之後最多 27 位元組。
+    Format: the top bit set marks the RFC 3411 format, the remaining 31 bits are
+    the enterprise number, the fifth byte is a format code (4 = administratively
+    assigned text), and up to 27 bytes follow.
 
-    這裡用 MachineGuid 的雜湊而非 GUID 原文：GUID 是 36 個字元，超過長度上限，
-    而雜湊同樣穩定且長度固定。PEN 目前是暫用值，取得正式 PEN 後會變動——
-    屆時 v3 使用者需重新設定，這點要寫進升級說明。
+    A hash of the MachineGuid is used rather than the GUID itself: the GUID is 36
+    characters, past the length limit, while the hash is equally stable and a
+    fixed size. The PEN here is a placeholder; once a real one is assigned this
+    value changes, v3 users will have to be reconfigured, and that needs to be in
+    the upgrade notes.
     """
     pen = 99999
     head = bytes([(pen >> 24) & 0xFF | 0x80, (pen >> 16) & 0xFF,
@@ -1294,19 +1366,21 @@ def _engine_id() -> bytes:
 
 
 def _engine_boots() -> int:
-    """snmpEngineBoots：本機每次**開機**加一。
+    """snmpEngineBoots: incremented once per **system boot**.
 
-    RFC 3414 要求 (snmpEngineBoots, snmpEngineTime) 這組值永不重複。
-    我們把 snmpEngineTime 定義為「系統開機至今的秒數」而非「服務啟動至今」，
-    理由見 snmpEngineTime 的輸出處——服務重新啟動時時間不歸零，因此開機次數
-    不必跟著加，兩者合起來仍嚴格遞增。
+    RFC 3414 requires the pair (snmpEngineBoots, snmpEngineTime) never to repeat.
+    snmpEngineTime here is "seconds since the system booted" rather than "since
+    the service started" — see where it is emitted for why. Because the time does
+    not reset when the service restarts, the boot count does not need to
+    increment then either, and the pair still increases strictly.
 
-    以「開機時刻」判定是否換了一次開機：開機時刻改變 → 計數加一。
-    讀寫失敗一律回退為 1，絕不讓它中斷快照建置。
+    A change of boot instant is what marks a new boot, so the counter increments
+    when that changes. Any read or write failure falls back to 1; this must never
+    interrupt building the snapshot.
     """
     try:
         boot_ms = int(time.time() * 1000) - int(_k32.GetTickCount64())
-        # 容忍百毫秒級誤差，否則每次取樣都會判定成新的一次開機
+        # Tolerate sub-second jitter, or every sample would look like a new boot
         boot_key = boot_ms // 10000
         data = {}
         try:
@@ -1326,7 +1400,7 @@ def _engine_boots() -> int:
             os.replace(tmp, ENGINE_FILE)
         return max(1, min(int(data.get("boots", 1)), 2147483647))
     except Exception as exc:  # noqa: BLE001
-        log(f"snmpEngineBoots 讀寫失敗，回退為 1: {exc!r}")
+        log(f"snmpEngineBoots read/write failed, falling back to 1: {exc!r}")
         return 1
 
 
@@ -1335,15 +1409,19 @@ _maxtemp_cache: dict[str, int] | None = None
 
 
 def observed_max_temp(name: str, current: int | None) -> int | None:
-    """記錄並回傳某顆磁碟**觀測到的**最高溫。
+    """Record and return the highest temperature **observed** for a disk.
 
-    LibreNMS 的 smart 應用程式有一張 Max Temp 圖，來源是 JSON 裡的 `max_temp`。
-    Windows 的儲存 API 只給門檻值（warning / critical），沒有「這輩子最高溫」，
-    拿門檻值去填是標錯標籤。改記錄我們自己量到的最高值——語意是
-    「jt-snmpd 安裝以來觀測到的最高溫」，是真的量到的數字。
+    LibreNMS's smart application has a Max Temp graph fed by the `max_temp` key
+    in the JSON. Windows' storage APIs only expose thresholds (warning,
+    critical), never "the highest this disk has ever been", and putting a
+    threshold there would mislabel the line. So this tracks the highest value
+    actually measured: "the maximum observed since jt-snmpd was installed" is a
+    real number rather than a stand-in.
 
-    只有在最高溫真的上升時才寫檔：快照每 5 秒重建一次，每次都寫會是
-    一天一萬七千次不必要的磁碟寫入，違反「不得拖慢 host」。
+    The file is written only when the maximum genuinely rises. The snapshot
+    rebuilds every five seconds, so writing every time would be seventeen
+    thousand needless disk writes a day — against the requirement never to slow
+    the host down.
     """
     global _maxtemp_cache
     if _maxtemp_cache is None:
@@ -1371,7 +1449,7 @@ def observed_max_temp(name: str, current: int | None) -> int | None:
             os.fsync(fh.fileno())
         os.replace(tmp, MAXTEMP_FILE)
     except OSError as exc:
-        log(f"disk-maxtemp 寫入失敗（不影響其餘功能）: {exc!r}")
+        log(f"disk-maxtemp write failed (nothing else is affected): {exc!r}")
     return current
 
 
@@ -1384,7 +1462,8 @@ def _load_index_map() -> dict:
 
 
 def _save_index_map(m: dict) -> None:
-    """spec §6.6：temp → flush → 原子取代，保留 .bak。index-map 損毀是最貴的失效模式。"""
+    """spec §6.6: temp file, flush, atomic replace, keep a .bak. A corrupted
+    index-map is the most expensive way this can fail."""
     try:
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         tmp = STATE_FILE + ".tmp"
@@ -1399,13 +1478,16 @@ def _save_index_map(m: dict) -> None:
                 pass
         os.replace(tmp, STATE_FILE)
     except (OSError, UnicodeError) as exc:
-        log(f"index-map 寫入失敗: {exc!r}")
+        log(f"index-map write failed: {exc!r}")
 
 
 def get_interfaces() -> list[dict]:
-    """spec §2.4：預設只輸出硬體介面（Hyper-V host 會回 40~80 個介面，
-    含 WFP LightWeight Filter / Teredo / isatap，全輸出會產生大量無用 port 與孤兒 RRD）。
-    spec §2.5：ifIndex 以 NET_LUID 為主鍵持久化，Windows InterfaceIndex 不保證跨重開機穩定。"""
+    """spec §2.4: hardware interfaces only by default. A Hyper-V host reports 40
+    to 80 interfaces including WFP LightWeight Filters, Teredo and isatap;
+    publishing all of them creates a mass of useless ports and orphaned RRDs.
+
+    spec §2.5: ifIndex is assigned from the persistent NET_LUID, because Windows'
+    own InterfaceIndex is not guaranteed stable across reboots."""
     ptr = ctypes.POINTER(MIB_IF_TABLE2)()
     if _iph.GetIfTable2(ctypes.byref(ptr)) != 0:
         return []
@@ -1424,13 +1506,15 @@ def get_interfaces() -> list[dict]:
                 continue
             if r.Type == IF_TYPE_SOFTWARE_LOOPBACK:
                 continue
-            # NIC teaming / SET：team 介面與其成員都會回報 HardwareInterface=TRUE，
-            # 兩者都輸出會讓 LibreNMS 對同一份流量計算兩次。
-            # NDIS 對 team 成員的 ConnectionType 標為 Passive(2)，
-            # 對正常介面與 team 本體標為 Dedicated(1)。
-            # 參考 NET_IF_CONNECTION_TYPE：Dedicated=1 Passive=2 Demand=3
+            # NIC teaming / SET: both the team interface and its members report
+            # HardwareInterface=TRUE, and publishing both makes LibreNMS count
+            # the same traffic twice. NDIS marks team members with
+            # ConnectionType Passive(2), and ordinary interfaces and the team
+            # itself with Dedicated(1).
+            # NET_IF_CONNECTION_TYPE: Dedicated=1 Passive=2 Demand=3
             if r.ConnectionType == 2:
-                log(f"介面 {r.Alias!r} 為 team 成員（ConnectionType=Passive），不輸出")
+                log(f"interface {r.Alias!r} is a team member "
+                    f"(ConnectionType=Passive); not emitted")
                 continue
             luid = f"{r.InterfaceLuid:016x}"
             ent = imap["interfaces"].get(luid)
@@ -1443,10 +1527,12 @@ def get_interfaces() -> list[dict]:
             mac = bytes(r.PhysicalAddress[:r.PhysicalAddressLength])
             out.append({
                 "idx": ent["if_index"], "alias": r.Alias or f"if{ent['if_index']}",
-                # Windows 原生 InterfaceIndex。IP / ARP / 鄰居表都以它為索引，
-                # 但我們的 ifTable 用 LUID 持久化索引（spec §2.5），兩者必須對映，
-                # 否則 LibreNMS 會把 IP 綁到錯誤的 port 或完全找不到——實測踩過：
-                # 127.0.0.1 的 Windows 索引剛好是 1，被誤綁到「乙太網路」。
+                # Windows' native InterfaceIndex. The IP, ARP and neighbour
+                # tables are all indexed by it, while our ifTable uses the
+                # persistent LUID-derived index (spec §2.5). The two have to be
+                # mapped, or LibreNMS binds addresses to the wrong port or finds
+                # nothing at all — which happened: 127.0.0.1 has Windows index 1,
+                # and ended up attached to the Ethernet adapter.
                 "win_idx": int(r.InterfaceIndex),
                 "descr": r.Description or r.Alias, "type": int(r.Type), "mtu": int(r.Mtu),
                 "speed": int(r.TransmitLinkSpeed), "mac": mac,
@@ -1468,8 +1554,8 @@ def get_interfaces() -> list[dict]:
         _iph.FreeMibTable(ptr)
 
 
-# --------------------------------------------------------------- 系統識別
-# DsRoleGetPrimaryDomainInformation 的角色代碼
+# ------------------------------------------------------------ System identity
+# Role codes from DsRoleGetPrimaryDomainInformation
 DSROLE_STANDALONE_WORKSTATION = 0
 DSROLE_MEMBER_WORKSTATION = 1
 DSROLE_STANDALONE_SERVER = 2
@@ -1486,13 +1572,17 @@ class _DSROLE_PRIMARY_DOMAIN_INFO_BASIC(ctypes.Structure):
 
 
 def _is_domain_controller() -> bool:
-    """以 DsRoleGetPrimaryDomainInformation 判定是否為網域控制站。
+    """Determine whether this machine is a domain controller, via
+    DsRoleGetPrimaryDomainInformation.
 
-    spec §1.2 要求三個 sysObjectID 分支（工作站 / 伺服器 / 網域控制站），
-    而 LibreNMS 的 Windows.php 正是靠第三個分支呼叫 getDatacenterVersion()。
-    只分 client/server 會讓 DC 落到 server 分支，版本字串因此不同。
+    spec §1.2 requires three sysObjectID branches — workstation, server, domain
+    controller — and LibreNMS's Windows.php uses the third to call
+    getDatacenterVersion().
+    Splitting only into client and server puts a domain controller in the server
+    branch, which produces a different version string.
 
-    此 API 在 netapi32.dll，非網域環境亦可安全呼叫（回傳 standalone 角色）。
+    The API lives in netapi32.dll and is safe to call outside a domain, where it
+    reports a standalone role.
     """
     try:
         netapi = ctypes.windll.netapi32
@@ -1511,16 +1601,17 @@ def _is_domain_controller() -> bool:
         finally:
             netapi.DsRoleFreeMemory(buf)
     except Exception as exc:  # noqa: BLE001
-        log(f"DC 判定失敗，視為非 DC: {exc!r}")
+        log(f"domain controller check failed; treating as not a DC: {exc!r}")
         return False
 
 
 def get_product_type() -> str:
-    """回傳 'client' / 'server' / 'domain_controller'。
+    """Return 'client', 'server' or 'domain_controller'.
 
-    InstallationType 的可能值：Client、Server、Server Core、
-    Windows Server Core（不同版本用詞不同），因此用 startswith("server")
-    而非等值比較——Server Core 必須被認成 server（spec §9.3 的平台 DoD）。
+    InstallationType can be Client, Server, Server Core or Windows Server Core
+    depending on the release, so this uses startswith("server") rather than an
+    equality test — Server Core has to be recognised as a server (the platform
+    definition of done in spec §9.3).
     """
     is_server = False
     try:
@@ -1528,8 +1619,8 @@ def get_product_type() -> str:
                       "InstallationType"))
         is_server = it.lower().startswith("server")
     except OSError:
-        # 舊版或精簡安裝可能沒有此值，退回 ProductType 判斷：
-        # ProductType 1=WinNT(工作站) 2=LanmanNT(DC) 3=ServerNT(伺服器)
+        # Older or trimmed installations may not have the value; fall back to
+        # ProductType: 1=WinNT (workstation) 2=LanmanNT (DC) 3=ServerNT (server)
         try:
             pt = str(_reg(r"SYSTEM\CurrentControlSet\Control\ProductOptions",
                           "ProductType"))
@@ -1545,9 +1636,12 @@ def get_product_type() -> str:
 
 
 def build_sysdescr() -> str:
-    """spec §1.2：完全模仿 Microsoft SNMP Service 的格式，否則 LibreNMS 的
-    Windows.php regex 不會 match，Hardware / Version / Features 三欄位會空白。
-    實測：真實 MS SNMP 在 Win11 build 26200 回報 NT 版本 6.3（非 10.0）。"""
+    """spec §1.2: mirror the Microsoft SNMP Service format exactly, or the regex
+    in LibreNMS's Windows.php will not match and the Hardware, Version and
+    Features fields come out blank.
+
+    Measured: the real MS SNMP service on Win11 build 26200 reports NT version
+    6.3, not 10.0."""
     try:
         cpu = str(_reg(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "Identifier"))
     except OSError:
@@ -1573,15 +1667,17 @@ WTS_CURRENT_SERVER_HANDLE = 0
 
 
 def get_session_count() -> int:
-    """hrSystemNumUsers —— 實際的互動工作階段數。
+    """hrSystemNumUsers — the real number of interactive sessions.
 
-    先前固定回 1，在遠端桌面工作階段主機（RDS）上直接就是錯的：
-    一台可能有數十個使用者。整理 Windows Server 情境時發現，
-    這不是「待驗證」而是「現在就錯」。
+    This used to return a hardcoded 1, which is simply wrong on a Remote Desktop
+    Session Host where a single machine may have dozens of users. It surfaced
+    while working through the Windows Server scenarios: not "needs verifying",
+    but wrong as written.
 
-    只計算 Active 與 Disconnected 的工作階段——Disconnected 代表使用者
-    仍登入但斷開連線，資源仍被佔用，RFC 2790 的 hrSystemNumUsers
-    語意（登入的使用者數）應該包含它。Listen / Idle 等系統工作階段不計。
+    Only Active and Disconnected sessions are counted. Disconnected means the
+    user is still logged on with resources still held, which is what RFC 2790's
+    hrSystemNumUsers ("number of user sessions") is meant to include. System
+    sessions such as Listen and Idle are not counted.
     """
     try:
         wts = ctypes.windll.wtsapi32
@@ -1606,15 +1702,16 @@ def get_session_count() -> int:
         finally:
             wts.WTSFreeMemory(ptr)
     except Exception as exc:  # noqa: BLE001
-        log(f"WTSEnumerateSessions 失敗: {exc!r}")
+        log(f"WTSEnumerateSessions failed: {exc!r}")
         return 0
 
 
 def _hr_system_date() -> bytes:
-    """hrSystemDate 是 DateAndTime（RFC 2579）8 或 11 bytes 的二進位格式，
-    不是文字。格式：年(2) 月 日 時 分 秒 秒/10 [時區方向 時 分]。"""
+    """hrSystemDate is DateAndTime (RFC 2579): 8 or 11 binary bytes, not text.
+    Layout: year(2), month, day, hour, minute, second, deciseconds, and
+    optionally the UTC offset direction, hours and minutes."""
     lt = time.localtime()
-    off = -(time.altzone if lt.tm_isdst else time.timezone)   # 秒，東為正
+    off = -(time.altzone if lt.tm_isdst else time.timezone)   # seconds, east positive
     sign = b"+" if off >= 0 else b"-"
     off = abs(off)
     return (lt.tm_year.to_bytes(2, "big")
@@ -1627,15 +1724,17 @@ def uptime_centis() -> int:
 
 
 # --------------------------------------------------------------- Snapshot
-# JT 私有 subtree。IANA PEN 尚未取得，暫用 Microsoft 相容前置碼下的保留分支，
-# 取得 PEN 後遷移並提供對照表（spec §7.1）。
+# The JT private subtree. No IANA PEN has been assigned yet, so this borrows a
+# reserved branch under a Microsoft-compatible prefix; once a PEN is assigned the
+# tree moves and a mapping is published (spec §7.1).
 JT = (1, 3, 6, 1, 4, 1, 99999, 1)
-JTAGENT = JT + (1,)          # 純量
+JTAGENT = JT + (1,)          # scalars
 JTCOLL = JT + (2, 1)         # jtAgentCollectorTable
-# jtDiskHealthTable —— 磁碟健康狀態，供 LibreNMS 產生 state 類別感測器
-# （綠燈／紅燈）。LibreNMS 的裝置概觀頁有 sensors 區塊但**沒有** applications
-# 區塊，所以 SMART 應用程式的 (OK)/(FAIL) 只出現在 Apps 分頁；要讓健康狀態
-# 直接顯示在概觀頁，唯一的路徑是 state 感測器，而那需要一個可對映的 OID。
+# jtDiskHealthTable — per-disk health, so LibreNMS can produce a state-class
+# sensor (the green/red indicator). LibreNMS's device overview page has a sensors
+# section but **no** applications section, so the smart application's (OK)/(FAIL)
+# only appears under the Apps tab. Showing health on the overview needs a state
+# sensor, and that needs an OID to map to.
 JTDISK = JT + (3, 1)         # jtDiskHealthEntry
 DISK_STATE_OK, DISK_STATE_WARNING, DISK_STATE_CRITICAL, DISK_STATE_UNKNOWN = 1, 2, 3, 4
 
@@ -1651,9 +1750,9 @@ HRPART = HR + (3, 7, 1)                    # hrPartitionTable
 HRFS = HR + (3, 8, 1)                      # hrFSTable
 IPROUTE = (1, 3, 6, 1, 2, 1, 4, 21, 1)     # RFC1213 ipRouteTable
 HRDISK = HR + (3, 6, 1)                    # hrDiskStorageTable
-HRDEVTYPE = HR + (3, 1)                    # hrDeviceTypes 前置碼
+HRDEVTYPE = HR + (3, 1)                    # hrDeviceTypes prefix
 DIO = (1, 3, 6, 1, 4, 1, 2021, 13, 15, 1, 1)  # UCD-DISKIO
-UCDLA = (1, 3, 6, 1, 4, 1, 2021, 10, 1)    # UCD laTable（負載平均）
+UCDLA = (1, 3, 6, 1, 4, 1, 2021, 10, 1)    # UCD laTable (load average)
 UCDSS = (1, 3, 6, 1, 4, 1, 2021, 11)       # UCD systemStats
 ENTPHY = (1, 3, 6, 1, 2, 1, 47, 1, 1, 1, 1)   # ENTITY-MIB entPhysicalEntry
 IPG = (1, 3, 6, 1, 2, 1, 4)                # IP-MIB ip group
@@ -1661,51 +1760,59 @@ ICMPG = (1, 3, 6, 1, 2, 1, 5)              # IP-MIB icmp group
 TCPG = (1, 3, 6, 1, 2, 1, 6)               # TCP-MIB tcp group
 UDPG = (1, 3, 6, 1, 2, 1, 7)               # UDP-MIB udp group
 SNMPG = (1, 3, 6, 1, 2, 1, 11)             # SNMPv2-MIB snmp group
-IPADDR = (1, 3, 6, 1, 2, 1, 4, 20, 1)      # RFC1213 ipAddrTable（IPv4，LibreNMS 主要來源）
+IPADDR = (1, 3, 6, 1, 2, 1, 4, 20, 1)      # RFC1213 ipAddrTable (IPv4; what
+                                           # LibreNMS actually reads)
 IPADDRESS = (1, 3, 6, 1, 2, 1, 4, 34, 1)   # IP-MIB ipAddressTable（IPv4 + IPv6）
 IPNETPHYS = (1, 3, 6, 1, 2, 1, 4, 35, 1)   # IP-MIB ipNetToPhysicalTable（ARP / ND）
 ENTSENS = (1, 3, 6, 1, 2, 1, 99, 1, 1, 1)  # ENTITY-SENSOR-MIB entPhySensorEntry
-ENT_SENSOR_BASE = 5000                     # entPhysicalIndex 分段：感測器
-ENT_THERMAL_BASE = 5500                    # entPhysicalIndex 分段：ACPI 熱區
-ENT_CPUFREQ_BASE = 5900                    # entPhysicalIndex 分段：CPU 頻率
+ENT_SENSOR_BASE = 5000                     # entPhysicalIndex range: sensors
+ENT_THERMAL_BASE = 5500                    # entPhysicalIndex range: thermal zones
+ENT_CPUFREQ_BASE = 5900                    # entPhysicalIndex range: CPU frequency
 
-# SNMP-FRAMEWORK-MIB snmpEngine 群組。
-# **這組不是可有可無的**：LibreNMS 的 Core.php 以三個來源取 max() 決定 uptime，
+# The SNMP-FRAMEWORK-MIB snmpEngine group.
+# **This is not optional.** LibreNMS's Core.php takes the max() of three sources
+# to decide uptime:
 #
 #     max(round(sysUpTime/100),
 #         bad_snmpEngineTime ? 0 : snmpEngineTime,
 #         bad_hrSystemUptime ? 0 : round(hrSystemUptime/100))
 #
-# 而 windows.yaml **只設了 bad_hrSystemUptime**，沒有 bad_snmpEngineTime。
-# sysUpTime 與 hrSystemUptime 都是 TimeTicks（Unsigned32，百分之一秒），
-# 在 2^32/100 秒 ≈ 497.1 天必然回捲——回捲後數值驟降，LibreNMS 會判定
-# 「Device rebooted」並發出假告警。snmpEngineTime 的單位是**秒**且範圍到
-# 2147483647（約 68 年），提供它之後 max() 就有一個不回捲的來源，
-# 假重開機警報因此消失。
-SNMPFW = (1, 3, 6, 1, 6, 3, 10, 2, 1)      # snmpEngine 群組
+# and windows.yaml sets **only bad_hrSystemUptime**, never bad_snmpEngineTime.
+#
+# sysUpTime and hrSystemUptime are both TimeTicks (Unsigned32, hundredths of a
+# second), so they wrap after 2^32/100 seconds — about 497.1 days. After the wrap
+# the value drops sharply, LibreNMS concludes "Device rebooted", and a false
+# alert fires. snmpEngineTime is counted in **seconds** up to 2147483647 (about
+# 68 years), so providing it gives max() a source that does not wrap and the
+# false reboot alert disappears.
+SNMPFW = (1, 3, 6, 1, 6, 3, 10, 2, 1)      # snmpEngine group
 
-# NET-SNMP-EXTEND-MIB。LibreNMS 的應用程式（smart 等）一律走這裡：
-#   探索：walk nsExtendStatus
-#   輪詢：get nsExtendOutputFull."<token>"
-# 全程走 SNMP，被監控端不需要安裝 LibreNMS agent 或 smartctl。
+# NET-SNMP-EXTEND-MIB. Every LibreNMS application (smart and the rest) comes
+# through here:
+#   discovery: walk nsExtendStatus
+#   polling:   get nsExtendOutputFull."<token>"
+# All over SNMP: beyond jt-snmpd itself the monitored host needs neither the
+# LibreNMS agent nor smartctl.
 NSEXT = (1, 3, 6, 1, 4, 1, 8072, 1, 3, 2)
 NSEXT_CFG = NSEXT + (2, 1)                 # nsExtendConfigTable
 NSEXT_OUT1 = NSEXT + (3, 1)                # nsExtendOutput1Table
 NSEXT_OUT2 = NSEXT + (4, 1)                # nsExtendOutput2Table
 
-# 單一 varbind 的位元組上限。回應上限是 1400 且不分片，一個超大的
-# OCTET STRING 會讓 GET 直接放不進回應。SMART JSON 壓縮後通常 400~600
-# 位元組，但磁碟很多時會成長——超過就砍磁碟數，且**必須留下記錄**，
-# 不可無聲截斷（無聲截斷會讓人以為全部磁碟都在監控中）。
+# Byte cap for a single varbind. Responses are capped at 1400 bytes and never
+# fragmented, so an oversized OCTET STRING simply will not fit in a GET response.
+# The compressed SMART JSON is usually 400-600 bytes, but it grows with the disk
+# count — past the cap, disks are dropped, and that **must be logged**. Truncating
+# quietly would leave the impression that every disk is being monitored.
 MAX_EXTEND_BYTES = 1100
 
-# hrDeviceIndex 分段配置（spec §34.5 的精神：分段且持久化）。
-# 196608 起是 Microsoft SNMP Service 對 CPU 的慣例，沿用以維持相容。
+# hrDeviceIndex ranges (spec §34.5 in spirit: partitioned and persistent).
+# 196608 upwards is the Microsoft SNMP Service convention for CPUs, kept for
+# compatibility.
 DEV_BASE_CPU = 196608
 DEV_BASE_NET = 262144
 DEV_BASE_DISK = 327680
 
-# entPhysicalIndex 分段配置（spec §34.5）
+# entPhysicalIndex ranges (spec §34.5)
 ENT_SYSTEM = 1000
 ENT_MAINBOARD = 1100
 ENT_CPU_BASE = 2000
@@ -1722,7 +1829,8 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add = lambda oid, val: pairs.append((tuple(oid), val))  # noqa: E731
 
     ptype = get_product_type()
-    # spec §1.2：三個分支對應 LibreNMS Windows.php 的三條版本查表路徑
+    # spec §1.2: three branches matching the three version lookup paths in
+    # LibreNMS's Windows.php
     sysobjid = {
         "client": (1, 3, 6, 1, 4, 1, 311, 1, 1, 3, 1, 1),
         "server": (1, 3, 6, 1, 4, 1, 311, 1, 1, 3, 1, 2),
@@ -1734,13 +1842,16 @@ def build_snapshot() -> tuple[tuple, tuple]:
     # --- system group ---
     add(SYS + (1, 0), octet(build_sysdescr()))
     add(SYS + (2, 0), rfc1902.ObjectIdentifier(sysobjid))
-    add(SYS + (3, 0), rfc1902.TimeTicks(up & U32))     # spec §2.6：自然回捲
-    # sysUpTime 是 TimeTicks，2^32 百分之一秒 ≈ 497.1 天必然回捲，這是 RFC 3418
-    # 規定的型別，任何相容的 agent 都一樣（Windows 內建 SNMP 也回捲）。
-    # 回捲本身無法避免，但**假重開機告警**可以：LibreNMS 取三個來源的 max()，
-    # 而 snmpEngineTime 的單位是秒、上限 2147483647（約 68 年），不會回捲。
-    # 提供它之後，sysUpTime 回捲時 max() 會改用 snmpEngineTime，數值持續遞增，
-    # LibreNMS 的 `if ($uptime < $device->uptime)` 就不會成立。
+    add(SYS + (3, 0), rfc1902.TimeTicks(up & U32))     # spec §2.6: wraps naturally
+    # sysUpTime is TimeTicks, so it wraps after 2^32 hundredths of a second —
+    # about 497.1 days. That is the type RFC 3418 mandates and every conforming
+    # agent behaves the same way, the built-in Windows service included.
+    #
+    # The wrap cannot be avoided; the **false reboot alert** can. LibreNMS takes
+    # the max() of three sources, and snmpEngineTime counts in seconds up to
+    # 2147483647 (about 68 years) without wrapping. With it available, max()
+    # switches to snmpEngineTime when sysUpTime wraps, the value keeps rising,
+    # and LibreNMS's `if ($uptime < $device->uptime)` never becomes true.
     _engine_secs = min(int(_k32.GetTickCount64() // 1000), 2147483647)
     add(SNMPFW + (1, 0), rfc1902.OctetString(_engine_id()))   # snmpEngineID
     add(SNMPFW + (2, 0), rfc1902.Integer32(_engine_boots()))  # snmpEngineBoots
@@ -1749,7 +1860,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(SYS + (4, 0), octet(CFG["contact"]))
     add(SYS + (5, 0), octet(host))
     add(SYS + (6, 0), octet(CFG["location"]))
-    add(SYS + (7, 0), rfc1902.Integer32(76))           # spec §1.2：固定 76
+    add(SYS + (7, 0), rfc1902.Integer32(76))           # spec §1.2: always 76
     for i, (orid, descr) in enumerate([
         ((1, 3, 6, 1, 2, 1, 1), "SNMPv2-MIB"),
         ((1, 3, 6, 1, 2, 1, 2), "IF-MIB"),
@@ -1787,7 +1898,8 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(IFT + (20, i), rfc1902.Counter32(nic["out_err"] & U32))
         add(IFT + (21, i), rfc1902.Gauge32(min(nic["out_qlen"], U32)))
         add(IFT + (22, i), rfc1902.ObjectIdentifier((0, 0)))            # ifSpecific
-        # ifXTable — LibreNMS 的 windows.yaml 未設 bad_ifXEntry，會使用 64-bit counters
+        # ifXTable — LibreNMS's windows.yaml does not set bad_ifXEntry, so the
+        # 64-bit counters are used
         add(IFX + (1, i), octet(nic["alias"]))            # ifName
         add(IFX + (2, i), rfc1902.Counter32(nic["in_mcast"] & U32))
         add(IFX + (3, i), rfc1902.Counter32(nic["in_bcast"] & U32))
@@ -1801,7 +1913,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(IFX + (18, i), octet(""))                     # ifAlias
         add(IFX + (19, i), rfc1902.TimeTicks(0))                        # ifCounterDiscontinuityTime
 
-    # --- HOST-RESOURCES: hrSystem（完整）---
+    # --- HOST-RESOURCES: hrSystem (complete) ---
     perf = _collector("perf_info", get_perf_info, None)
     add(HR + (1, 1, 0), rfc1902.TimeTicks(up & U32))                    # hrSystemUptime
     add(HR + (1, 2, 0), octet(_hr_system_date()))                       # hrSystemDate
@@ -1809,13 +1921,15 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(HR + (1, 4, 0), octet(""))                                      # hrSystemInitialLoadParameters
     add(HR + (1, 5, 0), rfc1902.Gauge32(
         _collector("sessions", get_session_count, 0)))                  # hrSystemNumUsers
-    # hrSystemProcesses —— LibreNMS 的 System → Processes 圖靠這個。
-    # 優先用 GetPerformanceInfo（單次呼叫、數十 µs）；不可用時才退回
-    # Toolhelp32 快照（要列舉全部程序，300 個約 50–300 ms，spec §4.5 列為昂貴）。
+    # hrSystemProcesses — what LibreNMS's System → Processes graph reads.
+    # GetPerformanceInfo is preferred: a single call, tens of microseconds. Only
+    # when that is unavailable does this fall back to a Toolhelp32 snapshot,
+    # which enumerates every process and costs 50-300 ms with 300 of them
+    # (spec §4.5 lists it as expensive).
     nproc = perf.ProcessCount if perf is not None else _collector(
         "processes", get_process_count, 0)
     add(HR + (1, 6, 0), rfc1902.Gauge32(nproc))
-    add(HR + (1, 7, 0), rfc1902.Integer32(0))                           # hrSystemMaxProcesses (0=無限制)
+    add(HR + (1, 7, 0), rfc1902.Integer32(0))                           # hrSystemMaxProcesses (0 = no limit)
 
     mem = _collector("memory", get_memory, None)
     if mem is None:
@@ -1823,8 +1937,9 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(HR + (2, 2, 0), rfc1902.Integer32(min(mem.ullTotalPhys // 1024, INT32_MAX)))
 
     # --- hrStorageTable ---
-    # 記憶體池命名刻意對齊 net-snmp 的用語，LibreNMS 的 mempool 探索才會把它們
-    # 歸到 Memory 頁的正確類別（system / virtual / cached / buffers / shared / swap）。
+    # The memory pool names deliberately match net-snmp's wording, so LibreNMS's
+    # mempool discovery files them under the right categories on the Memory page
+    # (system, virtual, cached, buffers, shared, swap).
     rows = [("Physical Memory", HR + (2, 1, 2), mem.ullTotalPhys,
              mem.ullTotalPhys - mem.ullAvailPhys),
             ("Virtual Memory", HR + (2, 1, 3), mem.ullTotalPageFile,
@@ -1839,32 +1954,40 @@ def build_snapshot() -> tuple[tuple, tuple]:
         kpaged = perf.KernelPaged * page
         knonpaged = perf.KernelNonpaged * page
 
-        # Cached Memory —— Windows 的系統檔案快取，對應 net-snmp 的 "Cached memory"。
-        # 快取本質上「已使用但可回收」，故 used == total（與 net-snmp 一致）。
+        # Cached Memory — the Windows system file cache, matching net-snmp's
+        # "Cached memory". A cache is by nature "used but reclaimable", so used
+        # equals total, as net-snmp reports it.
         rows.append(("Cached Memory", HR + (2, 1, 1), cache, cache))
 
-        # Swap space —— 分頁檔的部分。Windows 的 commit limit 是
-        # 實體記憶體 + 分頁檔，故分頁檔大小 = commit limit - 實體記憶體。
-        # 這與「Virtual Memory」（= commit charge）是不同概念，不可混用（spec §2.2）。
+        # Swap space — the page file portion. Windows' commit limit is physical
+        # memory plus the page file, so the page file size is the commit limit
+        # minus physical memory. This is a different concept from "Virtual
+        # Memory" (the commit charge) and the two must not be conflated
+        # (spec §2.2).
         swap_total = max(commit_limit - phys_total, 0)
         swap_used = max(commit_total - (phys_total - mem.ullAvailPhys), 0)
         if swap_total:
             rows.append(("Swap Space", HR + (2, 1, 3),
                          swap_total, min(swap_used, swap_total)))
 
-        # 核心集區。Windows 特有，但 hrStorageOther 是 RFC 2790 給這類項目的位置。
+        # Kernel pools. Windows-specific, but hrStorageOther is where RFC 2790
+        # puts things like this.
         if kpaged:
             rows.append(("Kernel Paged Pool", HR + (2, 1, 1), kpaged, kpaged))
         if knonpaged:
             rows.append(("Kernel Nonpaged Pool", HR + (2, 1, 1), knonpaged, knonpaged))
     _vols = _collector("volumes", get_fixed_volumes, [])
     for vol in _vols:
-        # 描述格式刻意**不**沿用 Microsoft SNMP Service 的
+        # The description format deliberately does **not** follow the Microsoft
+        # SNMP Service's
         #   "C: Label:xxx  Serial Number 1A2B3C4D"
-        # 序號對監控沒有意義，"Label:" 也只是雜訊。改為：
-        #   有標籤 → "C: 系統碟"   無標籤 → "C:"
-        # 序號仍可從 ENTITY-MIB 的 entPhysicalSerialNum 取得，資訊沒有遺失。
-        # 標籤可能是中文，一律經 octet() 編成 UTF-8。
+        # A serial number means nothing for monitoring and "Label:" is just
+        # noise. Instead:
+        #   with a label    -> "C: System"
+        #   without a label -> "C:"
+        # The serial is still available from ENTITY-MIB's entPhysicalSerialNum,
+        # so nothing is lost. Labels may be non-ASCII and always go through
+        # octet() to become UTF-8.
         drive = vol["root"].rstrip("\\")           # "C:\\" -> "C:"
         descr = f"{drive} {vol['label']}" if vol["label"] else drive
         rows.append((descr, HR + (2, 1, 4), vol["total"], vol["used"]))
@@ -1878,37 +2001,42 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(HRSTOR + (6, idx), rfc1902.Integer32(min(used // unit, INT32_MAX)))
 
     def _disk_label(disk) -> str:
-        """磁碟的人類可辨識名稱。
+        """A human-recognisable name for a disk.
 
-        只給 "PhysicalDrive0" 在多顆磁碟的機器上完全看不出是哪一顆——
-        使用者實測回報。型號是最有辨識度的資訊，序號次之（但序號太長，
-        放在 ENTITY-MIB 的 entPhysicalSerialNum 即可，不塞進顯示名稱）。
+        "PhysicalDrive0" on its own says nothing about which disk it is on a
+        machine with several — reported from the field. The model is the most
+        recognisable piece of information, the serial second; but the serial is
+        long, so it belongs in ENTITY-MIB's entPhysicalSerialNum rather than the
+        display name.
         """
         n = disk["index"]
         model = (disk.get("model") or "").strip()
         if not model or model == f"PhysicalDrive{n}":
             return f"PhysicalDrive{n}"
-        # 參考 Linux net-snmp 的風格（"/dev/sda: SATA CVB-CD256"）：
-        # 「裝置: 型號」，不含容量。LibreNMS 的欄位寬度有限，
-        # 過長會被截斷成 "...M.2 2280 256G" 這種看不出重點的字串——實測回報。
-        # 去掉廠商重複字樣與容量尾綴，只留最有辨識度的型號。
+        # Following net-snmp's style on Linux ("/dev/sda: SATA CVB-CD256"):
+        # "device: model", with no capacity. LibreNMS's column is narrow, and
+        # anything longer gets truncated to something like "...M.2 2280 256G"
+        # which shows none of the identifying part — reported from the field.
+        # Repeated vendor words and the capacity suffix are dropped, leaving the
+        # most recognisable form of the model.
         words = model.split()
         if len(words) > 1 and words[0].upper() == words[1].upper():
             words = words[1:]                       # "QEMU QEMU HARDDISK" → "QEMU HARDDISK"
         model = " ".join(words)
-        for suffix in (" 2280", " M.2"):            # 尺寸規格對辨識沒幫助
+        for suffix in (" 2280", " M.2"):            # form factor does not aid
+                                                # recognition
             model = model.replace(suffix, "")
         model = model.strip()
         if len(model) > 28:
             model = model[:28].rstrip()
         return f"PhysicalDrive{n}: {model}"
 
-    # --- hrDeviceTable 全家族 ---
-    # spec §2.3：所有 hrDevice 衍生表（hrProcessor / hrNetwork / hrDiskStorage）
-    # 一律共用同一組 hrDeviceIndex，不另建 index 體系。
+    # --- The whole hrDeviceTable family ---
+    # spec §2.3: every table derived from hrDevice (hrProcessor, hrNetwork,
+    # hrDiskStorage) shares one hrDeviceIndex space rather than inventing its own.
     inv = _collector("inventory", get_inventory, {})
 
-    # (a) 處理器 → hrProcessorTable
+    # (a) Processors -> hrProcessorTable
     cpu_name = _collector("cpu_name", get_cpu_name, "CPU")
     loads = _collector("cpu", get_cpu_loads, [])
     for i, load in enumerate(loads):
@@ -1922,19 +2050,19 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(HRPROC + (1, di), rfc1902.ObjectIdentifier((0, 0)))          # hrProcessorFrwID
         add(HRPROC + (2, di), rfc1902.Integer32(load))                   # hrProcessorLoad
 
-    # (b) 網路介面 → hrNetworkTable
+    # (b) Network interfaces -> hrNetworkTable
     for nic in ifaces:
         di = DEV_BASE_NET + nic["idx"]
         add(HRDEV + (1, di), rfc1902.Integer32(di))
         add(HRDEV + (2, di), rfc1902.ObjectIdentifier(HRDEVTYPE + (4,)))  # hrDeviceNetwork
         add(HRDEV + (3, di), octet(nic["descr"]))
         add(HRDEV + (4, di), rfc1902.ObjectIdentifier((0, 0)))
-        # hrDeviceStatus：介面 up 才算 running(2)，否則 down(5)
+        # hrDeviceStatus: running(2) only when the interface is up, else down(5)
         add(HRDEV + (5, di), rfc1902.Integer32(2 if nic["oper"] == 1 else 5))
         add(HRDEV + (6, di), rfc1902.Counter32((nic["in_err"] + nic["out_err"]) & U32))
         add(HRNET + (1, di), rfc1902.Integer32(nic["idx"]))               # hrNetworkIfIndex
 
-    # (c) 實體磁碟 → hrDiskStorageTable
+    # (c) Physical disks -> hrDiskStorageTable
     for disk in inv.get("disks", []):
         di = DEV_BASE_DISK + disk["index"]
         add(HRDEV + (1, di), rfc1902.Integer32(di))
@@ -1944,15 +2072,19 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(HRDEV + (5, di), rfc1902.Integer32(2))
         add(HRDEV + (6, di), rfc1902.Counter32(0))
         add(HRDISK + (1, di), rfc1902.Integer32(1))                       # readWrite
-        # hrDiskStorageMedia: 3=hardDisk。可移除裝置歸 other(1)，不猜測介質類型。
+        # hrDiskStorageMedia: 3 = hardDisk. Removable devices are other(1); the
+        # medium type is not guessed.
         add(HRDISK + (2, di), rfc1902.Integer32(1 if disk["removable"] else 3))
         add(HRDISK + (3, di), rfc1902.Integer32(1 if disk["removable"] else 2))  # TruthValue
-        # hrDiskStorageCapacity 是 Integer32、單位 KB。> 2 TB 會溢位，
-        # RFC 無 allocation unit 機制可用，故 clamp 並在文件說明（§2.1 同源問題）。
+        # hrDiskStorageCapacity is Integer32 in KB, so anything above 2 TB
+        # overflows. The RFC provides no allocation-unit mechanism here, so the
+        # value is clamped and the limitation documented (same root cause as
+        # §2.1).
         add(HRDISK + (4, di), rfc1902.Integer32(min(disk["size_bytes"] // 1024, INT32_MAX)))
 
-    # --- ENTITY-MIB entPhysicalTable（LibreNMS Inventory 頁）---
-    # spec §2.10：資料來自 GetSystemFirmwareTable('RSMB')，不需 WMI、不需特權。
+    # --- ENTITY-MIB entPhysicalTable (the LibreNMS Inventory page) ---
+    # spec §2.10: the data comes from GetSystemFirmwareTable('RSMB'), needing
+    # neither WMI nor any special privilege.
     def ent(idx, cls, descr, name, parent, relpos, *, serial="", mfg="", model="",
             hw="", fw="", sw="", fru=False):
         add(ENTPHY + (1, idx), rfc1902.Integer32(idx))                    # entPhysicalIndex
@@ -2034,7 +2166,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(DIO + (12, idx), rfc1902.Counter64(rd))
         add(DIO + (13, idx), rfc1902.Counter64(wr))
 
-    # --- IP / ICMP / TCP / UDP 群組（LibreNMS Netstats 整組圖表）---
+    # --- IP / ICMP / TCP / UDP groups (the whole LibreNMS Netstats set) ---
     ipst = _collector("ip_stats", get_ip_stats, None)
     if ipst is not None:
         for col, val, typ in [
@@ -2055,7 +2187,8 @@ def build_snapshot() -> tuple[tuple, tuple]:
     icmp = _collector("icmp_stats", get_icmp_stats, None)
     if icmp is not None:
         i, o = icmp.InStats, icmp.OutStats
-        # icmp group：1-13 為 In*，14-26 為 Out*，順序依 RFC 1213
+        # icmp group: 1-13 are the In* counters, 14-26 the Out*, ordered per
+        # RFC 1213
         for col, val in enumerate([
             i.Msgs, i.Errors, i.DestUnreachs, i.TimeExcds, i.ParmProbs, i.SrcQuenchs,
             i.Redirects, i.Echos, i.EchoReps, i.Timestamps, i.TimestampReps,
@@ -2070,7 +2203,8 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(TCPG + (1, 0), rfc1902.Integer32(min(tcp.RtoAlgorithm, INT32_MAX)))
         add(TCPG + (2, 0), rfc1902.Integer32(min(tcp.RtoMin, INT32_MAX)))
         add(TCPG + (3, 0), rfc1902.Integer32(min(tcp.RtoMax, INT32_MAX)))
-        # MaxConn 為 -1 代表動態配置；Windows 回傳 0xFFFFFFFF，需轉回 -1
+        # MaxConn of -1 means dynamically allocated; Windows returns 0xFFFFFFFF,
+        # which has to be converted back
         maxconn = -1 if tcp.MaxConn == 0xFFFFFFFF else min(tcp.MaxConn, INT32_MAX)
         add(TCPG + (4, 0), rfc1902.Integer32(maxconn))
         add(TCPG + (5, 0), rfc1902.Counter32(tcp.ActiveOpens & U32))
@@ -2093,17 +2227,19 @@ def build_snapshot() -> tuple[tuple, tuple]:
 
     # --- ipAddrTable / ipAddressTable（LibreNMS ipv4-addresses / ipv6-addresses）---
     def _oid_addr(raw: bytes) -> tuple:
-        """把位址位元組展開成 OID 後綴（每個 byte 一個 sub-identifier）。"""
+        """Expand address bytes into an OID suffix, one sub-identifier per byte."""
         return tuple(raw)
 
     def _prefix_mask(plen: int) -> str:
-        """IPv4 前置碼長度 → 點分十進位遮罩（ipAdEntNetMask 需要）。"""
+        """IPv4 prefix length to a dotted-decimal mask, as ipAdEntNetMask wants."""
         m = (0xFFFFFFFF << (32 - plen)) & 0xFFFFFFFF if plen else 0
         return ".".join(str((m >> sh) & 0xFF) for sh in (24, 16, 8, 0))
 
-    # Windows 原生 InterfaceIndex → 我們的持久化 ifIndex。
-    # 不在此對映中的位址（loopback、隧道、已過濾掉的虛擬介面）一律不輸出：
-    # 指向不存在的 ifIndex 只會讓 LibreNMS 產生孤兒資料（spec §6.9 的精神）。
+    # Windows' native InterfaceIndex mapped to our persistent ifIndex.
+    # Addresses not in this map — loopback, tunnels, filtered-out virtual
+    # interfaces — are not emitted at all:
+    # pointing at a non-existent ifIndex only produces orphaned data in
+    # LibreNMS (spec §6.9 in spirit).
     _win2if = {n["win_idx"]: n["idx"] for n in ifaces if "win_idx" in n}
 
     addrs = _collector("ip_addresses", get_ip_addresses, [])
@@ -2113,25 +2249,27 @@ def build_snapshot() -> tuple[tuple, tuple]:
             continue
         idx = _oid_addr(a["raw"])
         if a["version"] == 4:
-            # RFC1213 ipAddrTable —— LibreNMS 的 ipv4-addresses 主要讀這張
+            # RFC1213 ipAddrTable — what LibreNMS's ipv4-addresses mostly reads
             add(IPADDR + (1,) + idx, rfc1902.IpAddress(a["addr"]))        # ipAdEntAddr
             add(IPADDR + (2,) + idx, rfc1902.Integer32(our_if))           # ipAdEntIfIndex
             add(IPADDR + (3,) + idx,
                 rfc1902.IpAddress(_prefix_mask(a["prefix_len"])))         # ipAdEntNetMask
             add(IPADDR + (4,) + idx, rfc1902.Integer32(1))                # ipAdEntBcastAddr
             add(IPADDR + (5,) + idx, rfc1902.Integer32(65535))            # ipAdEntReasmMaxSize
-        # IP-MIB ipAddressTable —— IPv4 與 IPv6 共用，index 為 (addrType, addr)
+        # IP-MIB ipAddressTable — shared by IPv4 and IPv6, indexed by
+        # (addrType, addr)
         atype = 1 if a["version"] == 4 else 2
         aidx = (atype, len(a["raw"])) + idx
         add(IPADDRESS + (3,) + aidx, rfc1902.Integer32(our_if))           # ipAddressIfIndex
         add(IPADDRESS + (4,) + aidx, rfc1902.Integer32(1))                # ipAddressType unicast
-        add(IPADDRESS + (5,) + aidx, rfc1902.Integer32(a["prefix_len"]))  # 前置碼長度（簡化）
+        add(IPADDRESS + (5,) + aidx, rfc1902.Integer32(a["prefix_len"]))  # prefix length (simplified)
         add(IPADDRESS + (6,) + aidx, rfc1902.Integer32(1))                # ipAddressOrigin
         add(IPADDRESS + (7,) + aidx, rfc1902.Integer32(1))                # ipAddressStatus preferred
         add(IPADDRESS + (10,) + aidx, rfc1902.Integer32(1))               # ipAddressRowStatus
 
     # --- ipNetToPhysicalTable（ARP / IPv6 ND）---
-    # spec §3.5：預設停用。內網 ARP 表 = 橫向移動的目標清單。
+    # spec §3.5: off by default. The local ARP table is a target list for
+    # lateral movement.
     if CFG.get("enable_arp_table"):
         for nb in _collector("ip_neighbors", get_ip_neighbors, []):
             nb_if = _win2if.get(nb["if_index"])
@@ -2146,19 +2284,23 @@ def build_snapshot() -> tuple[tuple, tuple]:
             add(IPNETPHYS + (6,) + nidx, rfc1902.Integer32(1))            # RowStatus active
 
     # --- hrPartitionTable + hrFSTable ---
-    # 內建 SNMP 有這兩張表（實測 20 / 27 筆），我們原本完全沒有。
-    # 它們沒有資訊揭露問題（都是本機自己的磁碟區），對照 spec §3.5 的
-    # 揭露清單也不在其中，故預設輸出。
+    # The built-in service has both of these tables (20 and 27 rows as measured)
+    # and this agent originally had neither. They raise no disclosure concern —
+    # they describe this machine's own volumes — and are not on the spec §3.5
+    # list, so they are emitted by default.
     HRFS_TYPE_NTFS = HR + (3, 9, 4)      # hrFSNTFS
-    HRFS_TYPE_FAT32 = HR + (3, 9, 3)     # hrFSFat32（近似，RFC 未區分 FAT/FAT32）
+    HRFS_TYPE_FAT32 = HR + (3, 9, 3)     # hrFSFat32 (approximate; the RFC does
+                                         # not distinguish FAT from FAT32)
     HRFS_TYPE_OTHER = HR + (3, 9, 1)     # hrFSOther
     _FS_TYPES = {"NTFS": HRFS_TYPE_NTFS, "FAT32": HRFS_TYPE_FAT32,
                  "FAT": HRFS_TYPE_FAT32, "REFS": HRFS_TYPE_OTHER}
 
-    # hrPartition 的 index 是 (hrDeviceIndex, hrPartitionIndex)（spec §2.3 / RFC 2790）。
-    # 磁碟區沒有可靠的「屬於哪顆實體磁碟」對映（Storage Spaces、動態磁碟、
-    # 多重掛載都會打破一對一），因此全部掛在第一顆磁碟的 hrDeviceIndex 之下
-    # 並在文件說明——回報錯誤的歸屬比回報「未知歸屬」更糟。
+    # hrPartition is indexed by (hrDeviceIndex, hrPartitionIndex)
+    # (spec §2.3, RFC 2790). There is no reliable mapping from a volume to the
+    # physical disk it lives on — Storage Spaces, dynamic disks and multiple
+    # mount points all break the one-to-one assumption — so everything is
+    # attached to the first disk's hrDeviceIndex and the limitation documented.
+    # Reporting the wrong parent is worse than reporting an unknown one.
     _disks = inv.get("disks", [])
     _part_dev = DEV_BASE_DISK + (_disks[0]["index"] if _disks else 0)
 
@@ -2167,7 +2309,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(HRPART + (1, _part_dev, pi), rfc1902.Integer32(pi))          # hrPartitionIndex
         add(HRPART + (2, _part_dev, pi), octet(label))                   # hrPartitionLabel
         add(HRPART + (3, _part_dev, pi), octet(vol["serial"]))           # hrPartitionID
-        # hrPartitionSize 單位為 KB，Integer32 → 2 TB 上限，需 clamp
+        # hrPartitionSize is in KB as Integer32, so it caps at 2 TB and is clamped
         add(HRPART + (4, _part_dev, pi),
             rfc1902.Integer32(min(vol["total"] // 1024, INT32_MAX)))     # hrPartitionSize
         add(HRPART + (5, _part_dev, pi), rfc1902.Integer32(pi))          # hrPartitionFSIndex
@@ -2179,19 +2321,23 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(HRFS + (4, pi), rfc1902.ObjectIdentifier(fs))                # hrFSType
         add(HRFS + (5, pi), rfc1902.Integer32(1))                        # hrFSAccess readWrite(1)
         add(HRFS + (6, pi), rfc1902.Integer32(2))                        # hrFSBootable false(2)
-        add(HRFS + (7, pi), rfc1902.Integer32(2))                        # hrFSStorageIndex 佔位
+        add(HRFS + (7, pi), rfc1902.Integer32(2))                        # hrFSStorageIndex placeholder
         add(HRFS + (8, pi), rfc1902.Integer32(0))                        # hrFSLastFullBackupDate
         add(HRFS + (9, pi), rfc1902.Integer32(0))                        # hrFSLastPartialBackupDate
 
     # --- ipRouteTable（RFC1213）---
-    # RFC1213 的 ipRouteTable 以**目的位址單獨**當索引，因此同一個目的位址
-    # 只能有一筆。但真實主機常有多張網路卡各自的多播路由（224.0.0.0）、
-    # 廣播路由（255.255.255.255）、甚至等價多路徑 —— 實測在一台有 7 個 IP 的
-    # 筆電上，224.0.0.0 出現了多次，觸發「重複 OID」護欄而讓 agent 無法啟動。
+    # RFC1213's ipRouteTable is indexed by **destination address alone**, so a
+    # destination can appear only once. Real hosts routinely have a multicast
+    # route (224.0.0.0) and a broadcast route (255.255.255.255) per adapter, and
+    # sometimes equal-cost multipath. Measured on a laptop with seven addresses,
+    # 224.0.0.0 appeared several times, tripping the duplicate-OID guard and
+    # stopping the agent from starting.
     #
-    # 處理方式：同一目的位址只保留 metric 最小的那筆（即實際會被選用的路由）。
-    # 這是 RFC1213 的固有限制，較新的 ipForwardTable / inetCidrRouteTable
-    # 才把介面納入索引。多餘的路由不輸出，而不是輸出錯的索引。
+    # The fix: keep only the entry with the lowest metric for each destination,
+    # which is the route that would actually be used. This is inherent to
+    # RFC1213; the newer ipForwardTable and inetCidrRouteTable include the
+    # interface in the index. Surplus routes are dropped rather than emitted
+    # under a wrong index.
     _seen_routes: dict[tuple, dict] = {}
     for rt in _collector("routes", get_routes, []):
         our_if = _win2if.get(rt["if_index"])
@@ -2213,19 +2359,22 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(IPROUTE + (9,) + ridx, rfc1902.Integer32(rt["proto"]))       # ipRouteProto
         add(IPROUTE + (11,) + ridx, rfc1902.IpAddress(rt["mask"]))       # ipRouteMask
 
-    # --- ENTITY-SENSOR-MIB（LibreNMS sensors 模組）---
-    # spec §2.9：感測器資料**不從 LibreHardwareMonitor 取**（依賴 WinRing0，
-    # 已列入 Microsoft vulnerable driver blocklist，在 HVCI 端點會觸發 Defender）。
-    # 改用原生的 IOCTL_STORAGE_QUERY_PROPERTY + StorageDeviceTemperatureProperty。
-    # 虛擬磁碟通常沒有溫度感測器，此時該列不出現（§6.9：絕不捏造數值）。
+    # --- ENTITY-SENSOR-MIB (the LibreNMS sensors module) ---
+    # spec §2.9: sensor data does **not** come from LibreHardwareMonitor, which
+    # depends on WinRing0 — on Microsoft's vulnerable-driver blocklist, and
+    # enough to trigger Defender on an HVCI endpoint. Native
+    # IOCTL_STORAGE_QUERY_PROPERTY with StorageDeviceTemperatureProperty is used
+    # instead. Virtual disks usually have no temperature sensor, in which case
+    # the row does not appear (§6.9: never fabricate a value).
     def ent_sensor(idx, sensor_type, scale, precision, value, status, unit_descr):
         add(ENTSENS + (1, idx), rfc1902.Integer32(sensor_type))   # entPhySensorType
         add(ENTSENS + (2, idx), rfc1902.Integer32(scale))         # entPhySensorScale
         add(ENTSENS + (3, idx), rfc1902.Integer32(precision))     # entPhySensorPrecision
         add(ENTSENS + (4, idx), rfc1902.Integer32(value))         # entPhySensorValue
         add(ENTSENS + (5, idx), rfc1902.Integer32(status))        # 1=ok 2=unavailable 3=nonoperational
-        # entPhySensorValueTimeStamp 的語意是「取得此讀數時的 sysUpTime」，
-        # 不是感測器年齡。因為快照重建時才取值，用當下 sysUpTime 即正確。
+        # entPhySensorValueTimeStamp means "the sysUpTime when this reading was
+        # taken", not the age of the sensor. Readings are taken as the snapshot
+        # is rebuilt, so the current sysUpTime is the correct value.
         add(ENTSENS + (6, idx), rfc1902.TimeTicks(up & U32))      # entPhySensorValueTimeStamp
         add(ENTSENS + (7, idx), rfc1902.Integer32(60))            # entPhySensorValueUpdateRate
         add(ENTSENS + (8, idx), octet(unit_descr))                # entPhySensorUnitsDisplay
@@ -2233,12 +2382,15 @@ def build_snapshot() -> tuple[tuple, tuple]:
     # entPhySensorType (RFC 3433): other(1), celsius(8), percentRH(9), rpm(10),
     # cmm(11), truthvalue(12), volts/amps/watts/hertz…
     #
-    # **警告：LibreNMS 只收下列型別**（includes/discovery/sensors/entity-sensor.inc.php）：
+    # **Warning: LibreNMS accepts only these types**
+    # (includes/discovery/sensors/entity-sensor.inc.php):
     #   voltsDC voltsAC amperes watts hertz percentRH rpm celsius dBm
-    # `other(1)` 不在對照表裡，整筆會被**無聲丟棄**。第一版把 NVMe 耐用度與
-    # 可用備援空間送成 other，於是現場只看得到溫度、看不到任何 SMART 指標，
-    # 而 agent 這端完全正常——查了很久才發現問題在對照表。
-    # 計數型的 SMART 指標因此改走 NET-SNMP-EXTEND-MIB（見下方 smart 應用程式）。
+    # `other(1)` is not in that map and the whole row is **silently discarded**.
+    # The first version published NVMe endurance and available spare as other, so
+    # the field saw a temperature and no SMART metrics at all while this side
+    # looked perfectly healthy — it took a long time to find that the problem was
+    # the map. Counter-style SMART metrics therefore go through
+    # NET-SNMP-EXTEND-MIB instead (see the smart application below).
     SENSOR_CELSIUS, SENSOR_OTHER, SENSOR_HERTZ = 8, 1, 7
     SCALE_UNITS, SCALE_MEGA, STATUS_OK = 9, 11, 1
     for disk in inv.get("disks", []):
@@ -2249,22 +2401,24 @@ def build_snapshot() -> tuple[tuple, tuple]:
         if temp is not None:
             ent_sensor(base, SENSOR_CELSIUS, SCALE_UNITS, 0, int(temp),
                        STATUS_OK, "C")
-            # 感測器名稱不重複磁碟全名——LibreNMS 會把 entPhysicalName 直接當
-            # 感測器標籤，重複一次型號只會撐爆欄位寬度（實測回報）。
-            # 父項目已經是那顆磁碟，階層本身就說明了歸屬。
+            # The sensor name does not repeat the full disk name: LibreNMS uses
+            # entPhysicalName directly as the sensor label, and repeating the
+            # model only overflows the column (reported from the field). The
+            # parent entry is already that disk, so the hierarchy says which one.
             ent(base, ENT_CLASS_OTHER, descr=f"Temperature ({name})",
                 name=f"PhysicalDrive{disk['index']} Temp",
                 parent=ENT_DISK_BASE + disk["index"], relpos=1)
 
         health = disk.get("health") or {}
-        # NVMe 耐用度：Percentage Used（0-255，超過 100 代表已超出預估壽命）
+        # NVMe endurance: Percentage Used (0-255; above 100 means the estimated
+        # life has been exceeded)
         if "percentage_used" in health:
             ent_sensor(base + 1, SENSOR_OTHER, SCALE_UNITS, 0,
                        int(health["percentage_used"]), STATUS_OK, "%")
             ent(base + 1, ENT_CLASS_OTHER, descr=f"Endurance Used ({name})",
                 name=f"PhysicalDrive{disk['index']} Wear",
                 parent=ENT_DISK_BASE + disk["index"], relpos=2)
-        # 可用備援空間百分比
+        # Available spare, as a percentage
         if "avail_spare_pct" in health:
             ent_sensor(base + 2, SENSOR_OTHER, SCALE_UNITS, 0,
                        int(health["avail_spare_pct"]), STATUS_OK, "%")
@@ -2272,10 +2426,12 @@ def build_snapshot() -> tuple[tuple, tuple]:
                 name=f"PhysicalDrive{disk['index']} Spare",
                 parent=ENT_DISK_BASE + disk["index"], relpos=3)
 
-    # --- ACPI 熱區（系統/主機板溫度）---
-    # CPU 封裝溫度需要讀 MSR，那必須有核心驅動（鐵則 8 禁止）。ACPI 熱區是
-    # 韌體本來就公開的替代值，多數筆電與部分桌機有，虛擬機沒有——沒有時
-    # 這幾列直接不出現（§6.9：絕不捏造）。
+    # --- ACPI thermal zones (system / mainboard temperature) ---
+    # CPU package temperature needs MSR access, which needs a kernel driver
+    # (forbidden by rule 8). ACPI thermal zones are the alternative the firmware
+    # already publishes: most laptops and some desktops have them, virtual
+    # machines do not — and where there are none these rows simply do not appear
+    # (§6.9: never fabricate).
     for zi, tz in enumerate(_collector("thermal_zones",
                                        lambda: (_sensors.read_thermal_zones()
                                                 if _sensors else []), [])):
@@ -2285,12 +2441,15 @@ def build_snapshot() -> tuple[tuple, tuple]:
         ent(idx, ENT_CLASS_OTHER, descr=f"Thermal Zone ({tz.name})",
             name=f"ThermalZone{zi}", parent=ENT_MAINBOARD, relpos=10 + zi)
 
-    # --- CPU 頻率 ---
-    # 只輸出一筆而非每個邏輯處理器一筆：CallNtPowerInformation 回報的是封裝
-    # 層級的 P-state，實測各核心數值相同（.154 六核全為 3600、.163 為 2501）。
-    # 一台 64 核主機生出 64 張一模一樣的圖表沒有價值，只會拖慢 LibreNMS。
-    # 用 mega 刻度是必要的：entPhySensorValue 是 Integer32，3600 MHz 換成
-    # Hz 是 3.6e9，會直接溢位。
+    # --- CPU frequency ---
+    # One sensor, not one per logical processor: CallNtPowerInformation reports a
+    # package-level P-state, and every core returns the same value in practice
+    # (all six cores at 3600 on one test machine, 2501 on another). Sixty-four
+    # identical graphs on a 64-core host have no value and only slow LibreNMS
+    # down.
+    #
+    # The mega scale is necessary: entPhySensorValue is Integer32, and 3600 MHz
+    # expressed in Hz is 3.6e9, which overflows immediately.
     _freqs = _collector("cpu_frequency",
                         lambda: (_sensors.read_cpu_frequencies() if _sensors else []), [])
     if _freqs:
@@ -2300,9 +2459,11 @@ def build_snapshot() -> tuple[tuple, tuple]:
         ent(ENT_CPUFREQ_BASE, ENT_CLASS_OTHER, descr="CPU Frequency",
             name="CPU Frequency", parent=ENT_MAINBOARD, relpos=20)
 
-    # --- 電池（僅私有 OID）---
-    # LibreNMS 的 entity-sensor 對照表沒有 charge / percent，送過去也不會被收下。
-    # 放在私有子樹供 walk 查詢與我方診斷用，不假裝它會長出圖表。
+    # --- Battery (private OIDs only) ---
+    # LibreNMS's entity-sensor map has no charge or percent type, so publishing
+    # it as a standard sensor would produce nothing. It lives in the private
+    # subtree for walking and for our own diagnosis, without pretending a graph
+    # will appear.
     _bat = _collector("battery",
                       lambda: (_sensors.read_battery() if _sensors else None), None)
     if _bat is not None:
@@ -2311,14 +2472,18 @@ def build_snapshot() -> tuple[tuple, tuple]:
         if _bat.seconds_left is not None:
             add(JTAGENT + (42, 0), rfc1902.Gauge32(_bat.seconds_left))  # jtBatterySecondsLeft
 
-    # --- jtDiskHealthTable：磁碟健康狀態（LibreNMS state 感測器）---
-    # 分級刻意保守：
-    #   ok(1)       韌體自我評估通過，且沒有任何已知的劣化跡象
-    #   warning(2)  已出現重新配置／待處理磁區，或溫度超過門檻——碟還能用，
-    #               但該排入更換計畫
-    #   critical(3) 韌體自己說它即將故障（SMART RETURN STATUS 門檻已超過）
-    #   unknown(4)  問不到（USB 橋接器不轉送 SMART 命令等）——
-    #               明確標示「不知道」，而不是預設為健康
+    # --- jtDiskHealthTable: per-disk health (a LibreNMS state sensor) ---
+    # The grading is deliberately conservative:
+    #   ok(1)       the firmware's self-assessment passed and there is no known
+    #               sign of degradation
+    #   warning(2)  reallocated or pending sectors have appeared, or the
+    #               temperature is over the threshold — the disk still works, but
+    #               it belongs on a replacement plan
+    #   critical(3) the firmware itself says failure is imminent (SMART RETURN
+    #               STATUS reports a threshold exceeded)
+    #   unknown(4)  the disk did not answer — a USB bridge that does not pass
+    #               SMART commands through, for instance. Saying "unknown"
+    #               explicitly, rather than defaulting to healthy.
     for d in inv.get("disks", []):
         hl = d.get("health") or {}
         if not hl:
@@ -2335,7 +2500,8 @@ def build_snapshot() -> tuple[tuple, tuple]:
         if st == DISK_STATE_OK:
             attrs = hl.get("smart_by_id") or {}
             degraded = any(isinstance(attrs.get(a), int) and attrs[a] > 0
-                           for a in (5, 197, 198))     # 重新配置／待處理／無法修正
+                           for a in (5, 197, 198))     # reallocated / pending /
+                                                       # uncorrectable
             t = d.get("temp_c")
             if degraded or (isinstance(t, int) and t >= 70):
                 st = DISK_STATE_WARNING
@@ -2344,12 +2510,13 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(JTDISK + (3, di), rfc1902.Integer32(st))                    # jtDiskHealthState
         add(JTDISK + (4, di), octet(_disk_label(d)[:64]))               # jtDiskHealthDescr
 
-    # --- NET-SNMP-EXTEND-MIB：LibreNMS 的 smart 應用程式 ---
-    # LibreNMS 讀 SMART 的正規路徑（json_app_get）：
-    #   探索  walk nsExtendStatus
-    #   輪詢  get  nsExtendOutputFull."smart"
-    # 值是 base64(gzip(json))——LibreNMS 明確支援，而且是必要的：
-    # 回應上限 1400 位元組且不分片，未壓縮的 JSON 兩顆磁碟就會爆掉。
+    # --- NET-SNMP-EXTEND-MIB: LibreNMS's smart application ---
+    # The supported way LibreNMS reads SMART (json_app_get):
+    #   discovery  walk nsExtendStatus
+    #   polling    get  nsExtendOutputFull."smart"
+    # The value is base64(gzip(json)) — explicitly supported by LibreNMS, and
+    # necessary: responses cap at 1400 bytes and are never fragmented, so
+    # uncompressed JSON exceeds it at two disks.
     _smart_disks = []
     for d in inv.get("disks", []):
         if not d.get("health"):
@@ -2358,15 +2525,17 @@ def build_snapshot() -> tuple[tuple, tuple]:
         _smart_disks.append({
             "name": nm, "health": d["health"],
             "max_temp": observed_max_temp(nm, d.get("temp_c")),
-            # 現場要換哪一顆碟時，型號與序號才是找得到的依據
+            # Replacing a disk in the field needs the model and serial to know
+            # which one
             "model": d.get("model"), "serial": d.get("serial"),
             "vendor": d.get("vendor"),
         })
     if _smart_disks and _smartjson is not None:
         payload = _smartjson.build_smart_json(_smart_disks)
         blob = _smartjson.encode_extend_output(payload)
-        # 磁碟很多時可能超過單一 varbind 的上限。砍到放得下為止，
-        # 但**必須記錄砍掉幾顆**——無聲截斷會讓人以為全部磁碟都在監控中。
+        # With many disks this can exceed the single-varbind cap. Drop entries
+        # until it fits, but **log how many were dropped** — truncating quietly
+        # leaves the impression that every disk is being monitored.
         dropped = 0
         while len(blob) > MAX_EXTEND_BYTES and len(_smart_disks) > 1:
             _smart_disks.pop()
@@ -2374,13 +2543,15 @@ def build_snapshot() -> tuple[tuple, tuple]:
             payload = _smartjson.build_smart_json(_smart_disks)
             blob = _smartjson.encode_extend_output(payload)
         if dropped:
-            log(f"smart 應用程式輸出超過 {MAX_EXTEND_BYTES} 位元組，"
-                f"已省略最後 {dropped} 顆磁碟（共 {len(_smart_disks) + dropped} 顆）",
+            log(f"smart application output exceeded {MAX_EXTEND_BYTES} bytes; "
+                f"omitted the last {dropped} of "
+                f"{len(_smart_disks) + dropped} disks",
                 error=True)
         if len(blob) <= MAX_EXTEND_BYTES:
             tok = _extend_index("smart")
-            # nsExtendConfigTable：LibreNMS 的探索走 nsExtendStatus，
-            # 其餘欄位提供完整列，讓一般 SNMP 工具看起來也正常。
+            # nsExtendConfigTable: LibreNMS discovery only walks
+            # nsExtendStatus, but the remaining columns are filled in so the row
+            # looks complete to any other SNMP tool.
             add(NSEXT_CFG + (2,) + tok, octet("jt-snmpd-internal"))    # nsExtendCommand
             add(NSEXT_CFG + (3,) + tok, octet(""))                     # nsExtendArgs
             add(NSEXT_CFG + (4,) + tok, octet(""))                     # nsExtendInput
@@ -2394,48 +2565,55 @@ def build_snapshot() -> tuple[tuple, tuple]:
             add(NSEXT_OUT1 + (2,) + tok, rfc1902.OctetString(blob))    # nsExtendOutputFull
             add(NSEXT_OUT1 + (3,) + tok, rfc1902.Integer32(1))         # nsExtendOutNumLines
             add(NSEXT_OUT1 + (4,) + tok, rfc1902.Integer32(0))         # nsExtendResult=exit 0
-            # nsExtendOutput2Table（逐行；我們只有一行）
+            # nsExtendOutput2Table (line by line; there is only one line here)
             add(NSEXT_OUT2 + (2,) + tok + (1,), rfc1902.OctetString(blob))  # nsExtendOutLine
             add(NSEXT + (1, 0), rfc1902.Integer32(1))                  # nsExtendNumEntries
 
-    # --- UCD-SNMP systemStats（LibreNMS 的 System 圖表群組）---
-    # Linux 裝置在 LibreNMS 上的 Detailed Processor Usage、Context Switches、
-    # Interrupts、I/O、Swap I/O 等圖表全部來自這裡。
+    # --- UCD-SNMP systemStats (the LibreNMS System graph group) ---
+    # Detailed Processor Usage, Context Switches, Interrupts, I/O and Swap I/O —
+    # everything a Linux device shows in that group on LibreNMS comes from here.
     #
-    # 欄位編號**必須以 UCD-SNMP-MIB 為準**，不可憑記憶。實測踩過：
-    # 我把 57~63 依直覺排成 SwapIn/SwapOut/IOSent/IOReceived/Contexts/Interrupts，
-    # 但正確順序是 IOSent(57)/IOReceived(58)/Interrupts(59)/Contexts(60)/
-    # SwapIn(62)/SwapOut(63)。錯位的結果是 context switches 被當成 I/O 顯示，
-    # 圖表照樣有線、數字照樣在動，完全看不出是錯的。
+    # The field numbers **must come from UCD-SNMP-MIB**, never from memory. This
+    # was learned the hard way: 57-63 were assigned by intuition as
+    # SwapIn/SwapOut/IOSent/IOReceived/Contexts/Interrupts, when the real order
+    # is IOSent(57)/IOReceived(58)/Interrupts(59)/Contexts(60)/SwapIn(62)/
+    # SwapOut(63). The result was context switches plotted as I/O — the graphs
+    # still had lines, the numbers still moved, and nothing looked wrong.
     #     snmptranslate -m UCD-SNMP-MIB -On UCD-SNMP-MIB::ssRawContexts
     sp = _collector("sys_perf", get_system_perf, None)
     ct = _collector("cpu_times", get_cpu_times_total, None)
 
     if ct is not None:
-        # UCD 的 ssCpuRaw* 單位是 USER_HZ（1/100 秒）；Windows 是 100ns。
-        # 換算除以 10^5。搞錯係數會讓百分比完全失真。
+        # UCD's ssCpuRaw* counters are in USER_HZ (hundredths of a second);
+        # Windows uses 100 ns. The conversion divides by 10^5, and getting the
+        # factor wrong makes the percentages meaningless.
         def _hz(v100ns: int) -> int:
             return (v100ns // 100_000) & U32
 
         add(UCDSS + (50, 0), rfc1902.Counter32(_hz(ct["user"])))            # ssCpuRawUser
-        # ssCpuRawNice：Windows 沒有 nice。但 LibreNMS 的 ucd-mib poller 要求
-        # user/nice/system/idle **四個都存在**才建立 Detailed Processor Usage 圖表
-        # （includes/polling/ucd-mib.inc.php 的 isset 條件）。
-        # 這裡輸出 0 是「Windows 上永遠沒有 nice 時間」的正確陳述，
-        # 不是捏造未量測的值——與 iowait/steal 的情況不同（那些是「無法量測」）。
+        # ssCpuRawNice: Windows has no nice. But LibreNMS's ucd-mib poller
+        # requires **all four** of user, nice, system and idle to be present
+        # before it creates the Detailed Processor Usage graph (the isset
+        # condition in includes/polling/ucd-mib.inc.php).
+        #
+        # Emitting 0 here is a correct statement — there is never any nice time
+        # on Windows — not a fabricated measurement. That is different from
+        # iowait and steal below, which are genuinely unmeasurable.
         add(UCDSS + (51, 0), rfc1902.Counter32(0))                          # ssCpuRawNice
         add(UCDSS + (52, 0), rfc1902.Counter32(_hz(ct["system"])))          # ssCpuRawSystem
         add(UCDSS + (53, 0), rfc1902.Counter32(_hz(ct["idle"])))            # ssCpuRawIdle
-        # ssCpuRawWait(54)：Windows 沒有 iowait —— I/O 等待計入執行緒的等待狀態，
-        #   不是獨立的 CPU 時間類別。**無法量測，故不輸出**，
-        #   LibreNMS 的 I/O Wait 圖表因此不會出現，這是誠實的結果。
-        # ssCpuRawKernel(55)：UCD 定義與 ssCpuRawSystem 重疊，Linux 上通常為 0
+        # ssCpuRawWait(54): Windows has no iowait — I/O waiting is part of a
+        #   thread's wait state, not a separate category of CPU time. It is
+        #   **unmeasurable and therefore not emitted**, so LibreNMS shows no I/O
+        #   Wait graph. That is the honest outcome.
+        # ssCpuRawKernel(55): UCD's definition overlaps ssCpuRawSystem and is
+        #   usually 0 on Linux
         add(UCDSS + (56, 0), rfc1902.Counter32(_hz(ct["interrupt"])))       # ssCpuRawInterrupt
         # ssCpuRawSoftIRQ(61) / ssCpuRawSteal(64) / ssCpuRawGuest(65,66)：
-        #   Windows 無對應概念，不輸出。
+        #   no Windows equivalent, so not emitted.
 
     if sp is not None:
-        # I/O（單位為 block，net-snmp 在 Linux 上以 512-byte block 計）
+        # I/O in blocks; net-snmp counts 512-byte blocks on Linux
         add(UCDSS + (57, 0), rfc1902.Counter32(
             (sp.IoWriteTransferCount // 512) & U32))                        # ssIORawSent
         add(UCDSS + (58, 0), rfc1902.Counter32(
@@ -2444,29 +2622,34 @@ def build_snapshot() -> tuple[tuple, tuple]:
             add(UCDSS + (59, 0), rfc1902.Counter32(
                 ct["interrupt_count"] & U32))                               # ssRawInterrupts
         add(UCDSS + (60, 0), rfc1902.Counter32(sp.ContextSwitches & U32))   # ssRawContexts
-        # 分頁活動 → Swap I/O Activity。Windows 的分頁檔讀寫即等同 Linux 的 swap。
+        # Paging activity feeds Swap I/O Activity. Page file reads and writes on
+        # Windows are the equivalent of swap on Linux.
         add(UCDSS + (62, 0), rfc1902.Counter32(sp.PageReadCount & U32))     # ssRawSwapIn
         add(UCDSS + (63, 0), rfc1902.Counter32(
             sp.DirtyPagesWriteCount & U32))                                 # ssRawSwapOut
 
-        # 舊式的每秒瞬時值（ssSwapIn/ssSwapOut/ssIOSent/ssIOReceive/
-        # ssSysInterrupts/ssSysContext，欄位 3~9）。LibreNMS 不使用它們
-        # （只讀 Raw 版本），且它們需要維護前次取樣狀態，故不輸出。
+        # The older per-second instantaneous values (ssSwapIn, ssSwapOut,
+        # ssIOSent, ssIOReceive, ssSysInterrupts, ssSysContext — fields 3 to 9)
+        # are not emitted: LibreNMS reads only the Raw variants, and these would
+        # require keeping state between samples.
 
-        # ssIndex / ssErrorName：識別用，Linux 的 net-snmp 會提供，
-        # 有些工具靠它判斷 UCD 支援度，成本極低故提供。
+        # ssIndex and ssErrorName are identification fields that net-snmp
+        # provides on Linux. Some tools use them to decide whether UCD is
+        # supported at all, and they cost almost nothing.
         add(UCDSS + (1, 0), rfc1902.Integer32(1))                           # ssIndex
         add(UCDSS + (2, 0), octet("systemStats"))                           # ssErrorName
 
-    # laTable（Load Averages）：**Windows 沒有負載平均**。
-    # Linux 的 loadavg 是「可執行 + 不可中斷睡眠的行程數之指數移動平均」，
-    # Windows 的排程模型沒有對應概念。以處理器佇列長度硬湊會產生
-    # 看似合理但語意不同的數字——那正是 §6.9 禁止的捏造。
-    # LibreNMS 的 Load Averages 圖表因此在 Windows 上不會出現，這是正確的。
+    # laTable (Load Averages): **Windows has no load average.** Linux's loadavg
+    # is an exponential moving average of runnable plus uninterruptible-sleep
+    # processes, and the Windows scheduler has no equivalent. Substituting the
+    # processor queue length would produce a plausible-looking number meaning
+    # something else — exactly the fabrication §6.9 forbids. So LibreNMS shows no
+    # Load Averages graph on Windows, which is correct.
 
-    # --- SNMPv2-MIB snmp 群組（agent 自身的封包統計）---
-    # 這組不是從 OS 取得，而是 agent 自己累計的。LibreNMS 的
-    # netstats-snmp 圖表用它，同時也是 §3.2 閘門丟棄量的對外出口。
+    # --- SNMPv2-MIB snmp group (the agent's own packet statistics) ---
+    # Not read from the OS; accumulated by the agent itself. LibreNMS's
+    # netstats-snmp graphs use it, and it is also how the §3.2 gate's drop counts
+    # reach the outside world.
     g = _gate
     drops = (sum(v for k, v in g.counters.items() if k != "passed") if g else 0)
     passed = g.counters["passed"] if g else 0
@@ -2478,16 +2661,17 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(SNMPG + (6, 0), rfc1902.Counter32(drops & U32))         # snmpInASNParseErrs
     add(SNMPG + (30, 0), rfc1902.Integer32(2))                  # snmpEnableAuthenTraps: disabled(2)
 
-    # --- JT 自我健康 OID（spec §7）---
-    # §7.3：即使在降級模式下，這組 OID 與 system group 仍必須可回應。
-    # 這是判斷「服務活著但壞了」與「服務死了」的唯一依據。
+    # --- JT self-health OIDs (spec §7) ---
+    # §7.3: these and the system group must stay answerable even in degraded
+    # mode. They are the only way to tell "the service is alive but broken" from
+    # "the service is dead".
     svc_uptime = int((time.monotonic() - _health["start_monotonic"]) * 100)
     snap_age = (int(time.monotonic() - _health["snapshot_built_monotonic"])
                 if _health["snapshot_built_monotonic"] else 0)
     add(JTAGENT + (1, 0), octet(AGENT_VERSION))                      # jtAgentVersion
     add(JTAGENT + (2, 0), octet(AGENT_BUILD_DATE))                   # jtAgentBuildDate
     add(JTAGENT + (3, 0), rfc1902.TimeTicks(svc_uptime & U32))       # jtAgentServiceUptime
-    # 取不到就不輸出該 OID（spec §6.9：絕不捏造數值）
+    # Unreadable means the OID is not emitted (spec §6.9: never fabricate)
     _rss = _proc_rss_bytes()
     if _rss is not None:
         add(JTAGENT + (6, 0), rfc1902.Gauge32(_rss))                 # jtAgentRssBytes
@@ -2499,14 +2683,14 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(JTAGENT + (10, 0), rfc1902.Gauge32(_health["snapshot_build_ms"]))   # jtAgentSnapshotBuildMs
     add(JTAGENT + (11, 0), rfc1902.Integer32(1))                     # jtAgentConfigValid 1=valid
     add(JTAGENT + (12, 0), octet(CFG.get("config_source", "file")))  # jtAgentConfigSource
-    add(JTAGENT + (13, 0), octet("none"))                            # jtAgentVacmPreset（尚未實作）
+    add(JTAGENT + (13, 0), octet("none"))                            # jtAgentVacmPreset (not yet implemented)
     add(JTAGENT + (20, 0), octet(CFG_PATH))                          # jtAgentConfigPath
     add(JTAGENT + (21, 0), octet(LOG_DIR))                           # jtAgentLogPath
     add(JTAGENT + (22, 0), octet(_install_dir()))                    # jtAgentInstallPath
     add(JTAGENT + (23, 0), octet(_config_warnings()))                # jtAgentConfigWarnings
     add(JTAGENT + (30, 0), rfc1902.Counter32(_health["snapshot_failures"] & U32))
 
-    # jtAgentCollectorTable：每個 collector 的健康狀態
+    # jtAgentCollectorTable: the health of each collector
     now = time.monotonic()
     for ci, (cname, st) in enumerate(sorted(_health["collectors"].items()), start=1):
         since = int((now - st["last_ok"]) * 100) if st["last_ok"] else 0
@@ -2521,18 +2705,20 @@ def build_snapshot() -> tuple[tuple, tuple]:
 
     pairs.sort(key=lambda p: p[0])
 
-    # 護欄：snapshot + bisect 的正確性建立在「無重複 OID」之上（spec §36）。
-    # 重複會讓 bisect 定位錯位，症狀是某些值莫名其妙變成別的欄位的值。
+    # Guard: the correctness of snapshot + bisect rests on there being no
+    # duplicate OIDs (spec §36). A duplicate makes bisect land in the wrong
+    # place, and the symptom is values inexplicably showing another field's data.
     for a, b in zip(pairs, pairs[1:]):
         if a[0] == b[0]:
-            raise AssertionError(f"重複 OID: {a[0]}")
+            raise AssertionError(f"duplicate OID: {a[0]}")
 
     return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
 
 
-# --------------------------------------------------------------- MIB 控制器
+# ------------------------------------------------------------- MIB controller
 class SnapshotController(AbstractMibInstrumController):
-    """spec §4.3。不覆寫 write_variables → 自動成為唯讀 agent（spec §2.12）。"""
+    """spec §4.3. Not overriding write_variables makes this a read-only agent by
+    construction (spec §2.12)."""
 
     def __init__(self, oids: tuple, vals: tuple):
         self.oids, self.vals = oids, vals
@@ -2562,10 +2748,12 @@ class SnapshotController(AbstractMibInstrumController):
 
 
 class CappedBulkResponder(cmdrsp.BulkCommandResponder):
-    """spec §4.4：伺服器端對 max-repetitions 設上限（預設 25），忽略更大的請求值。
+    """spec §4.4: cap max-repetitions server-side (25 by default), ignoring any
+    larger value a request asks for.
 
-    pysnmp 原生實作只有 varbind 筆數上限（max_varbinds=64），沒有位元組上限，
-    且走到 MIB 結尾時會用 endOfMibView 把回應塞滿到 max-repetitions 筆。
+    pysnmp's own implementation caps only the varbind count (max_varbinds=64),
+    has no byte cap, and pads the response with endOfMibView up to
+    max-repetitions once it reaches the end of the MIB.
     """
     MAXREP_CAP = 25
 
@@ -2574,39 +2762,43 @@ class CappedBulkResponder(cmdrsp.BulkCommandResponder):
             cur = int(v2c.apiBulkPDU.get_max_repetitions(PDU))
             if cur > self.MAXREP_CAP:
                 v2c.apiBulkPDU.set_max_repetitions(PDU, self.MAXREP_CAP)
-        except Exception as exc:  # noqa: BLE001 - 上限設定失敗不應讓請求失敗
-            # 記錄但不中斷：截斷仍由 pysnmp 的 max_varbinds 與回應大小把關
-            log(f"max-repetitions 上限設定失敗: {exc!r}")
+        except Exception as exc:  # noqa: BLE001 - failing to apply the cap must
+                                  # not fail the request
+            # Log and continue: pysnmp's max_varbinds and the response size
+            # limit still bound the result
+            log(f"failed to apply max-repetitions cap: {exc!r}")
         return super().handle_management_operation(snmpEngine, stateReference, contextName, PDU)
 
 
-# --------------------------------------------------------------- 執行
+# ------------------------------------------------------------------- Runtime
 class GatedUdpTransport(udp.UdpTransport):
-    """在 pysnmp 之前攔截每個 datagram（spec §3.2）。
+    """Intercept every datagram before pysnmp sees it (spec §3.2).
 
-    這是整個資安設計的第一道防線：被擋下的封包**完全不會進入
-    BER decoder**，因此深度巢狀、超長長度欄位、OID 放大等攻擊
-    根本碰不到 pyasn1。
+    This is the first line of the whole security design: a packet that is stopped
+    here **never reaches the BER decoder**, so deep nesting, oversized length
+    fields and OID amplification never touch pyasn1.
 
-    覆寫 handle_datagram 而非在 pysnmp 內部下手，是為了保證順序：
-    pysnmp 一旦拿到位元組，解析就已經發生了。
+    Overriding at the transport rather than somewhere inside pysnmp is what
+    guarantees the ordering: once pysnmp has the bytes, parsing has already
+    happened.
     """
 
     def datagram_received(self, datagram, transportAddress):
-        """pysnmp 7.x 的實際掛點。
+        """The actual hook point in pysnmp 7.x.
 
         UdpAsyncioTransport → DgramAsyncioProtocol → asyncio.DatagramProtocol。
-        DgramAsyncioProtocol.datagram_received 會把 datagram 交給
-        loop.call_soon(callback) 進入 pysnmp 的訊息處理鏈。
-        在此處攔截，位元組就到不了 BER decoder。
+        DgramAsyncioProtocol.datagram_received hands the datagram to
+        loop.call_soon(callback), which enters pysnmp's message processing chain.
+        Intercepting here keeps the bytes away from the BER decoder.
         """
         gate = _gate
         if gate is not None:
             src_ip = transportAddress[0] if transportAddress else ""
             allowed, _reason = gate.check(bytes(datagram), src_ip)
             if not allowed:
-                # 丟棄事件必須限流，否則攻擊者可用它灌爆 log 與 Graylog 授權
-                # （spec §3.8）。此處僅計數，彙總輸出由週期性工作處理。
+                # Drop events have to be rate-limited, or an attacker can use
+                # them to flood the log and a Graylog licence (spec §3.8). Only
+                # counters are updated here; a periodic task emits summaries.
                 return
         return super().datagram_received(datagram, transportAddress)
 
@@ -2635,18 +2827,19 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
                 f"answered. Set \"allowed_networks\" in {CFG_PATH} and restart.",
                 error=True)
 
-        # 關鍵：transport 必須在 running event loop 內建立。若在 loop 啟動前呼叫
-        # open_server_mode，socket 不會真的綁定 —— 服務顯示 Running 但不回應任何
-        # 請求（spec §6.5 的「假活著」）。這個 bug 實測發生過。
+        # Critical: the transport has to be created inside a running event loop.
+        # Calling open_server_mode before the loop starts leaves the socket
+        # unbound — the service reports Running and answers nothing (the "alive
+        # but dead" case in spec §6.5). This actually happened.
         ok = lower_process_priority()
-        log(f"程序優先權降為 BELOW_NORMAL: {ok}")
+        log(f"process priority lowered to BELOW_NORMAL: {ok}")
         ident = load_system_identity()
         CFG["contact"], CFG["location"] = ident["contact"], ident["location"]
         srcs = {ident["contact_source"], ident["location_source"]} - {"none"}
         CFG["config_source"] = ("merged" if len(srcs) > 1
                                 else (srcs.pop() if srcs else "default"))
-        log(f"sysContact={ident['contact']!r} (來源: {ident['contact_source']}) "
-            f"sysLocation={ident['location']!r} (來源: {ident['location_source']})")
+        log(f"sysContact={ident['contact']!r} (from {ident['contact_source']}) "
+            f"sysLocation={ident['location']!r} (from {ident['location_source']})")
         _t0 = time.monotonic()
         oids, vals = build_snapshot()
         _health["snapshot_build_ms"] = int((time.monotonic() - _t0) * 1000)
@@ -2657,8 +2850,8 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
         _gate = PreAuthGate(
             allowed_networks=PreAuthGate.parse_networks(CFG["allowed_networks"]),
             rate_pps=CFG["rate_pps"], burst=CFG["rate_burst"])
-        nets = CFG["allowed_networks"] or ("(未設定 —— 不做 IP 過濾)",)
-        log(f"pre-auth gate 啟用: networks={list(nets)} "
+        nets = CFG["allowed_networks"] or ("(none configured; loopback only)",)
+        log(f"pre-auth gate active: networks={list(nets)} "
             f"rate={CFG['rate_pps']}pps burst={CFG['rate_burst']}")
         config.add_transport(eng, udp.DOMAIN_NAME,
                              GatedUdpTransport().open_server_mode((host, port)))
@@ -2680,8 +2873,9 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
             try:
                 t0 = time.monotonic()
                 no, nv = build_snapshot()
-                # 原子換手：Python 參考指派在 GIL 下為原子操作，
-                # 故走訪中的請求不會看到半套快照（spec §4.3 效益 3）。
+                # Atomic handover: reference assignment in Python is atomic
+                # under the GIL, so a walk in progress never sees half a
+                # snapshot (spec §4.3, benefit 3).
                 ctrl.oids, ctrl.vals = no, nv
                 _health["snapshot_build_ms"] = int((time.monotonic() - t0) * 1000)
                 _health["snapshot_built_monotonic"] = time.monotonic()
@@ -2690,21 +2884,23 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
                     _gate.prune()
             except Exception as exc:  # noqa: BLE001
                 _health["snapshot_failures"] += 1
-                log(f"快照重建失敗（累計 {_health['snapshot_failures']} 次）: {exc!r}")
+                log(f"snapshot rebuild failed "
+                    f"({_health['snapshot_failures']} so far): {exc!r}")
 
     try:
         loop.run_until_complete(main_co())
     except Exception as exc:  # noqa: BLE001
         import traceback
-        log(f"agent 異常終止：{exc!r} | {traceback.format_exc()}", error=True)
+        log(f"agent terminated abnormally: {exc!r} | {traceback.format_exc()}",
+            error=True)
     finally:
-        log("agent 結束")
+        log("agent stopped")
 
 
-# pywin32 的 pythonservice.exe 會 import 本模組，並在**模組層級**尋找服務類別。
-# 若把 class 定義在函式內部，會得到
+# pywin32's pythonservice.exe imports this module and looks for the service class
+# at **module level**. Defining it inside a function produces
 #   AttributeError: module 'jt_snmpd' has no attribute '...'
-# 且服務直接啟動失敗、沒有任何 log。實測踩過。
+# and the service fails to start with nothing in the log. This happened.
 try:
     import win32event
     import win32service
@@ -2714,12 +2910,14 @@ try:
     class JTSnmpdService(win32serviceutil.ServiceFramework):
         _svc_name_ = "jt-snmpd"
         _svc_display_name_ = "JT SNMP Agent"
-        _svc_description_ = "以標準 MIB 提供 Windows 主機監控資料的 SNMP Agent"
+        _svc_description_ = ("SNMP agent serving Windows host monitoring data "
+                             "over standard MIBs")
 
         def __init__(self, args):
             win32serviceutil.ServiceFramework.__init__(self, args)
             self.hstop = win32event.CreateEvent(None, 0, 0, None)
-            # agent 執行緒結束時觸發，讓 SvcDoRun 不必輪詢就能察覺（見下）
+            # Signalled when the agent thread ends, so SvcDoRun notices without
+            # polling (see below)
             self.hdead = win32event.CreateEvent(None, 0, 0, None)
             self.stop_event = threading.Event()
 
@@ -2747,54 +2945,63 @@ try:
 
             threading.Thread(target=_worker, daemon=True).start()
 
-            # 只等 hstop 是不夠的：agent 執行緒若在啟動階段就死掉（綁定失敗、
-            # MIB 載入失敗、快照建置失敗），服務會永遠停在 Running 卻沒有任何
-            # 監聽器——spec §6.5 的「假活著」。SCM 看到 Running、監控看到逾時，
-            # 兩邊說法不一致是現場最難查的狀況。
+            # Waiting on hstop alone is not enough: if the agent thread dies
+            # during startup — a bind failure, a MIB load failure, a snapshot
+            # build failure — the service sits at Running forever with nothing
+            # listening (the "alive but dead" case in spec §6.5). The Service
+            # Control Manager saying Running while monitoring reports a timeout
+            # is the hardest state to diagnose in the field.
             #
-            # 改等「停止」與「agent 已死」兩個事件；後者以非零碼結束，
-            # 讓已設定的 sc failure 自動復原真正生效（否則那段設定形同虛設）。
+            # So wait on both "stop" and "the agent died". The second exits with
+            # a non-zero code, which is what makes the configured sc failure
+            # recovery actually fire — otherwise that configuration is inert.
             rc = win32event.WaitForMultipleObjects(
                 [self.hstop, self.hdead], 0, win32event.INFINITE)
             if rc == win32event.WAIT_OBJECT_0 + 1 and not self.stop_event.is_set():
-                log("agent 執行緒非預期結束，服務以失敗狀態退出以觸發自動復原",
+                log("agent thread ended unexpectedly; exiting with a failure "
+                    "status to trigger automatic recovery",
                     error=True)
-                # 1064 = ERROR_EXCEPTION_IN_SERVICE，SCM 會據此套用復原動作
+                # 1064 = ERROR_EXCEPTION_IN_SERVICE; the SCM applies the
+                # configured recovery actions on this
                 self.ReportServiceStatus(win32service.SERVICE_STOPPED,
                                          win32ExitCode=1064, waitHint=0)
                 os._exit(1)
 
     _HAVE_SERVICE = True
-except ImportError:      # pywin32 不在（例如僅做前景除錯）
+except ImportError:      # pywin32 absent (foreground debugging, for instance)
     _HAVE_SERVICE = False
 
 
 def _is_frozen() -> bool:
-    """PyInstaller 打包後 sys.frozen 為 True，且 sys.executable 是我們自己的 exe。"""
+    """After PyInstaller packaging sys.frozen is True and sys.executable is our
+    own exe."""
     return getattr(sys, "frozen", False)
 
 
 def _service_main() -> None:
-    """服務進入點。
+    """Service entry point.
 
-    未打包時走 HandleCommandLine（pythonservice.exe 代跑）。
-    打包成 exe 後 **必須**改走 PrepareToHostSingle + StartServiceCtrlDispatcher，
-    因為此時服務主程式就是我們自己的 exe（spec §1.4 硬性規則），
-    沒有 pythonservice.exe 可以代為 host。
+    Unpackaged, this goes through HandleCommandLine and pythonservice.exe hosts
+    it. Once packaged as an exe it **must** use PrepareToHostSingle and
+    StartServiceCtrlDispatcher instead, because the service binary is then our
+    own exe (a hard rule in spec §1.4) and there is no pythonservice.exe to host
+    it.
     """
     if not _HAVE_SERVICE:
-        raise SystemExit("需要 pywin32 才能以服務模式執行")
+        raise SystemExit("pywin32 is required to run as a service")
 
-    # --selftest / --foreground 由 __main__ 先攔截；此處只處理服務相關 argv。
+    # --selftest and --foreground are intercepted in __main__; only
+    # service-related argv is handled here.
     if _is_frozen() and len(sys.argv) == 1:
-        # SCM 直接啟動我們的 exe（無參數）→ 進入服務派遣迴圈
+        # The SCM launched our exe directly with no arguments: enter the
+        # service dispatch loop
         servicemanager.Initialize()
         servicemanager.PrepareToHostSingle(JTSnmpdService)
         servicemanager.StartServiceCtrlDispatcher()
         return
 
     if _is_frozen():
-        # install/remove/start/stop：讓 pywin32 把 binPath 指向我們的 exe 本身
+        # install/remove/start/stop: let pywin32 point binPath at our own exe
         win32serviceutil.HandleCommandLine(
             JTSnmpdService, argv=sys.argv,
             customInstallOptions="", customOptionHandler=None)
@@ -2808,29 +3015,31 @@ def _arg(name: str, default):
 
 
 def selftest() -> int:
-    """打包完整性煙霧測試。
+    """Smoke test that the package is complete.
 
-    只驗「exe 產出了」是不夠的——pysnmp 的 MIB 資料檔漏打包時 exe 照樣產出，
-    但一啟動就 MibNotFoundError，而**服務狀態仍顯示 Running**（§6.5 假活著）。
-    實測踩過一次。因此建置後必須實際初始化一次 SNMP engine 並建 snapshot。
+    "The exe was produced" is not enough. When pysnmp's MIB data files were left
+    out of a build the exe appeared as usual, raised MibNotFoundError on startup,
+    and **the service still reported Running** (the "alive but dead" case in
+    §6.5). That happened once, which is why every build now actually initialises
+    an SNMP engine and constructs a snapshot.
     """
     try:
         oids, vals = build_snapshot()
         if len(oids) < 10:
-            print(f"SELFTEST_FAIL snapshot 過小: {len(oids)}")
+            print(f"SELFTEST_FAIL snapshot too small: {len(oids)}")
             return 1
-        # 真正初始化 pysnmp engine —— MIB 載入失敗會在這裡爆
+        # Really initialise the pysnmp engine — a MIB load failure surfaces here
         eng = engine.SnmpEngine()
         config.add_v1_system(eng, "selftest", "public")
         config.add_vacm_user(eng, 2, "selftest", "noAuthNoPriv", (1, 3, 6))
         ctx = context.SnmpContext(eng)
         ctx.context_names[b""] = SnapshotController(oids, vals)
-        # 驗 GET / GETNEXT 兩條路徑
+        # Exercise both the GET and GETNEXT paths
         ctrl = ctx.context_names[b""]
         got = ctrl.read_variables((v2c.ObjectIdentifier(SYS + (1, 0)), None))
         nxt = ctrl.read_next_variables((v2c.ObjectIdentifier(SYS), None))
         if not got or not nxt:
-            print("SELFTEST_FAIL GET/GETNEXT 無回應")
+            print("SELFTEST_FAIL no response from GET/GETNEXT")
             return 1
         print(f"SELFTEST_OK varbinds={len(oids)} frozen={_is_frozen()} "
               f"sysDescr_len={len(bytes(got[0][1]))}")
@@ -2843,9 +3052,9 @@ def selftest() -> int:
 
 
 if __name__ == "__main__":
-    # 這兩個必須在 _service_main() 之前攔截。frozen 後若讓它們落到
-    # win32serviceutil.HandleCommandLine，會得到 "option not recognized"
-    # 並印出服務用法——實測踩過。
+    # These two have to be intercepted before _service_main(). Once frozen,
+    # letting them reach win32serviceutil.HandleCommandLine produces "option not
+    # recognized" and a printout of the service usage — which happened.
     if "--selftest" in sys.argv:
         raise SystemExit(selftest())
 
@@ -2856,9 +3065,11 @@ if __name__ == "__main__":
     CFG["community"] = _arg("--community", CFG["community"])
     if "--foreground" in sys.argv:
         print(f"foreground 0.0.0.0:{CFG['port']} community={CFG['community']}")
-        # noqa: S104 —— 綁 0.0.0.0 是設計本意：SNMP agent 必須在所有管理網段
-        # 上可達。存取控制由 §3.2 的 pre-auth gate（來源 IP 白名單）與防火牆
-        # 規則（安裝時強制輸入管理網段，預設 deny）兩層負責，不靠綁定位址。
+        # noqa: S104 — binding 0.0.0.0 is intentional: an SNMP agent has to be
+        # reachable from every management network. Access control comes from the
+        # §3.2 pre-auth gate (source address allow-list) and the firewall rule
+        # (management networks are mandatory at install time, deny by default),
+        # not from the bind address.
         run_agent("0.0.0.0", CFG["port"], CFG["community"], threading.Event())
     else:
         _service_main()

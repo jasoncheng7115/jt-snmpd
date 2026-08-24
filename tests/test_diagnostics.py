@@ -96,7 +96,7 @@ def test_log_supports_an_error_channel():
 def test_agent_abort_is_reported_as_error():
     """agent 異常終止是「使用者需要知道」的事件，必須進事件檢視器。"""
     body = _func("run_agent")
-    assert re.search(r"log\([^)]*agent 異常終止.*error=True", body, re.S), (
+    assert re.search(r"log\([^)]*terminated abnormally.*error=True", body, re.S), (
         "run_agent 的異常終止未標記為 error")
 
 

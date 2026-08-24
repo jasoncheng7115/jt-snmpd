@@ -206,7 +206,8 @@ def test_agent_enforces_a_varbind_size_cap():
     assert "MAX_EXTEND_BYTES" in AGENT_SRC
     i = AGENT_SRC.find("MAX_EXTEND_BYTES")
     assert re.search(r"while len\(blob\) > MAX_EXTEND_BYTES", AGENT_SRC), "缺少縮減迴圈"
-    assert re.search(r"已省略最後.*error=True", AGENT_SRC, re.S), "截斷必須記錄且進事件檢視器"
+    assert re.search(r"omitted the last.*error=True", AGENT_SRC, re.S), \
+        "截斷必須記錄且進事件檢視器"
 
 
 def test_agent_publishes_discovery_and_output_oids():
@@ -413,7 +414,7 @@ def test_disk_health_states_are_conservative():
     for name in ("DISK_STATE_OK", "DISK_STATE_WARNING",
                  "DISK_STATE_CRITICAL", "DISK_STATE_UNKNOWN"):
         assert name in AGENT_SRC, f"缺少 {name}"
-    i = AGENT_SRC.find("jtDiskHealthTable：磁碟健康狀態")
+    i = AGENT_SRC.find("jtDiskHealthTable: per-disk health")
     block = AGENT_SRC[i:i + 2200]
     assert "DISK_STATE_UNKNOWN" in block, "問不到時必須標為 unknown"
     assert "(5, 197, 198)" in block, "重新配置／待處理／無法修正磁區應降級為 warning"

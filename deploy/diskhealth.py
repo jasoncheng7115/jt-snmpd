@@ -1,32 +1,37 @@
-r"""磁碟溫度與健康度 — 多路徑偵測（spec §2.9）。
+r"""Disk temperature and health — multiple detection paths (spec §2.9).
 
-**為什麼要多條路徑**
+**Why more than one path**
 
-沒有任何一條路徑能涵蓋所有硬體。實測結果：
+No single path covers all hardware. Measured:
 
-| 裝置 | StorageTemperature | NVMe Log 0x02 | ATA SMART |
+| Device | StorageTemperature | NVMe Log 0x02 | ATA SMART |
 |---|---|---|---|
-| QEMU 虛擬磁碟 | 只回 28 bytes 標頭 | 不支援 | 不支援 |
-| SAMSUNG PM871b（Intel RST RAID 模式） | 只回 28 bytes 標頭 | 不支援 | **可用，38°C** |
-| 直連 NVMe（預期） | 通常可用 | **可用** | 不適用 |
-| 直連 SATA（預期） | 視韌體 | 不適用 | 通常可用 |
+| QEMU virtual disk | header only, 28 bytes | unsupported | unsupported |
+| SAMSUNG PM871b (Intel RST RAID mode) | header only, 28 bytes | unsupported | **works, 38 °C** |
+| Direct NVMe (expected) | usually works | **works** | not applicable |
+| Direct SATA (expected) | firmware-dependent | not applicable | usually works |
 
-因此依序嘗試四條路徑，取第一個成功者。全部失敗時回傳空 dict——
-「此裝置無溫度感測器」是正常情況，不是錯誤（spec §6.9：絕不捏造數值，
-該列直接不出現）。
+So the four paths are tried in order and the first success wins. When all fail
+the result is an empty dict — "this device has no temperature sensor" is normal,
+not an error (spec §6.9: never fabricate a value; the row simply does not
+appear).
 
-**為什麼不用 LibreHardwareMonitor**
+**Why not LibreHardwareMonitor**
 
-spec §2.9：LHM 依賴 WinRing0 驅動，CVE-2020-14979 使其可提權，
-已列入 Microsoft vulnerable driver blocklist。在啟用 HVCI 的政府／醫院端點上
-不但無法運作，還會觸發 Defender 告警，使 agent 被當成事件來源。
-本模組全部走 Windows 原生 IOCTL，**不需要任何核心驅動**。
+spec §2.9: LHM depends on the WinRing0 driver, which CVE-2020-14979 makes a
+privilege-escalation path, and which is on Microsoft's vulnerable-driver
+blocklist. On the HVCI-enabled government and hospital endpoints this targets it
+would not merely fail to work — it would raise Defender alerts and make the agent
+itself the incident.
 
-**權限**
+Everything here goes through native Windows IOCTLs and **needs no kernel driver**.
 
-SMART 與 ATA passthrough 需要 `GENERIC_READ | GENERIC_WRITE` 開啟
-`\\.\PhysicalDriveN`，一般使用者權限會失敗。agent 以 LocalSystem 執行，
-因此可用；開發時以一般帳號測試會誤判為「不支援」——實測踩過。
+**Privileges**
+
+SMART and ATA passthrough require opening `\\.\PhysicalDriveN` with
+`GENERIC_READ | GENERIC_WRITE`, which fails for an ordinary user. The agent runs
+as LocalSystem so it succeeds there; testing from a normal account during
+development reports "unsupported" instead, which has caused confusion before.
 """
 
 from __future__ import annotations
@@ -67,14 +72,17 @@ SMART_READ_ATTRIBUTES = 0xD0
 SMART_READ_THRESHOLDS = 0xD1
 SMART_RETURN_STATUS = 0xDA
 SMART_CMD = 0xB0
-# ATA 規範規定的魔術值：發命令前填入，回來時由這兩個暫存器帶回結果。
+# Magic values from the ATA specification: written before the command, and the
+# same two registers carry the answer back.
 SMART_CYL_LOW = 0x4F
 SMART_CYL_HIGH = 0xC2
-# 回傳值：4F/C2 = 門檻未超過（健康）；F4/2C = 門檻已超過（預測即將故障）
+# Return values: 4F/C2 means no threshold exceeded (healthy); F4/2C means a
+# threshold has been exceeded (failure predicted)
 SMART_THRESHOLD_EXCEEDED_LOW = 0xF4
 SMART_THRESHOLD_EXCEEDED_HIGH = 0x2C
 
-# SMART 屬性 ID → 意義。溫度可能出現在 0xC2 或 0xBE，視廠商而定。
+# SMART attribute ID to meaning. Temperature appears at 0xC2 or 0xBE depending
+# on the vendor.
 SMART_TEMP_IDS = (0xC2, 0xBE, 0xE7)
 SMART_ATTR_NAMES = {
     0x05: "reallocated_sectors",
@@ -94,10 +102,11 @@ SMART_ATTR_NAMES = {
 
 
 def open_disk(index: int, want_write: bool = True):
-    """開啟實體磁碟。
+    """Open a physical disk.
 
-    SMART 需要 READ|WRITE；先試最高權限，失敗逐級降級，
-    讓「只想讀型號容量」的情境在低權限下仍可運作。
+    SMART needs READ|WRITE, so the most privileged open is tried first and then
+    downgraded step by step — reading just the model and capacity still works at
+    lower privilege.
     """
     path = f"\\\\.\\PhysicalDrive{index}"
     attempts = ([GENERIC_READ | GENERIC_WRITE, GENERIC_READ, 0] if want_write
@@ -109,7 +118,7 @@ def open_disk(index: int, want_write: bool = True):
     return None, 0
 
 
-# --- 路徑 1：StorageDeviceTemperatureProperty --------------------------------
+# --- Path 1: StorageDeviceTemperatureProperty --------------------------------
 class _STORAGE_PROPERTY_QUERY(ctypes.Structure):
     _fields_ = [("PropertyId", ctypes.c_int), ("QueryType", ctypes.c_int),
                 ("AdditionalParameters", ctypes.c_ubyte * 1)]
@@ -143,8 +152,9 @@ def temp_via_storage_property(h) -> dict:
                                 ctypes.byref(q), ctypes.sizeof(q),
                                 buf, ctypes.sizeof(buf), ctypes.byref(ret), None):
         return {}
-    # DeviceIoControl 成功不代表回傳完整描述子：不支援的裝置只回標頭
-    # （實測 QEMU 與 Intel RST 都只回 28 bytes），強制轉型會拋 ValueError。
+    # A successful DeviceIoControl does not mean a complete descriptor came
+    # back: unsupported devices return only the header (28 bytes, measured on
+    # both QEMU and Intel RST), and casting that would raise ValueError.
     need = ctypes.sizeof(_STORAGE_TEMPERATURE_DATA_DESCRIPTOR)
     if ret.value < need:
         return {}
@@ -162,7 +172,7 @@ def temp_via_storage_property(h) -> dict:
     return out
 
 
-# --- 路徑 2：NVMe SMART / Health Log (0x02) ----------------------------------
+# --- Path 2: NVMe SMART / Health Log (0x02) ----------------------------------
 class _STORAGE_PROTOCOL_SPECIFIC_DATA(ctypes.Structure):
     _fields_ = [("ProtocolType", ctypes.c_int), ("DataType", wintypes.DWORD),
                 ("ProtocolDataRequestValue", wintypes.DWORD),
@@ -226,7 +236,7 @@ def health_via_nvme(h) -> dict:
     return out
 
 
-# --- 路徑 3：ATA SMART（SMART_RCV_DRIVE_DATA）--------------------------------
+# --- Path 3: ATA SMART (SMART_RCV_DRIVE_DATA) --------------------------------
 class _SENDCMDINPARAMS(ctypes.Structure):
     _fields_ = [("cBufferSize", wintypes.DWORD),
                 ("bFeaturesReg", ctypes.c_ubyte), ("bSectorCountReg", ctypes.c_ubyte),
@@ -253,27 +263,32 @@ class _DRIVERSTATUS(ctypes.Structure):
 
 class _SENDCMDOUTPARAMS(ctypes.Structure):
     _fields_ = [("cBufferSize", wintypes.DWORD), ("DriverStatus", _DRIVERSTATUS),
-                ("bBuffer", ctypes.c_ubyte * 8)]      # 這裡放回傳的 IDEREGS
+                ("bBuffer", ctypes.c_ubyte * 8)]      # the returned IDEREGS
 
 
 def smart_overall_health(h, drive_index: int) -> dict:
-    """ATA SMART RETURN STATUS（0xDA）—— 磁碟自己的整體健康自我評估。
+    """ATA SMART RETURN STATUS (0xDA) — the disk's own overall health
+    self-assessment.
 
-    這是 `smartctl -H` 顯示的那一行，也是 LibreNMS 的 smart 應用程式用
-    `health_pass` 決定要顯示 `(OK)` 還是 `(FAIL)` 的依據。
+    This is the line `smartctl -H` prints, and it is what LibreNMS's smart
+    application uses via `health_pass` to decide between `(OK)` and `(FAIL)`.
 
-    **為什麼不從屬性推導**：重新配置磁區為 0 不代表健康——韌體可能因為
-    其他屬性跌破門檻而已經在預測故障。反過來說，少量重新配置磁區在某些
-    型號上完全正常。真正的判斷是韌體自己做的，我們只該去問它，不該猜。
+    **Why not derive it from attributes**: zero reallocated sectors does not mean
+    healthy — the firmware may already be predicting failure because some other
+    attribute has crossed its threshold. And a handful of reallocated sectors is
+    entirely normal on some models. The firmware makes this judgement, so the
+    firmware is what gets asked; guessing is not an option.
 
-    回傳值由 ATA 規範定義，藉 CylLow/CylHigh 兩個暫存器帶回：
+    The answer is defined by the ATA specification and comes back in the CylLow
+    and CylHigh registers:
 
-        4F / C2  門檻未超過 → 健康
-        F4 / 2C  門檻已超過 → 韌體預測即將故障
+        4F / C2  no threshold exceeded → healthy
+        F4 / 2C  threshold exceeded    → the firmware predicts failure
 
-    兩者皆非時代表這顆碟沒有回答（例如 USB 橋接器不轉送 SMART 命令），
-    此時**不輸出** health_pass —— LibreNMS 的 `?? null` 分支會什麼都不顯示，
-    那比顯示一個猜出來的 (OK) 誠實得多。
+    Anything else means the drive did not answer (a USB bridge that does not pass
+    SMART commands through, for instance). In that case `health_pass` is **not
+    emitted** — LibreNMS's `?? null` branch then shows nothing, which is far more
+    honest than a guessed (OK).
     """
     inp = _SENDCMDINPARAMS()
     inp.cBufferSize = 0
@@ -301,7 +316,7 @@ def smart_overall_health(h, drive_index: int) -> dict:
     if (regs.bCylLowReg, regs.bCylHighReg) == (SMART_THRESHOLD_EXCEEDED_LOW,
                                                SMART_THRESHOLD_EXCEEDED_HIGH):
         return {"health_pass": False, "health_source_overall": "ata-return-status"}
-    return {}        # 沒有給出可辨識的答案 → 不猜
+    return {}        # no recognisable answer: do not guess
 
 
 def _smart_supported(h) -> bool:
@@ -312,10 +327,11 @@ def _smart_supported(h) -> bool:
 
 
 def health_via_ata_smart(h, drive_index: int) -> dict:
-    """讀取 ATA SMART 屬性表。
+    """Read the ATA SMART attribute table.
 
-    輸出 buffer 前 16 bytes 是 SENDCMDOUTPARAMS 標頭，之後 512 bytes 是
-    SMART 屬性資料：offset 0-1 為版本，之後每 12 bytes 一筆屬性
+    The first 16 bytes of the output buffer are the SENDCMDOUTPARAMS header,
+    followed by 512 bytes of attribute data: offsets 0-1 are the version, then
+    one attribute every 12 bytes.
     （id, flags(2), value, worst, raw(6), reserved）。
     """
     if not _smart_supported(h):
@@ -325,7 +341,7 @@ def health_via_ata_smart(h, drive_index: int) -> dict:
     inp.bFeaturesReg = SMART_READ_ATTRIBUTES
     inp.bSectorCountReg = 1
     inp.bSectorNumberReg = 1
-    inp.bCylLowReg = 0x4F          # SMART 的魔術值
+    inp.bCylLowReg = 0x4F          # SMART magic value
     inp.bCylHighReg = 0xC2
     inp.bDriveHeadReg = 0xA0
     inp.bCommandReg = SMART_CMD
@@ -342,10 +358,11 @@ def health_via_ata_smart(h, drive_index: int) -> dict:
         return {}
     data = out.raw[16:16 + 512]
 
-    # smart_by_id 保留**所有**屬性的原始 ID → raw 值。
-    # SMART_ATTR_NAMES 只涵蓋我們取了名字的那些，但 LibreNMS 的 smart
-    # 應用程式要的是 ID（5/9/10/183/184/187/188/196/199...），
-    # 其中好幾個沒有名稱對照。只留名字等於把它們丟掉。
+    # smart_by_id keeps the raw value of **every** attribute against its ID.
+    # SMART_ATTR_NAMES only covers the ones that were given names, but LibreNMS's
+    # smart application wants IDs (5, 9, 10, 183, 184, 187, 188, 196, 199 and so
+    # on), several of which have no name here. Keeping only the named ones would
+    # be the same as discarding them.
     res: dict = {"health_source": "ata-smart", "smart": {}, "smart_by_id": {}}
     for i in range(30):
         off = 2 + i * 12
@@ -355,14 +372,17 @@ def health_via_ata_smart(h, drive_index: int) -> dict:
         value = data[off + 3]
         worst = data[off + 4]
         raw = int.from_bytes(data[off + 5:off + 11], "little")
-        # raw 是 48 位元；部分屬性把多個欄位塞在高位（例如溫度的最高/最低值）。
-        # 對計數型屬性取低 32 位即為計數本身，也避免送出荒謬的大數。
+        # raw is 48 bits, and some attributes pack extra fields into the high
+        # bits (minimum and maximum temperature, for instance). For counters the
+        # low 32 bits are the count, and taking them also avoids emitting an
+        # absurd number.
         res["smart_by_id"][aid] = raw & 0xFFFFFFFF
         name = SMART_ATTR_NAMES.get(aid)
         if name:
             res["smart"][name] = {"value": value, "worst": worst, "raw": raw}
-        # 溫度：raw 的低位元組通常就是攝氏溫度。部分韌體把最高/最低溫
-        # 塞在 raw 的高位元組，故只取低 8 位。
+        # Temperature: the low byte of raw is usually degrees Celsius. Some
+        # firmware packs the maximum and minimum into the higher bytes, so only
+        # the low 8 bits are taken.
         if aid in SMART_TEMP_IDS and "temp_c" not in res:
             t = raw & 0xFF
             if 0 < t < 150:
@@ -373,12 +393,13 @@ def health_via_ata_smart(h, drive_index: int) -> dict:
     return res
 
 
-# --- 對外介面 ---------------------------------------------------------------
+# --- Public interface --------------------------------------------------------
 def probe(drive_index: int) -> dict:
-    """對單一實體磁碟嘗試所有路徑，回傳合併結果。
+    """Try every path against one physical disk and merge the results.
 
-    任何一條路徑的例外都不得中止其餘路徑——各家韌體對這些 IOCTL 的
-    支援差異極大（spec §6.7：啟動絕不硬失敗）。
+    An exception from any one path must not stop the others: firmware support for
+    these IOCTLs varies enormously between vendors (spec §6.7: startup never
+    fails hard).
     """
     h, _access = open_disk(drive_index, want_write=True)
     if h is None:
@@ -391,12 +412,14 @@ def probe(drive_index: int) -> dict:
                    lambda: smart_overall_health(h, drive_index)):
             try:
                 got = fn()
-            except Exception:  # noqa: BLE001 - 韌體行為不可預期，逐條隔離
+            except Exception:  # noqa: BLE001 - firmware is unpredictable;
+                               # isolate each path
                 continue
             if not got:
                 continue
             for k, v in got.items():
-                # 先成功的路徑優先，不覆寫已取得的溫度
+                # First path to succeed wins; do not overwrite a temperature
+                # that has already been found
                 if k not in result:
                     result[k] = v
     finally:

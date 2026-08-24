@@ -114,7 +114,7 @@ def test_agent_still_has_duplicate_oid_guard():
     它是 snapshot + bisect 正確性的最後一道防線，
     而且正是它抓到了這個 bug。
     """
-    assert "重複 OID" in SRC, "build_snapshot 的重複 OID 護欄不可移除"
+    assert "duplicate OID" in SRC, "build_snapshot 的重複 OID 護欄不可移除"
     tree = ast.parse(SRC)
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "build_snapshot":
