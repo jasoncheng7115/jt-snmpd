@@ -188,6 +188,75 @@ def test_newdialog_is_the_last_event_on_the_settings_page():
         "published after a NewDialog is discarded by Windows Installer")
 
 
+# ---------------------------------------------------- the checkbox told the truth
+def test_optional_checkbox_defaults_to_unticked():
+    """A checkbox is drawn ticked whenever its property is non-empty.
+
+    `Value="0"` is a non-empty string, so the "keep the built-in SNMP service"
+    box appeared **ticked** while the installer went on to disable the service:
+    the label promised the opposite of what happened. Confirmed by reading the
+    0.9.4 Property table, which held KEEPMSSNMP = "0".
+
+    The second-order problem was worse. Unticking clears the property to "",
+    and only CheckBoxValue ever writes "1", so the states were:
+
+        "0"  initial, drawn ticked   -> service disabled
+        ""   after unticking         -> service disabled
+        "1"  after re-ticking        -> service kept
+
+    Using the box as labelled could not keep the service. You had to untick it
+    and tick it again. The property must therefore start empty.
+    """
+    props = {e.get("Id"): e.get("Value")
+             for e in TREE.iter(f"{{{NS['w']}}}Property")}
+    checkboxes = {c.get("Property")
+                  for d in TREE.iter(f"{{{NS['w']}}}Dialog")
+                  for c in d.iter(f"{{{NS['w']}}}Control")
+                  if c.get("Type") == "CheckBox"}
+    assert checkboxes, "no checkbox controls found"
+    for prop in checkboxes:
+        assert props.get(prop) in (None, ""), (
+            f"{prop} backs a checkbox and defaults to {props[prop]!r}. Any "
+            "non-empty value, including \"0\", draws the box ticked, and "
+            "unticking then writes \"\" rather than the original value")
+
+
+def test_optional_checkbox_property_stays_settable_from_the_command_line():
+    """Clearing the default must not cost the silent-install path.
+
+    A property with no value is absent from the Property table, so it has to be
+    declared Secure for `msiexec ... KEEPMSSNMP=1` to reach the execute
+    sequence.
+    """
+    for e in TREE.iter(f"{{{NS['w']}}}Property"):
+        if e.get("Id") == "KEEPMSSNMP":
+            assert e.get("Secure") == "yes", (
+                "KEEPMSSNMP has no default value, so without Secure=\"yes\" it "
+                "cannot be set on the command line either")
+            return
+    pytest.fail("KEEPMSSNMP is not declared")
+
+
+def test_configure_script_treats_anything_but_one_as_disable():
+    """The script side of the same contract: only "1" keeps the service."""
+    body = CONFIGURE.read_text(encoding="utf-8")
+    assert "$KeepMsSnmp -ne '1'" in body, (
+        "the configure script no longer keys off an exact \"1\"; with the "
+        "property now defaulting to empty, a truthiness test would read \"\" "
+        "and \"0\" differently from each other")
+
+
+def test_dialog_titles_match_the_rest_of_the_wizard():
+    """Our pages must not announce a different product from WixUI's pages."""
+    titles = {d.get("Id"): d.get("Title") for d in TREE.iter(f"{{{NS['w']}}}Dialog")}
+    assert titles, "no dialogs found"
+    for dlg, title in titles.items():
+        assert title == "JT SNMP Agent Setup", (
+            f"{dlg} has title {title!r}; WixUI's own pages use "
+            "\"JT SNMP Agent Setup\" and the title bar changing mid-wizard "
+            "reads as a different program")
+
+
 # ------------------------------------------------------------- wizard presentation
 def test_wizard_supplies_its_own_artwork_and_licence():
     """WiX substitutes placeholders for any of these that is left unset.

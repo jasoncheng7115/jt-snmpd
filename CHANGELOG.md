@@ -89,6 +89,37 @@ mutation: restoring the previous value turns it red.
 
 ---
 
+## [0.9.5] - 2026-08-24
+
+### Fixed
+
+- **The "keep the built-in SNMP service" checkbox contradicted itself.** Windows
+  Installer draws a checkbox ticked whenever its property is non-empty, and the
+  property defaulted to `"0"` -- a non-empty string. The box therefore appeared
+  **ticked**, beside a label saying the service would be kept, while the
+  installer went on to disable it. Confirmed by reading the Property table out
+  of the 0.9.4 MSI rather than from the source.
+
+  The second-order fault was worse. Unticking clears a property to `""`, and only
+  the tick writes `"1"`, so the reachable states were `"0"` (ticked, disables),
+  `""` (unticked, disables) and `"1"` (re-ticked, keeps). Using the box as
+  labelled could not keep the service; you had to untick it and tick it again.
+  The property now starts empty, so unticked means disable and ticked means keep,
+  and `KEEPMSSNMP=1` still works for a silent install.
+- **The title bar changed mid-wizard.** Our two pages announced "JT SNMP Agent"
+  while every WixUI page said "JT SNMP Agent Setup", which reads as a different
+  program taking over.
+
+### Added
+
+- **The build now inspects the artefact, not just the source.** Two of the last
+  three installer defects were invisible in the WiX source and plain in the built
+  MSI's own tables. CI reads them: the ControlEvent table, to confirm the wizard
+  really routes through the settings page and that our route outranks WixUI's,
+  and the Property table, to confirm the optional checkbox starts unticked.
+
+---
+
 ## [Unreleased]
 
 ### Added

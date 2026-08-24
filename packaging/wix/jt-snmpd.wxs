@@ -86,7 +86,16 @@
          v3 keys always go through ADMX policy and never through an MSI
          property. -->
     <Property Id="COMMUNITY" Secure="yes" />
-    <Property Id="KEEPMSSNMP" Secure="yes" Value="0" />
+    <!-- No Value, and that is the whole point. A checkbox is drawn ticked when
+         its property is **non-empty**, and "0" is a non-empty string: with
+         Value="0" the box appeared ticked, next to a label saying the service
+         would be kept, while the installer went on to disable it. Worse, the
+         only way to actually keep the service was to untick and re-tick, since
+         unticking clears the property to "" and only CheckBoxValue writes "1".
+         Empty means unticked, ticking writes "1", and the configure script
+         already treats anything other than "1" as "disable it", so all four
+         paths finally agree. A silent install passes KEEPMSSNMP=1 to keep it. -->
+    <Property Id="KEEPMSSNMP" Secure="yes" />
     <Property Id="PURGE" Secure="yes" Value="0" />
 
     <!-- What appears in Add/Remove Programs -->
@@ -210,7 +219,7 @@
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <UI>
-      <Dialog Id="JtSettingsDlg" Width="370" Height="270" Title="JT SNMP Agent">
+      <Dialog Id="JtSettingsDlg" Width="370" Height="270" Title="JT SNMP Agent Setup">
         <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15"
                  Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Monitoring settings" />
         <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="20"
@@ -265,7 +274,7 @@
         </Control>
       </Dialog>
 
-      <Dialog Id="JtNeedNetworksDlg" Width="260" Height="85" Title="JT SNMP Agent"
+      <Dialog Id="JtNeedNetworksDlg" Width="260" Height="85" Title="JT SNMP Agent Setup"
               NoMinimize="yes">
         <Control Id="Text" Type="Text" X="20" Y="15" Width="220" Height="40"
                  NoPrefix="yes"
