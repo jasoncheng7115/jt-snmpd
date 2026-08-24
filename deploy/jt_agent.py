@@ -7,7 +7,7 @@ GET 用 bisect_left、GETNEXT 用 bisect_right，故 §36 的 ordering / 無重�
 無 GETNEXT loop / 正確 endOfMibView 成為結構保證。
 
 用法：
-    python jt_agent.py --foreground [--port 161] [--community mon2]
+    python jt_agent.py --foreground [--port 161] [--community <community>]
     python jt_agent.py install|start|stop|remove       (pywin32 服務)
 """
 from __future__ import annotations
@@ -40,16 +40,87 @@ STATE_DIR = r"C:\ProgramData\JT-SNMP"
 LOG_DIR = os.path.join(STATE_DIR, "logs")
 STATE_FILE = os.path.join(STATE_DIR, "state", "index-map.json")
 
-CFG = {"port": 161, "community": "mon2", "contact": "", "location": "",
-       # spec §3.3：預設 deny，不允許 Any/Any。空 tuple 代表未設定 —— 安裝程式
-       # 必須要求輸入管理網段，否則安裝中止。
-       "allowed_networks": ("192.168.1.0/24",), "rate_pps": 50, "rate_burst": 100,
-       # spec §3.5：ipNetToPhysicalTable 是內網 ARP 表，等同橫向移動的目標清單。
-       # 預設停用，需明確開啟（對應 VACM 的 standard preset）。
+# Defaults only. The real values come from config.json, written by the
+# installer and editable afterwards (edit, then restart the service).
+#
+# `community` and `allowed_networks` are deliberately empty rather than carrying
+# sensible-looking values. An earlier version shipped "mon2" and
+# "192.168.1.0/24" as defaults *and never read the config file at all*: the
+# installer wrote the operator's answers to config.json, the agent ignored them,
+# and every install that did not happen to use those exact two values failed its
+# loopback health check with MSI error 1603. The defaults were what made the bug
+# survive testing — our own lab used precisely those values.
+CFG = {"port": 161, "community": "", "contact": "", "location": "",
+       # spec §3.3: deny by default, never Any/Any. Empty means "not configured"
+       # and is treated as deny-all (loopback excepted); to serve every source
+       # deliberately, set 0.0.0.0/0 and ::/0 explicitly.
+       "allowed_networks": (), "rate_pps": 50, "rate_burst": 100,
+       # spec §3.5: ipNetToPhysicalTable is the local ARP table, which is a
+       # ready-made target list for lateral movement. Off unless asked for.
        "enable_arp_table": False}
 
 _gate: "PreAuthGate | None" = None
-CFG_PATH = os.path.join(STATE_DIR, "config.yaml")
+CFG_PATH = os.path.join(STATE_DIR, "config.json")
+CFG_SOURCE = "defaults"
+
+
+def load_config() -> None:
+    """Merge config.json into CFG.
+
+    Called once at service start, so the documented workflow is: edit the file,
+    restart the service. Reloading on every snapshot would mean a half-written
+    file could be picked up mid-edit.
+
+    A malformed or missing file is not fatal here — the startup checks in
+    `run_agent()` decide whether the resulting configuration is usable. That
+    separation keeps "the file is broken" and "the settings are unusable" as two
+    distinct, separately reported problems.
+    """
+    global CFG_SOURCE
+    if CFG_SOURCE != "defaults":
+        return          # 已載入。兩個進入點都會呼叫，重複讀檔只會重複記錄
+    try:
+        # utf-8-sig, not utf-8: Windows PowerShell 5.1's `Set-Content -Encoding
+        # UTF8` writes a BOM, and so does Notepad when an operator edits the file
+        # by hand. Plain utf-8 raises "Unexpected UTF-8 BOM" and the agent then
+        # refuses to serve — which is exactly what happened the first time the
+        # installer's config was actually read. utf-8-sig accepts both forms.
+        with open(CFG_PATH, encoding="utf-8-sig") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        log(f"no config file at {CFG_PATH}; using built-in defaults")
+        return
+    except (OSError, ValueError, UnicodeError) as exc:
+        log(f"config file at {CFG_PATH} could not be read: {exc!r}", error=True)
+        return
+    if not isinstance(data, dict):
+        log(f"config file at {CFG_PATH} is not an object", error=True)
+        return
+
+    applied = []
+    if isinstance(data.get("community"), str) and data["community"].strip():
+        CFG["community"] = data["community"].strip()
+        applied.append("community")
+    nets = data.get("allowed_networks")
+    if isinstance(nets, (list, tuple)):
+        clean = tuple(n.strip() for n in nets if isinstance(n, str) and n.strip())
+        CFG["allowed_networks"] = clean
+        applied.append(f"allowed_networks({len(clean)})")
+    port = data.get("port")
+    if isinstance(port, int) and 1 <= port <= 65535:
+        CFG["port"] = port
+        applied.append("port")
+    if isinstance(data.get("enable_arp_table"), bool):
+        CFG["enable_arp_table"] = data["enable_arp_table"]
+        applied.append("enable_arp_table")
+    for key in ("rate_pps", "rate_burst"):
+        v = data.get(key)
+        if isinstance(v, int) and 0 < v <= 100000:
+            CFG[key] = v
+            applied.append(key)
+
+    CFG_SOURCE = CFG_PATH
+    log(f"config loaded from {CFG_PATH}: {', '.join(applied) or 'nothing usable'}")
 
 # 版本來自 deploy/version.py（單一來源）。硬編碼在此會與 MSI 版本脫節——
 # 實測發生過：MSI 已是 0.1.6，jtAgentVersion 仍回報 0.1.0-dev。
@@ -2545,6 +2616,25 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
     asyncio.set_event_loop(loop)
 
     async def main_co():
+        # Settings are loaded by the entry point, before this function's
+        # arguments were bound. Loading them here would be too late: the caller
+        # already read CFG["community"] to pass it in, so the agent would listen
+        # with whatever the value was *before* the file was read — which is how
+        # the first attempt at this fix ended up serving with an empty community
+        # while the log cheerfully reported the config had loaded.
+        if not CFG["community"]:
+            log("no community configured — refusing to serve. Set \"community\" in "
+                f"{CFG_PATH} and restart the service.", error=True)
+            raise SystemExit(1)
+        if not CFG["allowed_networks"]:
+            # Deny-all rather than serve-all. The pre-auth gate used to treat an
+            # empty list as "no filtering", which is fail-open: a hand-edited
+            # config with the list emptied would quietly expose the agent to
+            # every source. To serve everything deliberately, list 0.0.0.0/0.
+            log("no management networks configured — only loopback will be "
+                f"answered. Set \"allowed_networks\" in {CFG_PATH} and restart.",
+                error=True)
+
         # 關鍵：transport 必須在 running event loop 內建立。若在 loop 啟動前呼叫
         # open_server_mode，socket 不會真的綁定 —— 服務顯示 Running 但不回應任何
         # 請求（spec §6.5 的「假活著」）。這個 bug 實測發生過。
@@ -2642,7 +2732,11 @@ try:
         def SvcDoRun(self):
             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                                   servicemanager.PYS_SERVICE_STARTED, (self._svc_name_, ""))
-            log(f"SvcDoRun port={CFG['port']} community={CFG['community']} "
+            # Before anything reads CFG. Everything below — including the values
+            # handed to run_agent — must see the operator's settings, not the
+            # built-in defaults.
+            load_config()
+            log(f"SvcDoRun port={CFG['port']} community={CFG['community']!r} "
                 f"version={AGENT_VERSION}")
 
             def _worker():
@@ -2755,6 +2849,9 @@ if __name__ == "__main__":
     if "--selftest" in sys.argv:
         raise SystemExit(selftest())
 
+    # Config file first, command line second — the command line is an override,
+    # so it has to be applied after the file has been read.
+    load_config()
     CFG["port"] = int(_arg("--port", CFG["port"]))
     CFG["community"] = _arg("--community", CFG["community"])
     if "--foreground" in sys.argv:

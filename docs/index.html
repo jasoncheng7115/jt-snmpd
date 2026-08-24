@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="brand/icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="brand/icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="brand/icon-180.png">
+<meta property="og:title" content="jt-snmpd">
+<meta property="og:description" content="Read-only SNMP agent for Windows. Replaces the deprecated Microsoft SNMP Service and feeds LibreNMS over standard MIBs.">
+<meta property="og:image" content="https://jasoncheng7115.github.io/jt-snmpd/brand/icon-512.png">
+<meta name="twitter:card" content="summary">
 <title>jt-snmpd — a complete replacement for the Windows SNMP Service</title>
 <meta name="description" content="Read-only SNMP agent for Windows. Replaces the deprecated Microsoft SNMP Service and feeds LibreNMS over standard MIBs.">
 <style>
@@ -30,37 +37,57 @@ pre code{background:none;border:0;padding:0}
 nav{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);
   backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 nav .wrap{display:flex;align-items:center;gap:18px;height:58px}
-nav .brand{font-weight:700;letter-spacing:-.2px;margin-right:auto;font-size:17px}
+nav .brand{font-weight:700;letter-spacing:-.2px;margin-right:auto;font-size:17px;
+  display:flex;align-items:center;gap:9px}
 nav .brand span{color:var(--accent)}
 nav a.navlink{color:var(--dim);font-size:14.5px}
 nav a.navlink:hover{color:var(--fg);text-decoration:none}
-.btn{display:inline-block;border:1px solid var(--line);background:#f6f8fa;color:var(--fg);
-  border-radius:7px;padding:6px 13px;font-size:14px;cursor:pointer;font-family:inherit}
+/* <a class="btn"> 與 <button class="btn"> 的高度由不同規則決定：按鈕有自己的
+   預設行高與字型，錨點沒有。用 inline-flex 加固定高度讓兩者一致——
+   單純給相同的 padding 是不夠的。 */
+.btn{display:inline-flex;align-items:center;justify-content:center;
+  height:34px;padding:0 14px;border:1px solid var(--line);background:#f6f8fa;
+  color:var(--fg);border-radius:7px;font-size:14px;line-height:1;
+  cursor:pointer;font-family:inherit;white-space:nowrap;vertical-align:middle}
 .btn:hover{border-color:#8c959f;background:#eef1f4;text-decoration:none}
 .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .btn-primary:hover{background:#25a383;border-color:#25a383}
 
-header.hero{padding:76px 0 60px;border-bottom:1px solid var(--line);
+header.hero{padding:84px 0 68px;border-bottom:1px solid var(--line);
+  background-color:#fbfcfd;
   background:radial-gradient(1200px 400px at 50% -140px,rgba(21,128,106,.10),transparent)}
 header.hero h1{font-size:42px;line-height:1.25;margin:0 0 18px;letter-spacing:-.6px}
 header.hero .lead{font-size:19px;color:var(--dim);max-width:760px;margin:0 0 28px}
 .badges{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 26px}
-.badge{font-size:12.5px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:3px 11px}
-.cta{display:flex;flex-wrap:wrap;gap:12px}
+.badge{font-size:12.5px;color:var(--dim);background:#fff;border:1px solid var(--line);
+  border-radius:999px;padding:4px 12px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;align-items:stretch}
+.cta .btn{height:40px;padding:0 18px;font-size:15px}
 
-section{padding:56px 0;border-bottom:1px solid var(--line)}
-section h2{font-size:27px;margin:0 0 10px;letter-spacing:-.3px}
-section .sub{color:var(--dim);margin:0 0 30px;max-width:780px}
+section{padding:64px 0;border-bottom:1px solid var(--line)}
+/* 交錯底色：全站同一個白會讓長頁面失去節奏，區塊之間也分不出來 */
+section:nth-of-type(even){background:#f7f9fb}
+section h2{font-size:28px;margin:0 0 12px;letter-spacing:-.35px;
+  padding-left:14px;border-left:4px solid var(--accent);line-height:1.3}
+section .sub{color:var(--dim);margin:0 0 32px;max-width:800px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-  padding:20px 22px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;
+  padding:22px 24px;transition:border-color .15s,box-shadow .15s,transform .15s}
+.card:hover{border-color:#b9c2cc;box-shadow:0 6px 20px rgba(31,35,40,.07);
+  transform:translateY(-2px)}
+.card h3::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--accent);margin-right:9px;vertical-align:middle}
 .card h3{margin:0 0 8px;font-size:16.5px}
 .card p{margin:0;color:var(--dim);font-size:14.5px;line-height:1.7}
 .k{color:var(--accent);font-weight:700}
 
 table{width:100%;border-collapse:collapse;font-size:14.5px}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--dim);background:var(--panel);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.4px}
+th{color:var(--dim);background:#eef2f6;font-weight:600;font-size:12.5px;
+  text-transform:uppercase;letter-spacing:.5px}
+tbody tr:nth-child(odd){background:rgba(246,248,250,.7)}
+tbody tr:hover{background:#eef6f3}
+table{border:1px solid var(--line);border-radius:10px;overflow:hidden}
 td.num{text-align:right;font-family:var(--mono)}
 .yes{color:var(--accent)}.no{color:var(--bad)}.mid{color:var(--warn)}
 
@@ -68,11 +95,17 @@ figure{margin:0 0 28px}
 figure img{width:100%;border:1px solid var(--line);border-radius:10px;display:block;
   cursor:zoom-in;box-shadow:0 1px 3px rgba(31,35,40,.08)}
 figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
-.shotnav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}
-.shotnav button{font-size:13.5px}
-.shotnav button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.shots{margin-top:34px}
+/* 四張全部往下排，不用頁籤。切換式的版面看起來乾淨，
+   但沒有人知道要去點——第一版就是這樣，實際上只有第一張被看到。 */
+.shots figure{margin:0 0 40px}
+.shots figure h3{font-size:17px;margin:0 0 12px;color:var(--fg);
+  display:flex;align-items:center;gap:9px}
+.shots figure h3::before{content:"";width:6px;height:18px;border-radius:3px;
+  background:var(--accent);display:inline-block}
 
-footer{padding:40px 0 60px;color:var(--dim);font-size:14px}
+footer{padding:44px 0 64px;color:var(--dim);font-size:14px;background:#f7f9fb;
+  border-top:1px solid var(--line)}
 footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 
 #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;z-index:50;
@@ -98,7 +131,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 </script>
 
 <nav><div class="wrap">
-  <div class="brand">jt-<span>snmpd</span></div>
+  <div class="brand"><img src="brand/icon.svg" alt="" width="26" height="26">jt-<span>snmpd</span></div>
   <a class="navlink" href="#why"><span class="zh">為什麼</span><span class="en">Why</span></a>
   <a class="navlink" href="#compare"><span class="zh">對照</span><span class="en">Comparison</span></a>
   <a class="navlink" href="#install"><span class="zh">安裝</span><span class="en">Install</span></a>
@@ -109,15 +142,16 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 
 <header class="hero"><div class="wrap">
   <h1>
-    <span class="zh">Windows 內建 SNMP 已停止支援。<br>這是接手的那一個。</span>
-    <span class="en">Windows' built-in SNMP is deprecated.<br>This is what takes over.</span>
+    <span class="zh">Windows 內建 SNMP 已停止支援。<br>jt-snmpd 接手。</span>
+    <span class="en">Windows' built-in SNMP is deprecated.<br>jt-snmpd takes over.</span>
   </h1>
   <p class="lead">
     <span class="zh">jt-snmpd 是一個 <b>唯讀</b> 的 Windows SNMP agent，以標準 MIB 把主機監控資料餵給 LibreNMS——
-      而且不必修改 LibreNMS。磁碟 SMART、ACPI 熱區、硬體 inventory 全程走 SNMP，被監控端不需要裝任何 agent。</span>
+      而且不必修改 LibreNMS。磁碟 SMART、ACPI 熱區、硬體 inventory 全程走 SNMP —— 被監控端除了 jt-snmpd 本身之外，不必再裝 LibreNMS agent，也不必裝 smartctl。</span>
     <span class="en">jt-snmpd is a <b>read-only</b> SNMP agent for Windows that serves host monitoring data
       over standard MIBs — and needs no changes on the LibreNMS side. Disk SMART, ACPI thermal zones and
-      hardware inventory all travel over SNMP; nothing extra is installed on the monitored host.</span>
+      hardware inventory all travel over SNMP, so beyond jt-snmpd itself the monitored host needs
+      neither the LibreNMS agent nor smartctl.</span>
   </p>
   <div class="badges">
     <span class="badge">GPL-3.0-or-later</span>
@@ -237,19 +271,47 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
     </tbody>
   </table>
 
-  <div class="shotnav" style="margin-top:34px" role="tablist">
-    <button class="btn" data-shot="temperature" aria-selected="true"><span class="zh">感測器</span><span class="en">Sensors</span></button>
-    <button class="btn" data-shot="smart">SMART</button>
-    <button class="btn" data-shot="ports"><span class="zh">連接埠</span><span class="en">Ports</span></button>
-    <button class="btn" data-shot="memory"><span class="zh">記憶體</span><span class="en">Memory</span></button>
+  <div class="shots">
+    <figure>
+      <h3><span class="zh">感測器</span><span class="en">Sensors</span></h3>
+      <img data-shot="temperature" src="images/temperature-en.png" alt="">
+      <figcaption>
+        <span class="zh">內建服務完全不回報感測器，LibreNMS 因此根本不會建立「溫度」頁籤。</span>
+        <span class="en">The built-in service reports no sensors, so LibreNMS never creates a Temperature tab.</span>
+      </figcaption>
+    </figure>
+    <figure>
+      <h3>SMART</h3>
+      <img data-shot="smart" src="images/smart-en.png" alt="">
+      <figcaption>
+        <span class="zh">SMART 完全透過 SNMP 送達。沒量到的屬性保持 null，不以 0 回報——
+          在「重新配置磁區」填 0 的意思是「這顆碟很健康」。</span>
+        <span class="en">SMART arrives entirely over SNMP. Attributes that were not measured stay null rather
+          than being reported as zero: a fabricated zero in "reallocated sectors" reads as "this disk is
+          healthy".</span>
+      </figcaption>
+    </figure>
+    <figure>
+      <h3><span class="zh">連接埠</span><span class="en">Ports</span></h3>
+      <img data-shot="ports" src="images/ports-en.png" alt="">
+      <figcaption>
+        <span class="zh">內建服務把每一個 NDIS 過濾驅動都當成獨立介面；jt-snmpd 只輸出實體網路卡，
+          並以持久的 NET_LUID 配發 ifIndex，更新驅動不會讓歷史資料變成孤兒。</span>
+        <span class="en">The built-in service publishes every NDIS filter driver as its own interface.
+          jt-snmpd publishes hardware interfaces only, with ifIndex assigned from the persistent NET_LUID
+          so a driver update does not orphan the history.</span>
+      </figcaption>
+    </figure>
+    <figure>
+      <h3><span class="zh">記憶體</span><span class="en">Memory</span></h3>
+      <img data-shot="memory" src="images/memory-en.png" alt="">
+      <figcaption>
+        <span class="zh">內建服務提供實體與虛擬記憶體；jt-snmpd 另外提供快取記憶體與 Swap。</span>
+        <span class="en">The built-in service exposes physical and virtual memory. jt-snmpd adds cached
+          memory and swap.</span>
+      </figcaption>
+    </figure>
   </div>
-  <figure>
-    <img id="shot" src="images/temperature-zh-TW.png" alt="">
-    <figcaption id="shotcap">
-      <span class="zh">內建服務完全不回報感測器，LibreNMS 因此根本不會建立「溫度」頁籤。</span>
-      <span class="en">The built-in service reports no sensors, so LibreNMS never creates a Temperature tab.</span>
-    </figcaption>
-  </figure>
 </div></section>
 
 <section id="install"><div class="wrap">
@@ -262,7 +324,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       built-in SNMP Service, carries over its community and sysContact/sysLocation, then disables it
       (<b>disabled, not removed</b>) and restores it on uninstall.</span>
   </p>
-<pre><code>msiexec /i jt-snmpd-0.9.0-x64.msi /qn ^
+<pre><code>msiexec /i jt-snmpd-0.9.1-x64.msi /qn ^
   MANAGEMENTNETWORKS=10.0.0.0/24 ^
   COMMUNITY=your-community</code></pre>
   <p class="sub" style="margin-top:22px">
@@ -330,34 +392,18 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   });
 
   // 截圖跟著語言走：中文版顯示中文介面的截圖
-  var CAPS={
-    temperature:['內建服務完全不回報感測器，LibreNMS 因此根本不會建立「溫度」頁籤。',
-      'The built-in service reports no sensors, so LibreNMS never creates a Temperature tab.'],
-    smart:['SMART 完全透過 SNMP 送達，被監控端不需要 LibreNMS agent 或 smartctl。沒量到的屬性保持 null，不以 0 回報。',
-      'SMART arrives entirely over SNMP — no LibreNMS agent and no smartctl on the monitored host. Attributes that were not measured stay null rather than being reported as zero.'],
-    ports:['內建服務把每一個 NDIS 過濾驅動都當成獨立介面；jt-snmpd 只輸出實體網路卡，並以持久的 NET_LUID 配發 ifIndex。',
-      'The built-in service publishes every NDIS filter driver as its own interface. jt-snmpd publishes hardware interfaces only, with ifIndex assigned from the persistent NET_LUID.'],
-    memory:['內建服務提供實體與虛擬記憶體；jt-snmpd 另外提供快取記憶體與 Swap。',
-      'The built-in service exposes physical and virtual memory. jt-snmpd adds cached memory and swap.']
-  };
-  var cur='temperature', img=document.getElementById('shot'), cap=document.getElementById('shotcap');
   function swapShot(){
     var lang = isEn() ? 'en' : 'zh-TW';
-    img.src = 'images/' + cur + '-' + lang + '.png';
-    cap.innerHTML = '<span class="zh">'+CAPS[cur][0]+'</span><span class="en">'+CAPS[cur][1]+'</span>';
-  }
-  document.querySelectorAll('.shotnav button').forEach(function(b){
-    b.addEventListener('click', function(){
-      document.querySelectorAll('.shotnav button').forEach(function(x){
-        x.setAttribute('aria-selected','false'); });
-      b.setAttribute('aria-selected','true');
-      cur = b.dataset.shot; swapShot();
+    document.querySelectorAll('img[data-shot]').forEach(function(im){
+      im.src = 'images/' + im.dataset.shot + '-' + lang + '.png';
     });
-  });
+  }
   swapShot();
 
   var lb=document.getElementById('lightbox'), lbi=document.getElementById('lightbox-img');
-  img.addEventListener('click', function(){ lbi.src=img.src; lb.classList.add('on'); });
+  document.querySelectorAll('img[data-shot]').forEach(function(im){
+    im.addEventListener('click', function(){ lbi.src=im.src; lb.classList.add('on'); });
+  });
   lb.addEventListener('click', function(){ lb.classList.remove('on'); });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') lb.classList.remove('on'); });
 })();

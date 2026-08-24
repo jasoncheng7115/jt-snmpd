@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import ast
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -62,10 +63,16 @@ def test_scanner_aborts_in_a_non_git_directory(tmp_path):
         if src.exists():
             (tmp_path / "tools" / f).write_text(src.read_text(encoding="utf-8"),
                                                 encoding="utf-8")
+    # Force UTF-8 both ways. Windows consoles default to a legacy code page, so
+    # without this the child's non-ASCII output comes back backslash-escaped and
+    # the assertion below compares against something that can never match.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     r = subprocess.run([sys.executable, str(tmp_path / "tools" / "check-privacy.py")],
-                       capture_output=True, text=True, cwd=tmp_path)
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", cwd=tmp_path, env=env)
     assert r.returncode != 0, "非 git 目錄下不得回報成功"
-    assert "掃描中止" in (r.stderr + r.stdout)
+    assert "掃描中止" in (r.stderr + r.stdout), \
+        f"stdout={r.stdout[:200]!r} stderr={r.stderr[:200]!r}"
 
 
 def test_high_severity_blocks_the_push():

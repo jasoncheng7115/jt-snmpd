@@ -9,6 +9,7 @@ bulk response 太大。§4.3 的 snapshot + bisect 架構聲稱這些是「結�
 from __future__ import annotations
 
 import socket
+import shutil
 import subprocess
 import sys
 import time
@@ -22,6 +23,20 @@ from bench.gate_c.snapshot import build_synthetic_snapshot
 
 BASE = ".1.3.6.1.4.1.99999"
 BASE_TUPLE = (1, 3, 6, 1, 4, 1, 99999)
+# These tests drive a real agent with net-snmp's CLI, so they need net-snmp
+# installed. Skip explicitly when it is missing rather than letting subprocess
+# raise FileNotFoundError — the Windows CI runner has no net-snmp, and an
+# unexplained WinError 2 buried in a traceback took a round trip to diagnose.
+#
+# Skipping does create a coverage hole, so the Linux workflow installs net-snmp
+# and asserts it is present before running: these are the tests that validate
+# GETNEXT/GETBULK against a real implementation, and quietly not running them
+# would be worse than not having them.
+_NETSNMP = shutil.which("snmpbulkwalk")
+pytestmark = pytest.mark.skipif(
+    _NETSNMP is None,
+    reason="needs net-snmp (snmpbulkwalk); install the 'snmp' package")
+
 N_VARBINDS = 2000
 COMMUNITY = "bench"
 PORT = 11191

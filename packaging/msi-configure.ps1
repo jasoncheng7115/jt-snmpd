@@ -242,7 +242,11 @@ $cfg = [ordered]@{
     port = 161; enable_arp_table = $false; installed_at = (Get-Date).ToString('s')
     installed_by = 'msi'
 }
-$cfg | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $DATA_DIR 'config.json') -Encoding UTF8
+# 不寫 BOM：Windows PowerShell 5.1 的 -Encoding UTF8 會加 BOM，
+# 而多數 JSON 解析器（含 Python 的 json.load）會因此失敗。
+# agent 端已改用 utf-8-sig 容忍兩種形式，這裡仍寫乾淨的版本。
+[IO.File]::WriteAllText((Join-Path $DATA_DIR 'config.json'),
+    ($cfg | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
 
 # 升級時**不可**用當下狀態覆寫還原記錄：此刻的內建 SNMP 已經被上一次安裝
 # 停用了，重讀只會得到 Disabled/Stopped。寫回去之後解除安裝那段的
