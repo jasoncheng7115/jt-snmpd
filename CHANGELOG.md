@@ -124,6 +124,13 @@ mutation: restoring the previous value turns it red.
 
 ### Added
 
+- **Screenshots of the graphical installation** on the project site, showing all
+  five wizard pages. The values in the settings page are documentation examples
+  (`10.0.0.0/24`, `your-community`): the capture was taken with a real management
+  network and a throwaway community, and those two typed values were replaced.
+  Only the text inside the two field boxes was changed; no border, no control
+  state, and nothing describing how the installer behaves.
+
 - **A manual removal document** (`docs/manual-removal.md`), for when the
   installer cannot finish: a rolled-back installation, an uninstall that reports
   success while the service is still running, or a machine where the product is

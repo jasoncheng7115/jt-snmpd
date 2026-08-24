@@ -108,6 +108,17 @@ figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 .shots figure h3::before{content:"";width:6px;height:18px;border-radius:3px;
   background:var(--accent);display:inline-block}
 
+/* The wizard pages are captured at 1x, so they are shown at their own size and
+   never scaled up: enlarging a UI screenshot adds blur, not detail. On a narrow
+   viewport they fall back to one per row. */
+.wizard{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  gap:18px;margin:0 0 26px}
+.wizard figure{margin:0}
+.wizard img{width:100%;max-width:495px;border:1px solid var(--line);border-radius:8px;
+  display:block;cursor:zoom-in;box-shadow:0 1px 3px rgba(31,35,40,.10)}
+.wizard figcaption{color:var(--dim);font-size:13px;margin-top:7px}
+.wizard figcaption b{color:var(--fg)}
+
 /* Download row: the buttons and the trailing note share a baseline, and the note
    wraps onto its own line on a narrow screen rather than squeezing the buttons. */
 .dl{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0 0 22px}
@@ -409,6 +420,27 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <code>C:\ProgramData\JT-SNMP\config.json</code> and restarting the service.</span>
   </p>
 
+  <div class="wizard">
+    <figure><img class="shot" src="images/install-1-welcome.png" alt="">
+      <figcaption><span class="zh">1. 歡迎頁</span><span class="en">1. Welcome</span></figcaption></figure>
+    <figure><img class="shot" src="images/install-2-license.png" alt="">
+      <figcaption><span class="zh">2. 授權條款（GPL-3.0）</span><span class="en">2. Licence (GPL-3.0)</span></figcaption></figure>
+    <figure><img class="shot" src="images/install-3-folder.png" alt="">
+      <figcaption><span class="zh">3. 安裝路徑</span><span class="en">3. Install location</span></figcaption></figure>
+    <figure><img class="shot" src="images/install-4-settings.png" alt="">
+      <figcaption><span class="zh"><b>4. 監控設定</b>，管理網段與 community 兩個必填</span>
+        <span class="en"><b>4. Monitoring settings</b> — the two required values</span></figcaption></figure>
+    <figure><img class="shot" src="images/install-5-ready.png" alt="">
+      <figcaption><span class="zh">5. 確認後開始安裝</span><span class="en">5. Confirm and install</span></figcaption></figure>
+  </div>
+  <p class="sub">
+    <span class="zh">管理網段沒填就不讓繼續，因為空清單等於只回應 loopback：裝好了，但沒有在監控。
+      畫面中的值是文件用範例（<code>10.0.0.0/24</code>、<code>your-community</code>）。</span>
+    <span class="en">It will not continue without a management network, because an empty list means the
+      agent answers only loopback: installed, but not monitoring. The values shown are documentation
+      examples (<code>10.0.0.0/24</code>, <code>your-community</code>).</span>
+  </p>
+
   <h3 class="way">
     <span class="zh">方式二：命令列與 GPO 派送</span>
     <span class="en">Option 2 — command line and GPO deployment</span>
@@ -570,7 +602,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   swapDoc();
 
   var lb=document.getElementById('lightbox'), lbi=document.getElementById('lightbox-img');
-  document.querySelectorAll('img[data-shot]').forEach(function(im){
+  // Both the language-swapped comparison figures and the fixed wizard pages
+  document.querySelectorAll('img[data-shot], img.shot').forEach(function(im){
     im.addEventListener('click', function(){ lbi.src=im.src; lb.classList.add('on'); });
   });
   lb.addEventListener('click', function(){ lb.classList.remove('on'); });
