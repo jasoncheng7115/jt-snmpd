@@ -211,6 +211,7 @@ Write-Host "[*] wix build ..."
     -arch x64 `
     -d "ProductVersion=$Version" `
     -d "IconFile=$icon" `
+    -d "UiDir=$(Join-Path $PSScriptRoot 'wix')" `
     -ext WixToolset.Util.wixext `
     -ext WixToolset.UI.wixext `
     -o $msi `

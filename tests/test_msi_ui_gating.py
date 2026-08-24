@@ -202,8 +202,16 @@ def test_wizard_supplies_its_own_artwork_and_licence():
     for var in ("WixUIBannerBmp", "WixUIDialogBmp", "WixUILicenseRtf"):
         assert var in declared, (
             f"{var} is not set, so WiX will substitute its own placeholder")
-        target = WXS.parent / declared[var]
-        assert target.exists(), f"{var} points at {declared[var]}, which is missing"
+        value = declared[var]
+        # A WixVariable path is resolved against the working directory, not
+        # against the .wxs, so a bare file name fails the build with WIX0103.
+        # The build supplies UiDir; what is checked here is that the file the
+        # value names really is beside the source.
+        assert value.startswith("$(var."), (
+            f"{var} is {value!r}: a bare relative path is resolved against the "
+            "working directory and will not be found at build time")
+        target = WXS.parent / value.rsplit("\\", 1)[-1]
+        assert target.exists(), f"{var} names {target.name}, which is missing"
 
 
 def test_licence_shown_by_the_installer_is_the_repository_licence():

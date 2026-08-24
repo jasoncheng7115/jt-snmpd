@@ -67,6 +67,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   because the two conditions happened to be mutually exclusive. The complaint is
   now published first and the transition last.
 
+- **The wizard assets broke the build before they fixed anything.** A
+  `WixVariable` path is resolved against the working directory, not against the
+  `.wxs`, so the bare file names failed with three WIX0103 "cannot find the
+  Binary file" errors. The build script now passes the directory the same way it
+  already passes the icon.
+
+### Added
+
+- **The MSI is built on every push, not only on a tag.** That gap is why a tag
+  was pushed whose build then failed: `tests.yml` ran on Linux only, and the
+  first Windows build of any change happened during the release. The new job
+  builds the executable and the MSI on `windows-latest`, then checks three
+  things the source cannot tell you: that the committed wizard assets still match
+  what the generator produces, that the built MSI really routes through the
+  settings page (read from its ControlEvent table), and that the licence page is
+  not WiX's placeholder. The MSI is kept as a build artefact for 14 days.
+
 `tests/test_msi_ui_gating.py` covers all four, and each assertion was checked by
 mutation: restoring the previous value turns it red.
 
