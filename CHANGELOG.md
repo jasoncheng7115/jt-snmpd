@@ -120,6 +120,21 @@ mutation: restoring the previous value turns it red.
 
 ---
 
+## [0.9.6] - 2026-08-25
+
+### Fixed
+
+- **The settings page's description ran into the banner icon.** The control was
+  285 units wider than it could afford: the banner bitmap is 370 dialog units
+  across and the icon takes roughly the last 40, so text may run to about unit
+  325, and this one was allowed to reach 355. Measured from the rendered dialog,
+  where the text stopped 4 px short of the icon and read as running underneath
+  it. The description is now narrower and shorter, and
+  `tests/test_msi_ui_gating.py` fails any banner text control that reaches the
+  icon.
+
+---
+
 ## [Unreleased]
 
 ### Added

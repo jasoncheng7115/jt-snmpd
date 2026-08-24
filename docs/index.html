@@ -58,7 +58,7 @@ nav a.navlink:hover{color:var(--fg);text-decoration:none}
 header.hero{padding:84px 0 68px;border-bottom:1px solid var(--line);
   background-color:#fbfcfd;
   background:radial-gradient(1200px 400px at 50% -140px,rgba(21,128,106,.10),transparent)}
-header.hero h1{font-size:42px;line-height:1.25;margin:0 0 18px;letter-spacing:-.6px}
+header.hero h1{font-size:40px;line-height:1.22;margin:0 0 20px;letter-spacing:-.6px;max-width:900px}
 header.hero .lead{font-size:19px;color:var(--dim);max-width:760px;margin:0 0 28px}
 .badges{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 26px}
 .badge{font-size:12.5px;color:var(--dim);background:#fff;border:1px solid var(--line);
@@ -174,8 +174,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 
 <header class="hero"><div class="wrap">
   <h1>
-    <span class="zh">Windows 內建 SNMP 已停止支援。<br>jt-snmpd 接手。</span>
-    <span class="en">Windows' built-in SNMP is deprecated.<br>jt-snmpd takes over.</span>
+    <span class="zh">Windows 內建 SNMP 已停止支援，<br>往後要怎麼輪詢？<br>交給 jt-snmpd 接手。</span>
+    <span class="en">Windows' built-in SNMP is deprecated.<br>So what polls your hosts now?<br>jt-snmpd takes over.</span>
   </h1>
   <p class="lead">
     <span class="zh">jt-snmpd 是一個 <b>唯讀</b> 的 Windows SNMP agent，以標準 MIB 把主機監控資料餵給 LibreNMS，
@@ -434,7 +434,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <figcaption><span class="zh">5. 確認後開始安裝</span><span class="en">5. Confirm and install</span></figcaption></figure>
   </div>
   <p class="sub">
-    <span class="zh">管理網段沒填就不讓繼續，因為空清單等於只回應 loopback：裝好了，但沒有在監控。
+    <span class="zh">管理網段沒填就無法繼續，因為空清單等於只回應 loopback：裝好了，但沒有在監控。
       畫面中的值是文件用範例（<code>10.0.0.0/24</code>、<code>your-community</code>）。</span>
     <span class="en">It will not continue without a management network, because an empty list means the
       agent answers only loopback: installed, but not monitoring. The values shown are documentation
@@ -447,14 +447,14 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   </h3>
   <p class="sub">
     <span class="zh">下面這道指令是<b>命令列 / 無人值守</b>安裝用的，<code>/qn</code> 表示不顯示任何介面。
-      同一顆 MSI 與同一組屬性也直接適用於<b>群組原則（GPO）軟體派送</b>：以
+      同一個 MSI 與同一組屬性也直接適用於<b>群組原則（GPO）軟體派送</b>：以
       <code>msiexec /qn</code> 的形式派送，安裝過程以 SYSTEM 身分執行，不會有任何提示。</span>
     <span class="en">This is the <b>command-line / unattended</b> form; <code>/qn</code> means no
       interface at all. The same MSI and the same properties are what you use for
       <b>Group Policy software deployment</b>: deployed in this form the installation runs as SYSTEM
       with no prompts.</span>
   </p>
-<pre><code>msiexec /i jt-snmpd-0.9.5-x64.msi /qn MANAGEMENTNETWORKS=10.0.0.0/24 COMMUNITY=your-community</code></pre>
+<pre><code>msiexec /i jt-snmpd-0.9.6-x64.msi /qn MANAGEMENTNETWORKS=10.0.0.0/24 COMMUNITY=your-community</code></pre>
   <p class="sub">
     <span class="zh">以 GPO 派送時，請把 MSI 放在網域內的共用資料夾，
       並確保電腦帳戶對該資料夾有讀取權限。從內部共用資料夾安裝也不會帶網頁標記（Mark of the Web），

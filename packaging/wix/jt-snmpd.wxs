@@ -222,9 +222,15 @@
       <Dialog Id="JtSettingsDlg" Width="370" Height="270" Title="JT SNMP Agent Setup">
         <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15"
                  Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Monitoring settings" />
-        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="20"
+        <!-- Width has to stop short of the banner icon. The banner bitmap is 370
+             dialog units wide and the icon occupies roughly the last 40, so text
+             may run to about unit 325. At Width=330 this description reached
+             within 4 px of the icon and read as though it ran underneath it;
+             measured from the rendered dialog, not estimated. 285 leaves a
+             visible gap and still fits the text in two lines. -->
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="285" Height="20"
                  Transparent="yes" NoPrefix="yes"
-                 Text="These two decide who may query this host. They can be changed afterwards by editing config.json and restarting the service." />
+                 Text="These two decide who may query this host. Both can be changed afterwards in config.json." />
         <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
                  TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
         <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
