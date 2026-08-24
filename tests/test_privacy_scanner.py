@@ -35,7 +35,10 @@ def _func(name: str) -> str:
 
 def test_scanner_exists_and_is_executable():
     assert SCANNER.exists()
-    assert SCANNER.stat().st_mode & 0o111, "掃描器應可直接執行"
+    if sys.platform != "win32":
+        # Windows 沒有 POSIX 執行位元，git 也不保留它——在那裡驗這個
+        # 只會得到與程式碼無關的失敗。
+        assert SCANNER.stat().st_mode & 0o111, "掃描器應可直接執行"
 
 
 def test_empty_file_list_aborts_rather_than_passing():
