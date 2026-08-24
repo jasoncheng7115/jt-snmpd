@@ -1,0 +1,16 @@
+[project]
+name = "jt-win-snmp"
+version = "0.0.0"
+description = "JT Windows SNMP Agent — 以標準 MIB 提供 Windows 主機監控資料的唯讀 SNMP Agent"
+authors = [{ name = "Jason Cheng (Jason Tools)", email = "jason@jason.tools" }]
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+dependencies = ["pysnmp==7.1.29"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jt_win_snmp"]

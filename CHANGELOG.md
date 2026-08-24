@@ -1,0 +1,375 @@
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
+
+繁體中文版：[CHANGELOG_zh-TW.md](CHANGELOG_zh-TW.md)
+
+---
+
+## [0.9.0] - 2026-08-24
+
+### Added
+
+- **Disk health status in LibreNMS** — the SMART application now shows
+  `PhysicalDrive0 (OK)` / `(FAIL)` / `(Overheating)` next to each drive. The
+  verdict comes from ATA `SMART RETURN STATUS` (0xDA) — the same thing
+  `smartctl -H` reports — or from the NVMe critical-warning bitmap, never from
+  guessing at attributes: zero reallocated sectors does not mean healthy, since
+  the firmware may already be predicting failure on some other attribute, and a
+  handful of reallocated sectors is normal on some models. When the drive does
+  not answer at all (USB bridges commonly do not pass SMART commands through)
+  the key is omitted, so LibreNMS shows nothing rather than a fabricated `(OK)`.
+
+- **`jtDiskHealthTable`** in the private OID subtree — one state value per disk
+  (ok / warning / critical / unknown) for anyone who wants to alert on it
+  directly. Note that a green/red indicator on the LibreNMS *device overview*
+  page is not achievable without adding a discovery definition to the LibreNMS
+  server, which this project deliberately does not require.
+
+- **Privacy tooling for publishing** — `tools/check-privacy.py` scans exactly the
+  files git would push for keys, passwords, community strings, MAC addresses,
+  addresses and serial numbers, and `docs/release-checklist.md` documents the
+  process. Images are handled by review-and-hash rather than pattern matching,
+  because a regular expression cannot read pixels: the first set of README
+  screenshots carried four MAC addresses and six neighbouring device names out
+  with them, which is an internal network map.
+
+- **Disk SMART over SNMP (`NET-SNMP-EXTEND-MIB`)** — LibreNMS reads SMART through
+  its `smart` application, and that application is fetched **entirely over SNMP**
+  (`snmp_get nsExtendOutputFull."smart"`). No LibreNMS agent, no `smartctl`, no
+  script on the monitored host. jt-snmpd already read the SMART attributes
+  natively through IOCTLs; it now serialises them into the JSON that application
+  expects. Verified on a Dell Latitude E5270: reallocated sectors 0, wear
+  levelling 4, UDMA CRC errors 0, temperature 33 °C, power-on hours 491, written
+  into `app-smart-*.rrd`.
+
+  The payload is `base64(gzip(json))` — a form `json_app_get()` explicitly
+  supports, and a necessary one: responses are capped at 1400 bytes and never
+  fragmented, so uncompressed JSON would overflow at two disks. Attributes that
+  were not measured are `null`, never `0`; a fabricated zero in "reallocated
+  sectors" reads as "this disk is healthy".
+
+  **This requires `discovery_modules.applications` to be enabled in LibreNMS** —
+  it is `false` by default. Without it the extend data is served but never
+  collected.
+
+- **Disk maximum temperature** (`max_temp`) — LibreNMS's SMART application renders a
+  "Max Temp(C)" panel whether or not the data exists, so without this key every
+  installation showed a broken graph. Windows' storage APIs expose thresholds
+  (warning, critical) but not a lifetime maximum, and using a threshold there
+  would mislabel the line, so jt-snmpd records the highest temperature it has
+  actually observed, persisted across restarts and written only when the maximum
+  rises — a snapshot rebuilds every five seconds, and writing every time would be
+  seventeen thousand needless disk writes a day.
+
+- **Comparison screenshots** in `docs/images/`, captured from a production
+  LibreNMS in both English and Traditional Chinese, in the light theme: sensors,
+  SMART, ports and memory, each showing the same page for a Windows 10 host
+  running the built-in SNMP Service and one running jt-snmpd.
+
+- **ACPI thermal zone temperature** — a system/mainboard temperature that needs no
+  kernel driver, read through `advapi32!WmiOpenBlock` + `WmiQueryAllDataW`
+  (the WMI data-block API, not WMI COM, and no subprocess). Measured 25 °C with a
+  107 °C critical trip point on physical hardware; virtual machines report
+  `ERROR_WMI_GUID_NOT_FOUND` and the sensor simply does not appear.
+
+  CPU package temperature remains out of reach and will stay that way: it
+  requires MSR access, which requires a kernel driver. The driver everyone uses
+  for this (WinRing0) is on Microsoft's vulnerable-driver blocklist and will not
+  load under HVCI/WDAC — precisely the configuration our customers run.
+
+- **CPU frequency sensor** (`entPhySensorType = hertz`, `mega` scale) — one sensor
+  rather than one per logical processor, because `CallNtPowerInformation` reports
+  a package-level P-state and every core returns the same value. Note that
+  LibreNMS currently drops these: `entity-sensor.inc.php` maps `hertz` to the
+  class `freq`, but the valid class in `LibreNMS/Enum/Sensor.php` is `frequency`.
+  The same defect affects `cisco-entity-sensor.inc.php` and `openbsd.inc.php`.
+  The OID is correct per RFC 3433 and readable by `snmpwalk`; the graph will
+  appear once LibreNMS fixes the mapping.
+
+- **Battery state** in the private OID subtree (charge percent, AC line status,
+  estimated runtime) via `GetSystemPowerStatus`. Kept private deliberately:
+  LibreNMS's entity-sensor table has no mapping for charge or percent, so
+  publishing it as a standard sensor would produce nothing.
+
+- **`SNMP-FRAMEWORK-MIB` engine group** (`snmpEngineID`, `snmpEngineBoots`,
+  `snmpEngineTime`, `snmpEngineMaxMessageSize`) — this fixes a false "Device
+  rebooted" alert that would otherwise fire on every host after 497 days of
+  uptime. `sysUpTime` is `TimeTicks`, so it wraps at 2^32 hundredths of a second
+  ≈ 497.1 days; that is mandated by RFC 3418 and the built-in Windows SNMP
+  Service wraps too. What is fixable is the consequence: LibreNMS takes
+  `max(sysUpTime/100, snmpEngineTime, hrSystemUptime/100)`, and `windows.yaml`
+  disables only `hrSystemUptime`. `snmpEngineTime` counts in seconds up to
+  2147483647 (≈ 68 years), so once the wrap happens the maximum keeps rising and
+  the reboot test never trips.
+
+- **Log rotation and Windows Event Log integration.** The agent log had no size
+  limit; a repeated snapshot failure writes a line every five seconds, which is
+  seventeen thousand lines a day. Across hundreds of hosts over several years a
+  monitoring agent filling the system drive of the host it monitors is the least
+  acceptable failure there is. Errors now also reach the Event Viewer, where
+  field staff look first and where `Get-WinEvent` can collect them centrally.
+
+- **Full lifecycle test** (`tests/lifecycle.ps1`) — install, upgrade, uninstall,
+  reinstall and PURGE uninstall, 40 assertions, run against the packaged MSI on
+  real hardware.
+
+### Fixed
+
+- **The service reported `Running` after its worker thread had died.** `SvcDoRun`
+  waited on the stop event alone, so a failure during start-up — a bind failure, a
+  MIB load failure, a snapshot build failure — left the Service Control Manager
+  reporting a healthy service with nothing listening. The Service Control Manager
+  saying `Running` while the monitoring system reports a timeout is the hardest
+  state to diagnose in the field, and it also meant the configured three-stage
+  automatic recovery never triggered, because the process never exited.
+
+- **Uninstalling after an upgrade left the built-in SNMP Service disabled
+  forever.** The configuration script re-read the current state of the built-in
+  service on every run and overwrote its restore record. On first install that
+  state is genuine; on upgrade the service has already been disabled by the
+  previous install, so `Disabled` was written back as though it were the original
+  setting, and the uninstall guard `$orig -ne 'Disabled'` then never fired.
+  Install → uninstall restored correctly; install → upgrade → uninstall did not,
+  and upgrading is the normal operation for this product.
+
+- **`PURGE=1` left the data directory behind.** The custom action's own log file
+  lives inside the directory it was deleting, so the two closing log lines
+  recreated `logs\`. Deletion failures were also swallowed by
+  `-ErrorAction SilentlyContinue` and reported as success.
+
+- **Built-in SNMP shutdown was assumed rather than verified.** Group Policy or
+  third-party management can block it; the install now confirms the service is
+  actually stopped and disabled and fails with an explanation if it is not,
+  instead of continuing to a health-check timeout with no visible cause.
+
+- **`CallNtPowerInformation` buffer sizing.** The prototype used `os.cpu_count()`,
+  which only reflects the caller's processor group; on machines with more than 64
+  logical processors the kernel would write past the end of the allocation.
+  Buffers are now sized with `GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)`.
+  ctypes is exactly where Python's memory safety stops applying.
+
+### Changed
+
+- Disk sensor labels keep the native Windows name (`PhysicalDrive0 Temp` rather
+  than `Drive0 Temp`).
+- SMART attribute IDs are preserved as read, not only the ones we had names for.
+  LibreNMS wants IDs 10, 183, 184, 188, 196 and 199, none of which were named.
+- All firmware-supplied buffers are now parsed defensively, with the parsers
+  separated from acquisition as pure functions so they can be tested against
+  hostile input on Linux. Lengths and offsets in a WMI data block come from the
+  block itself; an implausible instance count is a self-inflicted denial of
+  service on a host we promised not to slow down.
+
+
+### Added
+
+- **UCD-SNMP-MIB `systemStats`** — this is what fills the LibreNMS System graph
+  group. Windows hosts previously showed only three graphs (Processes, Users,
+  Uptime) because those come from HOST-RESOURCES; everything else on a Linux
+  device — Detailed Processor Usage, Context Switches, Interrupts, I/O, Swap I/O —
+  comes from UCD-SNMP-MIB. Now sourced from `NtQuerySystemInformation`
+  (`SystemPerformanceInformation` and per-CPU times). Five new graphs appear
+
+- **`hrFSTable`, `hrPartitionTable` and `ipRouteTable`** — found genuinely missing
+  while building the side-by-side comparison against the built-in SNMP Service.
+  File systems and partitions come from `GetVolumeInformationW`, routes from
+  `GetIpForwardTable2`. None of these carry the information-disclosure concerns
+  that keep the software and connection tables off by default
+- **Comparison document** (`docs/comparison-vs-builtin-snmp.md`) measuring
+  jt-snmpd against a Windows 10 host still running the built-in SNMP Service,
+  table by table, with an explanation for every place jt-snmpd reports less
+
+- **MSI installer (WiX v5)** — this is what makes Group Policy deployment possible;
+  GPO software installation only accepts MSI. Verified end to end on Windows 11:
+  silent install (`msiexec /qn`), **upgrade by simply installing the newer MSI**
+  (0.1.0 → 0.1.1, one entry in Add/Remove Programs, `index-map.json` byte-identical
+  so LibreNMS does not re-discover ports), uninstall restoring the built-in SNMP
+  Service and keeping configuration and state, and reinstall. A failed loopback
+  health check rolls the whole transaction back
+
+- **README** in English and Traditional Chinese, following the jt-ipam layout
+- **Security scanning toolchain** documented in `docs/security-scanning.md`, with a
+  first baseline: Bandit HIGH=0, pip-audit clean across 59 dependencies, CycloneDX
+  SBOM generated. ZAP is not applicable — it is a web DAST and this agent has no
+  HTTP surface; the correct combination is SAST + SCA/SBOM + protocol fuzzing plus
+  Windows-specific checks (Authenticode, unquoted service path, `sc qprivs`,
+  `accesschk`, PrivescCheck)
+- **Three-branch `sysObjectID`** with domain-controller detection via
+  `DsRoleGetPrimaryDomainInformation`. LibreNMS uses the third branch to call
+  `getDatacenterVersion()`, so a DC previously reported the wrong Windows version
+- **Windows Server scenarios** enumerated in `TEST_PLAN.md` §5.5 — 22 items across
+  version/install type, Server-specific data sources and deployment differences
+
+- **IP address tables**: `ipAddrTable` (RFC 1213) and `ipAddressTable` (IP-MIB,
+  IPv4 + IPv6) via `GetUnicastIpAddressTable`, feeding the LibreNMS
+  ipv4-addresses and ipv6-addresses modules
+- **Neighbour cache** (`ipNetToPhysicalTable`, ARP and IPv6 ND) via `GetIpNetTable2`.
+  **Disabled by default** — spec §3.5 identifies an internal ARP table as a
+  ready-made lateral-movement target list
+- **Disk temperature and health** (ENTITY-SENSOR-MIB `entPhySensorTable`) via
+  `IOCTL_STORAGE_QUERY_PROPERTY` with `StorageDeviceTemperatureProperty` and the
+  NVMe SMART health log. Per spec §2.9 this deliberately avoids
+  LibreHardwareMonitor, whose WinRing0 driver is on the Microsoft vulnerable
+  driver blocklist and triggers Defender on HVCI endpoints
+
+- **Complete memory reporting via `GetPerformanceInfo`**: in addition to Physical
+  and Virtual Memory, the agent now reports **Cached Memory**, **Swap Space**
+  (the page-file portion of the commit limit, which is a different concept from
+  commit charge — see spec §2.2) and the kernel paged / non-paged pools.
+  LibreNMS now shows four memory pools instead of two
+- **Real volume labels and serial numbers** in `hrStorageDescr` via
+  `GetVolumeInformationW`, replacing a hard-coded placeholder. Non-ASCII labels
+  (for example a Traditional Chinese volume name) are encoded as UTF-8 and
+  verified end to end through LibreNMS
+
+- **`sysContact` / `sysLocation` configuration sources**: values are resolved with
+  ADMX policy taking precedence over the existing Windows SNMP Service registry
+  settings (spec §5.5, §5.9.3). Customers already running the built-in SNMP
+  service do not have to re-enter these when switching over — the settings are
+  picked up automatically, even after the built-in service has been disabled,
+  because its registry keys remain. `jtAgentConfigSource` reports which source won
+- **`build/` and `dist/` directories**: `build/` holds the PyInstaller one-folder
+  output (executables), `dist/` holds release artefacts (MSI and friends).
+  Both keep only their README under version control
+
+- **Complete `hrSystem`**: added `hrSystemProcesses` (the source for the LibreNMS
+  System → Processes graph), `hrSystemDate` (RFC 2579 DateAndTime binary format
+  including time zone), and `hrSystemInitialLoadDevice` / `hrSystemInitialLoadParameters`
+- **Network protocol statistics** (the LibreNMS Netstats graph set): the `ip`,
+  `icmp`, `tcp` and `udp` groups, all sourced from iphlpapi via
+  `GetIpStatisticsEx` / `GetIcmpStatistics` / `GetTcpStatisticsEx` /
+  `GetUdpStatisticsEx`, each returning a whole counter set in one call
+- **SNMPv2-MIB `snmp` group**: the agent's own packet statistics, which also serve
+  as the external view of pre-authentication gate drop counts
+
+- **Complete inventory**:
+  - **ENTITY-MIB `entPhysicalTable`** (LibreNMS Inventory page), sourced by parsing
+    SMBIOS via `GetSystemFirmwareTable('RSMB')` — no WMI and no special privileges
+    required (spec §2.10). Covers Type 0 BIOS, Type 1 System, Type 2 Baseboard,
+    Type 4 Processor and Type 17 Memory Device, using the segmented index layout
+    from §34.5 (1000 system / 1100 mainboard / 2000+ CPU / 3000+ DIMM / 4000+ disks)
+  - **Full `hrDeviceTable` family** (LibreNMS Devices page): processors, network
+    interfaces and physical disks, with `hrProcessorTable`, `hrNetworkTable` and
+    `hrDiskStorageTable`. All derived tables share one `hrDeviceIndex` space (spec §2.3)
+  - **Physical disk inventory**: model, serial and bus type via
+    `IOCTL_STORAGE_QUERY_PROPERTY`; capacity via `IOCTL_DISK_GET_DRIVE_GEOMETRY_EX`
+  - Hardware inventory is cached permanently (spec §2.7) — SMBIOS does not change
+    after boot
+
+- **Pre-authentication gate** (spec §3.2, flagged as the highest-priority security
+  item): four checks that run before pysnmp sees any bytes — source IP allow-list,
+  packet size limit, per-source token bucket rate limiting, and a coarse outer-TLV
+  sanity check. Dropped packets **never reach the BER decoder**, so deeply nested
+  structures, oversized length fields and OID amplification cannot touch pyasn1
+
+- **Self-health OIDs** (spec §7, brought forward from Phase 7): this agent fails
+  silently, so these OIDs let LibreNMS monitor the agent itself. They cover
+  version, service uptime, RSS, thread and handle counts, snapshot age and build
+  time, configuration paths, and a security warning summary
+- **`jtAgentCollectorTable`**: per-collector status, time since last success,
+  duration, cumulative error count and last error message
+- **Collector health tracking**: every collector is wrapped by `_collector()`,
+  returning its default instead of raising, so a single failing collector cannot
+  bring the agent down
+
+- **Project named `jt-snmpd`**; service name, executable name and installation
+  paths finalised (`docs/naming-and-paths.md`)
+- **Snapshot + bisect architecture**: the entire MIB is a single OID-sorted array;
+  GET uses `bisect_left`, GETNEXT uses `bisect_right`. SNMP protocol correctness
+  becomes a structural guarantee rather than something maintained by hand
+- **Wire pre-encoding**: BER bytes are produced when the snapshot is built, so
+  assembling a response degenerates to byte concatenation
+- **IF-MIB** (ifTable + ifXTable with 64-bit counters), **HOST-RESOURCES**
+  (hrStorage / hrProcessor / hrDevice), and **UCD-DISKIO**
+- **Interface filtering**: only physical adapters are exported; WFP filter drivers,
+  VPN virtual adapters, tunnels and loopback are excluded
+- **Persistent ifIndex** keyed by NET_LUID, so LibreNMS does not rebuild ports and
+  orphan their RRDs after a reboot
+- **Windows service**: packaged with PyInstaller one-folder as `jt-snmpd.exe`,
+  acting as its own service host. Starts at boot as LocalSystem with no Python
+  dependency on the target machine
+- **`--selftest` build gate**: after building, the executable initialises a real
+  SNMP engine and builds a snapshot, catching "executable produced but data files
+  missing" situations
+- **Reduced process priority**: the service runs at `BELOW_NORMAL_PRIORITY_CLASS`
+- **Build script** `packaging/build-exe.ps1`: single source of truth for build
+  parameters, with handle-release verification and artefact freshness checks
+- **Tests**: BER size cross-check (540 cases), walk correctness (20 cases),
+  base OID values against their RFCs (10 cases)
+
+### Fixed
+
+- **UCD `systemStats` field numbers were assigned from memory and were wrong.**
+  The real order is IOSent(57) / IOReceived(58) / Interrupts(59) / Contexts(60) /
+  SwapIn(62) / SwapOut(63); I had guessed SwapIn/SwapOut first. Context switches
+  were therefore plotted as I/O. Nothing about this is visible from the agent side —
+  the walk succeeds, the graphs draw, the numbers move. It only shows up when the
+  output is resolved through the MIB (`snmpwalk -m UCD-SNMP-MIB -O QUs`).
+  `tests/test_ucd_field_numbers.py` now pins every field to its MIB name
+
+- **`ipRouteTable` produced duplicate OIDs on multi-homed hosts.** RFC 1213 indexes
+  that table by destination address alone, but every NIC contributes its own
+  224.0.0.0 multicast and 255.255.255.255 broadcast route. On a laptop with seven
+  addresses this tripped the duplicate-OID guard and the agent refused to start —
+  which in turn made the MSI health check fail and roll the install back. Routes are
+  now deduplicated by destination, keeping the lowest-metric entry (the one actually
+  selected). This never reproduces on a single-NIC machine
+
+- **`hrSystemNumUsers` returned a hard-coded 1.** On a Remote Desktop Session Host
+  that is simply wrong — one machine may have dozens of users. Now enumerates real
+  sessions via `WTSEnumerateSessions`, counting Active and Disconnected states
+  (a disconnected user is still logged in and still holding resources)
+- **NIC team members were exported alongside the team interface**, so LibreNMS
+  counted the same traffic twice. Team members report
+  `ConnectionType = Passive` and are now excluded
+
+All of the following were found and fixed during deployment on real hardware:
+
+- **Service reported Running but no socket was bound**: pysnmp's
+  `open_server_mode()` must be called from within a running event loop, otherwise
+  the socket is never actually bound
+- **64-bit return values truncated**: without `argtypes`/`restype` declarations,
+  ctypes treats Win32 return values as `c_int`, which reported the C: drive as
+  0 GB and overflowed uptime beyond 24.8 days
+- **pywin32 service class must live at module level**: defining it inside a
+  function yields `AttributeError: module has no attribute`, and the service
+  fails to start without writing any log entry
+- **Incorrect ifXTable OID**: `1.3.6.1.31.1.1.1` was missing `2.1`, placing the
+  whole table on an invalid branch. LibreNMS relies on this table when
+  `ifname: true`, so the Ports page lost both names and 64-bit counters
+- **Non-ASCII OCTET STRING encoding failure**: pyasn1 encodes strings as latin-1
+  by default, so a Traditional Chinese adapter name raises
+  `PyAsn1UnicodeEncodeError`
+- **Unquoted paths containing spaces are truncated**: the default installation
+  path `%ProgramFiles%\JT SNMP Agent\` contains a space, and without quoting the
+  process fails to start with no log output
+- **PowerShell scripts require a UTF-8 BOM**: Windows PowerShell 5.1 reads `.ps1`
+  files using the system ANSI code page when no BOM is present, which corrupts
+  non-ASCII comments and breaks parsing
+- **Build artefact freshness misjudged**: treating "the executable exists" as
+  build success picks up a stale binary when the build actually failed
+- **Loaded images cannot be deleted**: Windows returns access-denied for `.pyd`
+  and `.dll` files already loaded as images, even after the service is stopped
+  and unregistered. Renaming is used instead
+
+### Performance
+
+- MIB lookup: **8 µs per varbind**
+- Response assembly: **164 → 0.35 µs per varbind** using wire pre-encoding
+- Full request path: **18.3 µs per varbind**
+- **Host impact** under stress at roughly 7,000x the real polling rate:
+  degradation of a fixed workload dropped from **4.19% to 0.41%** after lowering
+  process priority
+- Memory: RSS grew 0.12 MB across 1,406 complete walks; thread and handle counts
+  remained flat
+
+### Known limitations
+
+- Not yet verified: multi-homed source address selection (the test machine has a
+  single NIC), HVCI/WDAC endpoints, Authenticode signing
+- Not yet implemented: SNMPv3, pre-authentication gate, VACM presets,
+  self-health OIDs, MSI installer

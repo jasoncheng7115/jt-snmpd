@@ -1,0 +1,57 @@
+{
+  "_note": "從 WIN11-PRO-1 (192.0.2.54) 的 Microsoft 內建 SNMP Service 擷取，唯讀，2026-08-23。這是閘門 B 與 §5.9 移轉功能的黃金基準。",
+  "host": {
+    "name": "win11-pro-1",
+    "os_caption": "Microsoft Windows 11 Pro",
+    "os_version": "10.0.26200",
+    "build": "26200",
+    "arch": "64-bit",
+    "product_type": 1,
+    "product_type_meaning": "workstation",
+    "is_admin": true,
+    "ipv4": ["192.0.2.54/24"],
+    "adapters_total_incl_hidden": 7,
+    "adapters_hardware": 1,
+    "single_nic": true
+  },
+  "msft_snmp_service": {
+    "SNMP": {"status": "Running", "start_type": "Automatic", "pid": 3944, "path": "C:\\WINDOWS\\System32\\snmp.exe", "bind": ["0.0.0.0", "::"]},
+    "SNMPTRAP": {"status": "Stopped", "start_type": "Manual"},
+    "capability": "SNMP.Client~~~~0.0.1.0 = Installed"
+  },
+  "registry_parameters": {
+    "ValidCommunities": {"mon2": 4},
+    "ValidCommunities_meaning": {"4": "READ ONLY"},
+    "PermittedManagers": {"1": "localhost", "2": "192.0.2.10"},
+    "RFC1156Agent": {"sysContact": "Jason", "sysLocation": "mylove", "sysServices": 79},
+    "TrapConfiguration": {},
+    "ExtensionAgents": {"W3SVC": "Software\\Microsoft\\W3SVC\\CurrentVersion"}
+  },
+  "snmp_system_group_actual": {
+    "sysDescr.0": "Hardware: AMD64 Family 25 Model 80 Stepping 0 AT/AT COMPATIBLE - Software: Windows Version 6.3 (Build 26200 Multiprocessor Free)",
+    "sysObjectID.0": "1.3.6.1.4.1.311.1.1.3.1.1",
+    "sysObjectID_branch": "client (workstation)",
+    "sysUpTime.0_example": 101194331,
+    "sysContact.0": "Jason",
+    "sysName.0": "win11-pro-1",
+    "sysLocation.0": "mylove",
+    "sysServices.0": 79
+  },
+  "librenms_result_from_msft_snmp": {
+    "_note": "LibreNMS 26.8.1 對此裝置 (device_id 106) 的實際偵測結果，證明閘門 B 驗收標準可達成",
+    "device_id": 106,
+    "os": "windows",
+    "version": "11 Insider (NT 6.3)",
+    "hardware": "AMD x64",
+    "features": "Multiprocessor",
+    "snmpver": "v2c"
+  },
+  "migration_test_cases_covered": {
+    "community_read_only_4": "mon2 → 直接匯入 (§5.9.3)",
+    "permitted_managers_with_hostname": "localhost → 需解析為 IP，或列警告 (§5.9.3)",
+    "sys_services_mismatch": "79 ≠ 76 → 須在報告中列出 (§5.9.3)",
+    "extension_agents_present": "W3SVC → 列出並警告其 OID 將不再可用 (§5.9.3)",
+    "trap_empty": "無 trap 目的地",
+    "single_nic": "閘門 A 無法在此驗證"
+  }
+}
