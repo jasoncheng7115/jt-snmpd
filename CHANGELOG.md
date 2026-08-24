@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.1] - 2026-08-24
+
+### Fixed
+
+- **The agent never read its configuration file.** The installer collected the
+  community string and the management networks, validated them, and wrote them
+  to `config.json`. The agent declared `CFG_PATH` pointing at `config.yaml` — a
+  different file — and never opened either one. Every installation ran on the
+  defaults compiled into the source.
+
+  Those defaults were `community="mon2"` and
+  `allowed_networks=("192.168.1.0/24",)`: exactly the values the development lab
+  used, which is why months of testing never noticed. Install with anything else
+  and the loopback health check queries with the operator's community, the agent
+  answers on a different one, the check times out, and MSI rolls the whole
+  transaction back with error 1603. The failure was total, and still invisible,
+  because the one configuration that worked was the only one ever tried.
+
+  The agent now loads `config.json` at startup, before its own entry point reads
+  any setting — loading it later would be the same bug, since the values are
+  passed as arguments and were already bound. Both defaults are empty: a missing
+  community refuses to serve rather than inventing one, and the file is read with
+  `utf-8-sig` because PowerShell and Notepad both write a BOM.
+
+  Settings can now be changed the way the documentation always implied: edit
+  `C:\ProgramData\JT-SNMP\config.json`, restart the service.
+
+- **An unconfigured source ACL allowed every source.** The pre-auth gate treated
+  an empty network list as "no filtering". While the installer was the config's
+  only author that state was unreachable, but editing the file by hand is now a
+  supported workflow, and an emptied list would have silently exposed the agent
+  to the whole network. It now denies everything except loopback, which stops
+  monitoring visibly instead of over-sharing quietly. To serve every source
+  deliberately, list `0.0.0.0/0`.
+
+### Added
+
+- **Project icon** — an OID tree, since a hierarchy of object identifiers is what
+  SNMP fundamentally is. Drawn at a single stroke weight so it survives 16 px in
+  a browser tab and a Windows service list. It replaces the blank placeholder
+  that made the Add/Remove Programs entry look like a half-finished install.
+
+- **CI** — tests run on Linux and Windows; a tagged push builds the MSI and
+  publishes the release. Failures are surfaced as workflow annotations because
+  GitHub's run logs need authentication to read, and "exit code 1" is not a
+  diagnosis. The Linux job installs net-snmp and then asserts the protocol
+  correctness tests actually ran, so they cannot quietly skip.
+
 ## [0.9.0] - 2026-08-24
 
 ### Added

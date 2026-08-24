@@ -1,4 +1,4 @@
-# jt-snmpd v0.9.0
+# jt-snmpd v0.9.1
 
 [![License](https://img.shields.io/badge/License-GPL--3.0--or--later-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)

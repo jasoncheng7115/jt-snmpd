@@ -111,7 +111,15 @@ class PreAuthGate:
             return True
 
         if not self.allowed_networks:
-            return True          # 未設定 = 不過濾（安裝程式必須避免這個狀態）
+            # Not configured means deny, not allow. This used to return True —
+            # "no list, no filtering" — which is fail-open. That was tolerable
+            # only while the installer was the sole author of the config; now
+            # that operators are expected to edit the file by hand, an emptied
+            # list would quietly expose the agent to every source on the network.
+            # Loopback is already allowed above, so the health check and local
+            # diagnosis still work and the operator sees monitoring stop rather
+            # than silently over-sharing.
+            return False
         for net in self.allowed_networks:
             # IPv4 位址不可能落在 IPv6 網段，version 不同直接跳過
             if addr.version == net.version and addr in net:

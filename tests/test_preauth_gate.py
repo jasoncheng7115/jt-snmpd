@@ -67,11 +67,36 @@ def test_acl_is_checked_before_everything_else(gate):
     assert gate.counters[DropReason.MALFORMED] == 0
 
 
-def test_empty_acl_means_no_filtering():
-    """未設定網段 = 不過濾。安裝程式必須避免這個狀態（spec §3.3 預設 deny）。"""
+def test_empty_acl_denies_everything_except_loopback():
+    """An unconfigured ACL denies, it does not pass everything through.
+
+    This test asserted the opposite until the config file became something
+    operators edit by hand. While the installer was the only author of the
+    config, "empty list means no filtering" was merely untidy — the installer
+    refuses to proceed without a management network, so the state was
+    unreachable in practice.
+
+    Once editing the file by hand is a documented workflow, the same code path
+    becomes fail-open: emptying the list, or mistyping the key, silently exposes
+    the agent to every source on the network. Nothing warns, and the agent keeps
+    answering, so the mistake is invisible.
+
+    Denying instead makes it obvious — monitoring stops. Loopback stays allowed
+    so the installer's health check and local diagnosis still work. To serve
+    every source deliberately, list 0.0.0.0/0 and ::/0 explicitly.
+    """
     g = PreAuthGate()
-    ok, _ = g.check(GOOD, "203.0.113.1", now=0.0)
-    assert ok
+    ok, reason = g.check(GOOD, "203.0.113.1", now=0.0)
+    assert not ok
+    assert reason == "acl"
+    # loopback 仍必須放行，否則安裝的健康檢查會失敗
+    assert g.check(GOOD, "127.0.0.1", now=0.0)[0]
+
+
+def test_explicit_any_still_works():
+    """明確寫出 0.0.0.0/0 才是「刻意開放給所有來源」的表達方式。"""
+    g = PreAuthGate(allowed_networks=PreAuthGate.parse_networks(["0.0.0.0/0"]))
+    assert g.check(GOOD, "203.0.113.1", now=0.0)[0]
 
 
 def test_malformed_source_ip_is_rejected(gate):

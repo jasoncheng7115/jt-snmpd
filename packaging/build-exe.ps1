@@ -100,6 +100,9 @@ $args = @(
     # 不是靠 import。因此必須用 collect-all 把資料檔一併打包，
     # 只給 collect-submodules 會漏掉，症狀是啟動即 MibNotFoundError。
     "--collect-all", "pysnmp",
+    # 圖示嵌進 exe：服務清單、工作管理員與檔案總管都看得到，
+    # 沒有圖示的服務在一長串系統服務裡完全認不出來
+    "--icon", (Join-Path (Split-Path -Parent $PSScriptRoot) "docs\brand\jt-snmpd.ico"),
     "--collect-all", "pyasn1",
 
     # version.py / preauth.py / smbios.py / diskhealth.py 與主程式同目錄，

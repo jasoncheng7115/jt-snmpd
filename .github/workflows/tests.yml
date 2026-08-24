@@ -21,6 +21,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: 安裝 net-snmp
+        # 協定正確性測試以真實的 net-snmp 用戶端驅動 agent。缺了它們會跳過，
+        # 而那正是驗 GETNEXT／GETBULK 的那一批——悄悄不跑比沒有還糟，
+        # 所以這裡裝好並確認存在。
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq snmp
+          command -v snmpbulkwalk || { echo "::error::snmpbulkwalk 未安裝"; exit 1; }
+
       - name: 安裝相依
         run: |
           python -m pip install --upgrade pip
@@ -28,6 +37,13 @@ jobs:
 
       - name: 執行測試
         run: python -m pytest tests/ -q --tb=short
+
+      - name: 確認協定正確性測試沒有被跳過
+        run: |
+          python -m pytest tests/test_walk_correctness.py -q --tb=line \
+            | tee /tmp/walk.txt
+          grep -qE '[0-9]+ passed' /tmp/walk.txt || {
+            echo "::error::walk correctness tests did not run"; exit 1; }
 
       - name: 個資／機密掃描
         # 推上公開 repo 的每一次都要掃。圖片走「人工審閱 + 雜湊」，

@@ -152,10 +152,17 @@ $fragPath = Join-Path $work 'files.wxs'
 [IO.File]::WriteAllText($fragPath, $frag, (New-Object Text.UTF8Encoding $false))
 Write-Host "[*] $($files.Count + 1) 個檔案，$($dirDefs.Count) 個目錄"
 
-# --- 圖示（沒有就用系統的佔位，簽章前會換掉）-------------------------------
+# --- 圖示 -------------------------------------------------------------------
+# 這裡曾經產生一個 16x16 的空白 ICO 佔位，於是「加入或移除程式」裡的項目
+# 是一片空白——在客戶的資產盤點畫面上，那看起來像是安裝到一半的東西。
 $icon = Join-Path $work 'app.ico'
-if (Test-Path "$env:SystemRoot\System32\shell32.dll") {
-    # WiX 需要真的 .ico 檔；先用一個最小的有效 ICO 佔位
+$brandIcon = Join-Path (Split-Path -Parent $PSScriptRoot) 'docs\brand\jt-snmpd.ico'
+if (Test-Path $brandIcon) {
+    Copy-Item $brandIcon $icon -Force
+    Write-Host "[*] 圖示：$brandIcon"
+} else {
+    # 找不到時仍要產出可用的 MSI，但要講出來，不要無聲地回到空白圖示
+    Write-Host "[!] 找不到 $brandIcon，改用空白佔位圖示" -ForegroundColor Yellow
     $ico = [byte[]](0,0,1,0,1,0,16,16,0,0,1,0,32,0,64,0,0,0,22,0,0,0)
     $ico += ,0 * 64
     [IO.File]::WriteAllBytes($icon, $ico)
