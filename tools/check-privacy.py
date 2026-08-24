@@ -67,7 +67,9 @@ RULES: list[tuple[str, str, re.Pattern, str]] = [
     (HIGH, "community", re.compile(
         r"""(?x)
         \bCOMMUNITY=                     # 命令列／MSI 屬性形式，無空白
-        (?!<|\$|%|\{|PUBLIC\b|YOUR|CHANGEME)
+        # 佔位字不算洩漏。比對不分大小寫——第一版只擋大寫 YOUR，
+        # 於是文件裡的 `your-community` 被報成 HIGH。
+        (?![<$%{]|(?i:public|your|change|example|placeholder|xxx)\b)
         ["']? ([A-Za-z0-9_-]{2,})
         """),
      "SNMP community 字串（等同密碼）"),
@@ -133,7 +135,7 @@ def _looks_like_real_ip(text: str) -> bool:
         return False
     if text.startswith(DOC_IPV4_PREFIXES):
         return False
-    # OID 常見前綴
+    # OID 常見前置碼
     if parts[0] in ("0", "1", "2") and parts[1] in ("0", "1", "2", "3", "4", "5", "6"):
         return False
     return True
@@ -172,7 +174,7 @@ def tracked_files() -> list[Path]:
             continue
         files.update(f for f in out.splitlines() if f.strip())
 
-    # **絕不能靜默地掃 0 個檔案。** 在還沒 git init 的目錄裡，兩個 git 指令都會
+    # **絕不能無聲地掃 0 個檔案。** 在還沒 git init 的目錄裡，兩個 git 指令都會
     # 失敗，若把例外吞掉就會得到「未發現問題」——一個永遠說安全的掃描器，
     # 比沒有掃描器更危險，因為它讓人以為檢查過了。實測踩過這個情況。
     if not files:

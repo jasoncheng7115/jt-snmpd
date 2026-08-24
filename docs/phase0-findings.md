@@ -6,14 +6,14 @@
 
 | 閘門 | 狀態 |
 |---|---|
-| A — 多網卡 UDP 來源位址 | ⛔ 無法驗（Win11 測試機為單網卡；需多網卡環境） |
+| A — 多網路卡 UDP 來源位址 | ⛔ 無法驗（Win11 測試機為單網路卡；需多網路卡環境） |
 | B — sysDescr / sysObjectID 與 LibreNMS OS 偵測 | ✅ **GO**（已用真實 LibreNMS 26.8.1 + Win11 內建 SNMP 驗證，見 §1.4） |
 | C — PySNMP 可行性與效能 | ✅ **GO**（架構達標，BER 瓶頸有對策，見 §2.6） |
 | D — 打包、EDR 與程式碼簽章 | ✅ **GO**（PyInstaller exe 服務已重開機驗證，見 §4.1）；HVCI/WDAC、簽章待驗 |
 | E — Net-SNMP 對照評估（ADR-0001） | ⛔ 未開始 |
 
 > 環境：開發機 Ubuntu 24.04（Python 3.12.3、pysnmp 7.1.29）；
-> 測試機 Win11 Pro build 26200 @ 192.0.2.54（單網卡，admin）；
+> 測試機 Win11 Pro build 26200 @ 192.0.2.54（單網路卡，admin）；
 > LibreNMS 26.8.1 @ 192.0.2.10（正式機，唯讀操作）。
 
 ---
@@ -62,7 +62,7 @@ spec §1.2 要求確認的四個旗標，實際值：
 
 ### 1.2 OS 偵測的實際條件
 
-`discovery` 有兩條 OR 條件：`sysObjectID` 前綴 `.1.3.6.1.4.1.311.1.1.3`，**或** `sysDescr` 含 `Windows`。
+`discovery` 有兩條 OR 條件：`sysObjectID` 前置碼 `.1.3.6.1.4.1.311.1.1.3`，**或** `sysDescr` 含 `Windows`。
 
 **對 §1.2 長期規劃的影響（spec 未預見的有利發現）**：取得自有 PEN 之後改用自家
 sysObjectID，裝置**不會**掉出 `windows` 這個 OS——第二條 `sysDescr: Windows` 會接住。
@@ -201,7 +201,7 @@ while M and R:
 改用**解析式長度計算**（不實際編碼）後：**2.55 µs/varbind，加速 45×**。
 
 ⚠ **一個必須記住的陷阱**：pyasn1 對負整數邊界**不使用最短編碼**，會多送一個
-冗餘的前導位元組（`-128` 編成 `ff 80` 而非 `80`；`-2147483648` 編成 5 bytes 而非 4）。
+多餘的前導位元組（`-128` 編成 `ff 80` 而非 `80`；`-2147483648` 編成 5 bytes 而非 4）。
 解析式計算的用途是**預測 pyasn1 會吐出多少位元組**，因此必須跟著 pyasn1 走，
 而不是跟著 DER 規範走。正負號最終共用同一條公式：`v.bit_length() // 8 + 1`。
 
@@ -241,7 +241,7 @@ pyasn1 一旦改變編碼方式，大小預測就會無聲漂掉，回應可能�
 
 #### 瓶頸拆解（決定性）
 
-同進程 profile（`bench/gate_c/profile_path.py`，排除 socket/asyncio 雜訊）拆出兩層瓶頸：
+同行程 profile（`bench/gate_c/profile_path.py`，排除 socket/asyncio 雜訊）拆出兩層瓶頸：
 
 | 處理階段 | 成本 | 說明 |
 |---|---|---|
@@ -283,7 +283,7 @@ Windows 上須覆測絕對數字後才能作為正式驗收依據（Windows 的 
 
 | 項目 | 阻塞原因 | 風險 |
 |---|---|---|
-| 閘門 A 全部 | 無多網卡（≥3 IP、跨網段）主機 | **高**——多網卡回應來源 IP 錯誤會造成間歇性 timeout 且極難除錯，且客戶端幾乎都是管理/業務網段分離 |
+| 閘門 A 全部 | 無多網路卡（≥3 IP、跨網段）主機 | **高**——多網路卡回應來源 IP 錯誤會造成間歇性 timeout 且極難除錯，且客戶端幾乎都是管理/業務網段分離 |
 | 閘門 D 全部 | 無 Windows 存取；無 HVCI/WDAC 端點 | **高**——無簽章在 WDAC 環境完全無法部署 |
 | 閘門 B 的 Windows 端 | Win11 SSH 未授權 | 中 |
 | sysObjectID 的 server / DC 分支 | 僅有 Win11 工作站 | 中——兩個分支無法驗 |

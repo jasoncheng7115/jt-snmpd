@@ -233,7 +233,7 @@ function Stop-ExistingService {
     if ($svc.Status -ne 'Stopped') {
         Stop-Service -Name $SERVICE_NAME -Force -ErrorAction SilentlyContinue
     }
-    # 停服務回來不代表檔案句柄已釋放（jt-doc-tools v1.1.66~69 的實際 bug）
+    # 停服務回來不代表檔案控制代碼已釋放（jt-doc-tools v1.1.66~69 的實際 bug）
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
         if (-not (Get-Process -Name $SERVICE_NAME -ErrorAction SilentlyContinue)) { break }

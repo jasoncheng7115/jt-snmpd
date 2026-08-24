@@ -184,7 +184,7 @@ $sha = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower()
 
 # --- 版本歸檔 ---------------------------------------------------------------
 # 每個發佈版本的安裝檔都要留存：客戶回報問題時必須能取得「他手上那一版」，
-# 而不是只有最新版。回滾、重現、資安稽核都需要。
+# 而不是只有最新版。倒回、重現、資安稽核都需要。
 $archive = Join-Path $OutDir "releases\$Version"
 New-Item -ItemType Directory -Force $archive | Out-Null
 Copy-Item $msi $archive -Force

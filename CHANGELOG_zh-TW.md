@@ -52,7 +52,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   渲染一張「Max Temp(C)」面板，因此少了這個鍵，每一套安裝都會看到一張破圖。
   Windows 的儲存 API 給的是門檻值（warning、critical），不是「這輩子最高溫」，
   拿門檻值去填那條線是標錯標籤；因此 jt-snmpd 改記錄**自己實際觀測到**的最高溫，
-  跨重啟持久化，且只在最高溫真的上升時才寫檔——快照每五秒重建一次，
+  跨重新啟動持久化，且只在最高溫真的上升時才寫檔——快照每五秒重建一次，
   每次都寫會是一天一萬七千次不必要的磁碟寫入。
 
 - **對照截圖**置於 `docs/images/`，取自正式 LibreNMS，英文與台灣繁體中文各一套，
@@ -155,11 +155,11 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   給出理由
 
 - **MSI 安裝檔（WiX v5）**——這是群組原則派送的前提，GPO 軟體安裝只接受 MSI。
-  已在 Windows 11 端對端驗證：靜默安裝（`msiexec /qn`）、
+  已在 Windows 11 端對端驗證：無訊息安裝（`msiexec /qn`）、
   **直接安裝新版即完成升級**（0.1.0 → 0.1.1，「加入或移除程式」維持一筆，
   `index-map.json` 位元組完全相同，LibreNMS 不會重新 discovery）、
   解除安裝會還原內建 SNMP Service 並保留設定與狀態、以及重複安裝。
-  loopback 健康檢查失敗時整個交易會回滾
+  loopback 健康檢查失敗時整個交易會倒回
 
 - **README** 英文與台灣繁體中文雙檔，格式參照 jt-ipam
 - **資安檢測工具鏈**寫入 `docs/security-scanning.md`，並產出第一份基線：
@@ -225,7 +225,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   外層 TLV 粗略合法性。被擋下的封包**完全不會進入 BER decoder**，
   因此深度巢狀、超長長度欄位、OID 放大等攻擊碰不到 pyasn1
 
-- **自我健康 OID**（spec §7，從 Phase 7 提前）：agent 的失效是靜默的，
+- **自我健康 OID**（spec §7，從 Phase 7 提前）：agent 的失效是無聲的，
   這組 OID 讓 LibreNMS 能監控 agent 本身。含版本、服務執行時間、RSS、
   執行緒與 handle 數、快照年齡與建立耗時、設定路徑、安全性警告摘要
 - **`jtAgentCollectorTable`**：每個 collector 的狀態、上次成功時間、耗時、
@@ -239,14 +239,14 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **wire 預編碼**：快照建立時預先產生 BER 位元組，回應組裝退化為位元組串接
 - **IF-MIB**（ifTable + ifXTable，含 64-bit counters）、**HOST-RESOURCES**
   （hrStorage / hrProcessor / hrDevice）、**UCD-DISKIO**
-- **介面過濾**：只輸出實體網卡，排除 WFP 過濾驅動、VPN 虛擬卡、隧道、loopback
+- **介面過濾**：只輸出實體網路卡，排除 WFP 過濾驅動、VPN 虛擬卡、隧道、loopback
 - **ifIndex 持久化**：以 NET_LUID 為主鍵，避免重開機後 LibreNMS 重建 port 與孤兒 RRD
 - **Windows 服務**：PyInstaller one-folder 打包成 `jt-snmpd.exe`，
   以自身為服務主程式，開機自啟、LocalSystem、目標機零 Python 依賴
 - **`--selftest` 建置閘門**：建置後實際初始化 SNMP engine 並建立快照，
   可攔截「exe 產出但缺資料檔」的情況
 - **程序優先權降級**：服務以 `BELOW_NORMAL_PRIORITY_CLASS` 執行
-- **建置腳本** `packaging/build-exe.ps1`：參數單一來源，含句柄釋放驗證與產物新鮮度檢查
+- **建置腳本** `packaging/build-exe.ps1`：參數單一來源，含控制代碼釋放驗證與產物新鮮度檢查
 - **測試**：BER 大小對照（540 例）、walk 正確性（20 例）、base OID 對照 RFC（10 例）
 
 ### 修正
@@ -259,11 +259,11 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   （`snmpwalk -m UCD-SNMP-MIB -O QUs`）。
   `tests/test_ucd_field_numbers.py` 已把每個欄位釘死在 MIB 名稱上
 
-- **`ipRouteTable` 在多網卡主機上產生重複 OID。** RFC 1213 以目的位址單獨當索引，
-  但每張網卡都會有自己的 224.0.0.0 多播與 255.255.255.255 廣播路由。
+- **`ipRouteTable` 在多網路卡主機上產生重複 OID。** RFC 1213 以目的位址單獨當索引，
+  但每張網路卡都會有自己的 224.0.0.0 多播與 255.255.255.255 廣播路由。
   在一台有七個位址的筆電上，這觸發了重複 OID 護欄而讓 agent 拒絕啟動，
-  連帶使 MSI 的健康檢查失敗並回滾安裝。現已依目的位址去重，
-  保留 metric 最小者（即實際會被選用的路由）。此問題在單網卡機器上永遠不會出現
+  連帶使 MSI 的健康檢查失敗並倒回安裝。現已依目的位址去重，
+  保留 metric 最小者（即實際會被選用的路由）。此問題在單網路卡機器上永遠不會出現
 
 - **`hrSystemNumUsers` 原本固定回 1。** 在遠端桌面工作階段主機上這直接就是錯的
   ——一台可能有數十個使用者。改以 `WTSEnumerateSessions` 列舉實際工作階段，
@@ -282,7 +282,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **ifXTable OID 錯誤**：`1.3.6.1.31.1.1.1` 少了 `2.1`，整張表掛在無效分支。
   LibreNMS 的 `ifname: true` 依賴此表，錯誤時 Ports 頁缺名稱與 64-bit counters
 - **非 ASCII OCTET STRING 編碼失敗**：pyasn1 預設以 latin-1 編碼字串，
-  正體中文網卡名（「乙太網路」）會直接拋出 `PyAsn1UnicodeEncodeError`
+  正體中文網路卡名（「乙太網路」）會直接拋出 `PyAsn1UnicodeEncodeError`
 - **含空白路徑未加引號會被截斷**：預設安裝路徑 `%ProgramFiles%\JT SNMP Agent\`
   本身即含空白，未加引號時行程啟動失敗且無記錄
 - **PowerShell 指令碼需 UTF-8 BOM**：Windows PowerShell 5.1 在無 BOM 時
@@ -303,5 +303,5 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ### 已知限制
 
-- 尚未驗證：多網卡來源位址（測試環境為單網卡）、HVCI/WDAC 端點、Authenticode 簽章
+- 尚未驗證：多網路卡來源位址（測試環境為單網路卡）、HVCI/WDAC 端點、Authenticode 簽章
 - 尚未實作：SNMPv3、前置解析閘門、VACM 預設集、自我健康 OID、MSI 安裝程式

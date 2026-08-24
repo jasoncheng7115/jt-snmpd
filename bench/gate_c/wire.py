@@ -1,4 +1,4 @@
-"""手寫 BER varbind 編碼器（閘門 C 的關鍵優化）。
+"""手寫 BER varbind 編碼器（閘門 C 的關鍵最佳化）。
 
 為什麼需要這個：實測顯示 pysnmp/pyasn1 產生一個回應的成本是
 **每 varbind 約 125 µs**，其中
@@ -46,7 +46,7 @@ def tlv(tag: int, content: bytes) -> bytes:
 
 
 def enc_int_content(v: int) -> bytes:
-    """整數內容。刻意對齊 pyasn1 的行為（負數邊界會多一個冗餘前導位元組），
+    """整數內容。刻意對齊 pyasn1 的行為（負數邊界會多一個多餘的前導位元組），
     而非 DER 最短編碼——見 docs/phase0-findings.md §2.4。"""
     n = v.bit_length() // 8 + 1
     return v.to_bytes(n, "big", signed=True)

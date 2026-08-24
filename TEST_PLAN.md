@@ -7,7 +7,7 @@
 
 ## 0. 原則
 
-**0.1 這個 agent 的失效是靜默的。** 服務顯示 Running、LibreNMS 圖表卻是斷的，
+**0.1 這個 agent 的失效是無聲的。** 服務顯示 Running、LibreNMS 圖表卻是斷的，
 是本專案最常見的故障型態。因此測試的重點不是「功能會不會動」，而是
 **「壞掉的時候看不看得出來」**。每一層都必須有一個能在無人看管下判定失敗的斷言。
 
@@ -103,7 +103,7 @@
 | 4.1.5 | 快照重建 | < 500 ms，且絕不在請求路徑上 | **[已實作]** 建立時間已量測 |
 | 4.1.6 | 服務啟動到可回應 | < 10 秒 | [阻塞] 需 Windows 服務 |
 | 4.1.7 | Idle CPU | < 0.5% | [待實作] |
-| 4.1.8 | RSS | < 80 MB（250 MB 觸發自我重啟） | [待實作] |
+| 4.1.8 | RSS | < 80 MB（250 MB 觸發自我重新啟動） | [待實作] |
 | 4.1.9 | 合成規模回歸 1k / 10k / 50k varbind，退步 > 20% 即 fail build | 基準線比較 | **[已實作]** |
 | 4.1.10 | 併發：3 台 manager 同時 poll | 全部在 SLA 內 | [待實作] |
 
@@ -136,7 +136,7 @@
 | 5.4 | **VACM 必須在走訪路徑上生效**（典型漏洞是 GET 有過濾、walk 直接跨過去） | 專項測試 | [待實作] |
 | 5.5 | 未認證封包風暴：CPU 不超標、RSS 不成長、正常 manager 仍在 SLA 內 | §3.9 | [待實作] |
 | 5.6 | Pre-auth gate：來源 IP 不在白名單者零解析即丟棄 | 斷言未進入 BER decoder | **[已實作]** `tests/test_preauth_gate.py`（32 例）+ 真機驗證 |
-| 5.6.1 | 閘門掛點正確性（覆寫不存在的方法會讓整個閘門靜默失效） | 突變測試證實可攔截 | **[已實作]** `tests/test_gate_hookpoint.py`（6 例）|
+| 5.6.1 | 閘門掛點正確性（覆寫不存在的方法會讓整個閘門無聲失效） | 突變測試證實可攔截 | **[已實作]** `tests/test_gate_hookpoint.py`（6 例）|
 | 5.6.2 | loopback 永遠放行（否則安裝程式健康檢查必定失敗） | 斷言 | **[已實作]** |
 | 5.6.3 | SAST / SCA / SBOM 基線 | Bandit HIGH=0、相依 CVE=0 | **[已實作]** 見 `docs/security-scanning.md` |
 | 5.7 | 深度巢狀 SEQUENCE 不得造成 RecursionError 逃逸到事件迴圈 | §3.2 | [待實作] |
@@ -177,7 +177,7 @@
 |---|---|---|---|
 | 5.5.6 | **Hyper-V host**：`GetIfTable2()` 回 40～80 個介面 | 全部輸出會產生大量無用 port 與孤兒 RRD | [待驗] 過濾邏輯已實作，未在真 Hyper-V 上驗 |
 | 5.5.7 | **NIC teaming / SET** | team 成員與 team 介面都會出現，需決定輸出哪個 | [待實作] |
-| 5.5.8 | **多網卡跨網段**（管理網與業務網分離） | 回應來源 IP 可能錯誤 → 間歇性 timeout（閘門 A） | [阻塞] 無環境 |
+| 5.5.8 | **多網路卡跨網段**（管理網與業務網分離） | 回應來源 IP 可能錯誤 → 間歇性 timeout（閘門 A） | [阻塞] 無環境 |
 | 5.5.9 | **iSCSI / FC / 多路徑磁碟** | `PhysicalDriveN` 可能重複出現同一顆 LUN | [待實作] |
 | 5.5.10 | **Storage Spaces 虛擬磁碟**（> 8 TB） | `hrStorageSize` 為 Integer32，需動態放大 allocation unit | [待實作] 邏輯已寫，未以大容量驗證 |
 | 5.5.11 | **BitLocker 鎖定的磁碟區** | `GetDiskFreeSpaceEx` 可能阻塞或失敗 | [待實作] |
@@ -215,16 +215,16 @@
 |---|---|---|
 | 6.1.1 | 乾淨安裝 → 服務啟動 + 可回應 + 防火牆規則正確 | **[已驗]** `msiexec /qn` EXIT=0，服務 Running、161 服務中、規則正確 |
 | 6.1.2 | 升級 v(n-1) → v(n)：index-map 保留、ifIndex 不變 | **[已驗]** 0.1.0→0.1.1 直接安裝新版，EXIT=0，安裝項目數維持 1（UpgradeCode 正確），index-map hash 完全相同 |
-| 6.1.3 | 升級失敗回滾 → 舊版本恢復且服務可用 | [待驗] |
+| 6.1.3 | 升級失敗倒回 → 舊版本恢復且服務可用 | [待驗] |
 | 6.1.4 | 解除安裝 → 服務刪除、規則刪除、ProgramData 保留、不需重開機 | **[已驗]** `msiexec /x` EXIT=0，服務/埠/規則/程式目錄皆清除，資料目錄與 index-map 保留 |
 | 6.1.5 | PURGE 解除安裝 → 完全清除 | **[已驗]** `PURGE=1` EXIT=0，資料目錄完整消失。首次實測**失敗**——自訂動作的記錄檔就在被清除的目錄裡，刪完後收尾的 `Log` 又把 `logs\` 重建回來。已修（清除前關閉檔案記錄 + 重試 + 驗證），迴歸測試見 `tests/test_uninstall_purge.py` |
 | 6.1.6 | 重複安裝冪等 | **[已驗]** 解除安裝後重裝 EXIT=0 |
 | 6.1.6a | 出現在「加入或移除程式」 | **[已驗]** `JT SNMP Agent v0.1.0 / Jason Tools` |
-| 6.1.6b | 健康檢查失敗時 MSI 回滾 | **[已驗]** loopback 失敗時 MSIEXEC_EXIT=1603 並完整回滾（實測發生過）|
+| 6.1.6b | 健康檢查失敗時 MSI 倒回 | **[已驗]** loopback 失敗時 MSIEXEC_EXIT=1603 並完整倒回（實測發生過）|
 | 6.1.7 | 161 被 MS SNMP Service 佔用 → 自動停用 + 設定移轉 | **[已驗]** Win11 內建 SNMP 設為 Automatic/Running 後安裝，安裝後內建為 Stopped/Disabled、161 由 jt-snmpd 持有 |
 | 6.1.8 | 161 被非 Microsoft 程式佔用 → 中止且不動它，訊息正確 | [阻塞] |
 | 6.1.9 | 安裝過程強制斷電 → 重開機後可修復或可重裝 | [阻塞] |
-| 6.1.10 | GPO 靜默部署到 5 台 VM → 全部就緒 | [阻塞] 需 Proxmox |
+| 6.1.10 | GPO 無訊息部署到 5 台 VM → 全部就緒 | [阻塞] 需 Proxmox |
 | 6.1.11 | ADMX 原則變更 → 5 分鐘內生效 | [阻塞] |
 | 6.1.12 | 解除安裝後 → Windows SNMP Service 正確還原 | **[已驗]** 移除後內建自動還原為 Automatic 並重新啟動，161 交還給 `snmp.exe` |
 | 6.1.13 | **安裝 → 升級 → 移除後仍正確還原內建 SNMP** | **[已驗]** 首次實測**失敗**——升級時重讀當下狀態（已被停用）覆寫還原記錄，導致解除安裝端 `$orig -ne 'Disabled'` 永不成立，內建 SNMP 再也回不來。已修（既有還原記錄優先），迴歸測試見 `tests/test_ms_snmp_takeover.py` |
@@ -279,17 +279,17 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 | 7.1 | preshutdown 收到後正確 flush engineBoots 與 index-map | [阻塞] |
 | 7.2 | 電源事件（睡眠恢復）後重新初始化 PDH handle 與所有 collector | [阻塞] |
 | 7.3 | Loopback 自我測試：事件迴圈卡死時連續 3 次失敗 → 非零碼結束 | [待實作] |
-| 7.4 | SCM failure actions 生效（`failureflag 1`，非零結束碼也觸發重啟） | [阻塞] |
-| 7.5 | 5 分鐘內自我重啟 > 3 次 → 進入降級模式，不得無限重啟 | [待實作] |
+| 7.4 | SCM failure actions 生效（`failureflag 1`，非零結束碼也觸發重新啟動） | [阻塞] |
+| 7.5 | 5 分鐘內自我重新啟動 > 3 次 → 進入降級模式，不得無限重新啟動 | [待實作] |
 | 7.6 | 啟動絕不硬失敗：config 語法錯誤 / 161 被佔用 / collector 初始化失敗 / 狀態檔損毀 | [待實作] |
 | 7.7 | 降級模式下自我健康 OID 與 system group 仍可回應 | [待實作] |
 | 7.8 | 設定重新載入為原子操作，無效設定保留舊值並記 Event 3001 | [待實作] |
 | 7.9 | 所有內部計時使用單調時鐘：NTP 往回校時後快取邏輯不得卡死 | [待實作] |
 | 7.10 | 具名管線控制通道：ACL 僅 SYSTEM/Administrators，一般使用者不可連 | [待實作] |
 | 7.11 | **30 天長時間穩定性**：RSS / handle / thread 曲線平坦 | [阻塞] 需 Server |
-| 7.12 | 期間內完成：NTP 校時、NIC 熱插拔、磁碟熱插拔、config reload、服務重啟、主機重開機、快照還原 | [阻塞] |
+| 7.12 | 期間內完成：NTP 校時、NIC 熱插拔、磁碟熱插拔、config reload、服務重新啟動、主機重開機、快照還原 | [阻塞] |
 | 7.13 | LibreNMS 端無 counter reset 誤判、無 port 重複、無 storage 重複 | [阻塞] |
-| 7.14 | 動態 IP 增減時 socket 正確增減（§1.1 P1 路徑） | [阻塞] 需多網卡 |
+| 7.14 | 動態 IP 增減時 socket 正確增減（§1.1 P1 路徑） | [阻塞] 需多網路卡 |
 
 ---
 
@@ -304,7 +304,7 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 | 8.3 | Overview / Processor / Memory / Storage / DiskIO / Ports 六個頁面全滿 | [阻塞] |
 | 8.4 | Ports：speed / state / traffic / packets / errors / discards 皆有值 | [阻塞] |
 | 8.5 | 連續 poll 24 小時後 RRD 無斷點、無孤兒 | [阻塞] |
-| 8.6 | 重啟 agent 後 LibreNMS 不得誤判 counter reset 或 device reboot | [阻塞] |
+| 8.6 | 重新啟動 agent 後 LibreNMS 不得誤判 counter reset 或 device reboot | [阻塞] |
 | 8.7 | 升級 agent 後 port / storage / processor 不得重新 discovery | [阻塞] |
 | 8.8 | 自我健康 OID 的 alert rule 範本能正確觸發 | [阻塞] |
 
@@ -321,7 +321,7 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 | Windows 11 @ 192.0.2.54 | ⏳ SSH 待授權 | L2、L4 部分、L5 移轉、host impact 基準 | 工作站，非 Server |
 | LibreNMS @ 192.0.2.10 | ⏳ 存取待提供 | L7 全部 | **正式機，僅唯讀操作** |
 | Windows Server 2016/2019/2022/2025 | ❌ 無 | L5 安裝矩陣、L6 30 天穩定性、§9.3 平台 DoD | **需 Proxmox 或實體機** |
-| 多網卡主機（≥ 3 IP、跨網段） | ❌ 無 | 閘門 A、7.14 | **無替代方案** |
+| 多網路卡主機（≥ 3 IP、跨網段） | ❌ 無 | 閘門 A、7.14 | **無替代方案** |
 | Server Core | ❌ 無 | §9.3 平台 DoD | — |
 | HVCI / WDAC 啟用端點 | ❌ 無 | 閘門 D、5.15 | — |
 
@@ -342,7 +342,7 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 □ L3 效能達標，且與前一版基準線比較無 > 20% 退步
 □ L3 host impact 全數達標（基準工作負載退化 < 3%）
 □ L4 資安 harness 全數通過（含 24 小時 fuzzing、VACM 逃逸、SBOM 零 High）
-□ L5 安裝矩陣全數通過（含升級、回滾、PURGE、GPO 靜默部署）
+□ L5 安裝矩陣全數通過（含升級、倒回、PURGE、GPO 無訊息部署）
 □ L5 MS SNMP 移轉 10 個情境全數通過
 □ L6 生命週期全數通過；major 版本另需 30 天穩定性驗證
 □ L7 LibreNMS 端對端六個頁面全滿，且不需任何 LibreNMS patch

@@ -24,8 +24,8 @@ $ErrorActionPreference = 'Continue'   # native 工具寫 stderr 不應中斷建�
 $name = "jt-snmpd"
 
 # --- 建置前：確保沒有行程佔用輸出目錄 ---------------------------------------
-# jt-doc-tools v1.1.66~69 踩過同一個坑：Stop-Service 回來了不代表檔案句柄已釋放。
-# PyInstaller 會先 rmtree 舊的 dist 目錄，句柄未釋放時丟
+# jt-doc-tools v1.1.66~69 踩過同一個坑：Stop-Service 回來了不代表檔案控制代碼已釋放。
+# PyInstaller 會先 rmtree 舊的 dist 目錄，控制代碼未釋放時丟
 #   PermissionError: [WinError 5] ... _internal\win32\servicemanager.pyd
 # 建置因此失敗，但**舊 exe 仍留在原地**——若只用 Test-Path 判定成功，
 # 會誤以為建置成功而實際部署了舊版本。實測踩過。
@@ -47,7 +47,7 @@ if ($svc -and $svc.Status -ne 'Stopped') {
 }
 Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 if (-not (Wait-ForProcessGone -ProcName $name)) {
-    Write-Host "[build] FAILED: $name 行程仍在執行，檔案句柄未釋放"
+    Write-Host "[build] FAILED: $name 行程仍在執行，檔案控制代碼未釋放"
     exit 1
 }
 

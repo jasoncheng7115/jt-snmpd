@@ -1,3 +1,9 @@
+---
+layout: default
+title: 攻擊面分析
+description: Attack surface analysis
+---
+
 # 攻擊面分析：裝了 jt-snmpd 之後，這台 Windows 多了什麼風險
 
 > 量測日期：2026-08-24　jt-snmpd 0.3.0
@@ -146,7 +152,7 @@ ctypes 是 Python 記憶體安全性失效之處：緩衝區配小了，核心�
 | `udpTable` | 68 | 0 | 服務清單 |
 | `ipNetToMedia`（ARP）| 448 | 0 | 內網 ARP 表 = 橫向移動的目標清單 |
 
-介面過濾也順帶減少了揭露：只輸出實體網卡，VPN 虛擬卡、WFP 過濾驅動、
+介面過濾也順帶減少了揭露：只輸出實體網路卡，VPN 虛擬卡、WFP 過濾驅動、
 隧道介面都不出現。
 
 ---

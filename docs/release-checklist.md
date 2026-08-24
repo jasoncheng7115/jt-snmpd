@@ -1,3 +1,9 @@
+---
+layout: default
+title: 發版檢查清單
+description: Release checklist
+---
+
 # 發版與推送公開 repo 的檢查清單
 
 公開 repo：<https://github.com/jasoncheng7115/jt-snmpd>
@@ -99,7 +105,7 @@ python3 tools/check-privacy.py --update-images
 | `CLAUDE.md` | 內部工作筆記，含正式環境的位址與作業紀律 |
 | `reports/` | 掃描報告，含本機路徑 |
 | `*.log`、`logs/` | agent 記錄檔會寫入介面名稱、磁碟型號與序號 |
-| `state/`、`index-map.json`、`engine.json` | 執行時期狀態，含網卡 LUID 與 engineID |
+| `state/`、`index-map.json`、`engine.json` | 執行時期狀態，含網路卡 LUID 與 engineID |
 | `*.walk`、`*.snmpwalk` | 實機的原始 walk 輸出 |
 | `dist/`、`build/`、`*.msi` | 建置產物 |
 | `.env`、`*.pem`、`*.key`、`*.pfx` | 憑證與金鑰 |

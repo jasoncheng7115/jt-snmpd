@@ -8,7 +8,7 @@
     的所有步驟。兩者共用同一套邏輯，避免「MSI 裝的」與「腳本裝的」
     產生兩種不一致的狀態（spec §5.4 的關鍵設計）。
 
-    MSI 已負責：前置檢查、檔案複製、升級時移除舊版、失敗回滾。
+    MSI 已負責：前置檢查、檔案複製、升級時移除舊版、失敗倒回。
     本腳本負責：內建 SNMP 移轉與停用、config、ACL、服務註冊、防火牆、健康檢查。
 #>
 [CmdletBinding()]
@@ -54,7 +54,7 @@ function Stop-AgentService {
     $svc = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
     if (-not $svc) { return }
     if ($svc.Status -ne 'Stopped') { Stop-Service -Name $SERVICE_NAME -Force -ErrorAction SilentlyContinue }
-    # 停服務回來不代表檔案句柄已釋放（jt-doc-tools v1.1.66~69 的實際 bug）
+    # 停服務回來不代表檔案控制代碼已釋放（jt-doc-tools v1.1.66~69 的實際 bug）
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
         if (-not (Get-Process -Name $SERVICE_NAME -ErrorAction SilentlyContinue)) { break }
@@ -97,7 +97,7 @@ if ($Uninstall) {
         # 先關掉檔案記錄，否則接下來每一行 Log 都會把 logs\ 重新建出來。
         Log "資料目錄清除中（PURGE=1）：$DATA_DIR"
         $script:LogToFile = $false
-        # 服務剛停止，DPAPI blob 或記錄檔可能仍被短暫持有；重試而不是靜默略過。
+        # 服務剛停止，DPAPI blob 或記錄檔可能仍被短暫持有；重試而不是悄悄略過。
         $purged = $false
         foreach ($attempt in 1..5) {
             Remove-Item $DATA_DIR -Recurse -Force -ErrorAction SilentlyContinue
@@ -369,7 +369,7 @@ while ((Get-Date) -lt $deadline) {
 }
 if (-not $healthy) {
     # MSI 預設只確認「服務啟動成功」，但服務啟動成功不等於能回應 SNMP
-    # （spec §6.5 的「假活著」）。健康檢查失敗即讓 MSI 交易回滾。
+    # （spec §6.5 的「假活著」）。健康檢查失敗即讓 MSI 交易倒回。
     Log "FAIL 服務已啟動但 30 秒內未回應 loopback SNMP 查詢"
     exit 1
 }

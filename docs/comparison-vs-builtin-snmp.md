@@ -1,3 +1,9 @@
+---
+layout: default
+title: 與內建 SNMP Service 對照
+description: Compared with the built-in SNMP Service
+---
+
 # jt-snmpd 與 Windows 內建 SNMP Service 對照
 
 > 量測環境：正式 LibreNMS 26.8.1（192.0.2.10），無任何 LibreNMS 端修改
@@ -42,7 +48,7 @@ QoS 排程器與隧道介面。
 產生一個 port 與一組 RRD，而虛擬介面時有時無，離開時 RRD 就變成孤兒。
 
 jt-snmpd 只輸出 `HardwareInterface = TRUE` 且非 `FilterInterface` 的介面，
-並排除 loopback 與 NIC team 成員。同一台機器上 11 個介面裡準確挑出 1 張實體網卡，
+並排除 loopback 與 NIC team 成員。同一台機器上 11 個介面裡準確挑出 1 張實體網路卡，
 正確排除了 WFP 過濾驅動 ×3、VPN 虛擬卡 ×2（PANGP / F5）、Kernel Debug、
 Loopback、Teredo / IP-HTTPS / 6to4。
 
@@ -141,12 +147,12 @@ Latitude E5270 (DESKTOP-9PNNQ34)        Serial ****
 | 來源存取控制 | `PermittedManagers`，在解析之後生效 | 前置解析閘門，在 BER decoder **之前** |
 | 速率限制 | 無 | 每來源 token bucket |
 | 回應大小控制 | 無 | 上限 1400 bytes，不分片 |
-| 介面過濾 | 無，全部輸出 | 只輸出實體網卡 |
+| 介面過濾 | 無，全部輸出 | 只輸出實體網路卡 |
 | ifIndex 穩定性 | Windows 原生索引，**不保證跨重開機穩定** | 以 NET_LUID 持久化 |
 | 自我健康監控 | 無 | 私有 OID 子樹 |
 | 部署 | Windows 功能（DISM / Add-WindowsCapability）| MSI（GPO / Intune / SCCM）|
 
-`ifIndex` 那一列值得特別注意：更換驅動、拔插網卡、重建 vSwitch 都可能讓
+`ifIndex` 那一列值得特別注意：更換驅動、拔插網路卡、重建 vSwitch 都可能讓
 Windows 重新編號，而 LibreNMS 以 ifIndex 對應 port。編號一變，舊 port 被標記
 刪除、新 port 重新建立，歷史 RRD 全部變成孤兒。jt-snmpd 以 NET_LUID 為主鍵
 持久化配發，首次見到某介面時給一個 ifIndex，之後永不變更。

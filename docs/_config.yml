@@ -1,0 +1,9 @@
+title: jt-snmpd
+description: A read-only SNMP agent for Windows that feeds LibreNMS over standard MIBs
+theme: jekyll-theme-cayman
+lang: en
+show_downloads: false
+
+# 這些是專案文件，不是網站頁面；排除後不會出現在 Pages 的導覽與搜尋結果
+exclude:
+  - images/REVIEWED.md
