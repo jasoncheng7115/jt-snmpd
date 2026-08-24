@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A manual removal document** (`docs/manual-removal.md`), for when the
+  installer cannot finish: a rolled-back installation, an uninstall that reports
+  success while the service is still running, or a machine where the product is
+  gone from Apps & Features but UDP/161 still answers. Each step is the manual
+  equivalent of something the installer does, in the order that keeps the
+  built-in SNMP Service restorable — the record saying what it used to be lives
+  in the data directory, so deleting that first throws away the only copy.
+
 - **A "manual trust" section in the code-signing document**, covering both the
   single-machine route (SmartScreen "Run anyway", `Unblock-File`, allowing a
   quarantined file in Defender) and the fleet route (deploy from an internal
@@ -33,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The README's install section was still the pre-MSI one.** It led with
+  `install.ps1` and a ZIP archive that releases no longer ship, and the status
+  table said the MSI for GPO / Intune / SCCM was "not implemented" when it has
+  been released and lifecycle-verified since 0.9.0. Both READMEs now lead with
+  downloading the MSI, and cover the graphical and command-line paths, GPO
+  deployment, and uninstall.
+- **VACM is explained** rather than left as an acronym in a status table: it is
+  RFC 3415's View-based Access Control Model, restricting which parts of the OID
+  tree a set of credentials can reach.
+
 - **Code signing is planned, not abandoned.** A certificate through an
   open-source code-signing programme is intended; until it arrives the documents
   say what you will see and how to get past it safely.
@@ -48,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   a SMART comparison it read as part of the comparison.
 
 ### Fixed
+
+- **The code-signing document named the wrong install directory.** It said
+  `C:\Program Files\jt-snmpd\`; the MSI installs to `C:\Program Files\JT SNMP
+  Agent\`, so the WDAC scan path and the Defender exclusion path were both
+  wrong.
 
 - **`prepare-public-repo.py` kept only `README.md` from `dist/` and `build/`**,
   so the Traditional Chinese READMEs in both had never been published.

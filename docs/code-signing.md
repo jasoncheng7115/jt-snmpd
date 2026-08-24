@@ -141,7 +141,7 @@ Two files need covering: the MSI itself, and the service executable it installs.
 ```powershell
 # CLI - the paths a rule has to cover
 .\jt-snmpd-0.9.2-x64.msi
-C:\Program Files\jt-snmpd\jt-snmpd.exe
+C:\Program Files\JT SNMP Agent\jt-snmpd.exe
 ```
 
 For WDAC, generate a policy fragment from the installed folder and merge it into
@@ -150,7 +150,7 @@ your existing policy:
 ```powershell
 # CLI
 New-CIPolicy -Level Hash -FilePath .\jt-snmpd.xml `
-  -ScanPath 'C:\Program Files\jt-snmpd' -UserPEs
+  -ScanPath 'C:\Program Files\JT SNMP Agent' -UserPEs
 Merge-CIPolicy -PolicyPaths .\existing.xml,.\jt-snmpd.xml -OutputFilePath .\merged.xml
 ```
 
@@ -196,7 +196,7 @@ signature matches. If that happens:
    as a suspected false positive. Submissions are usually resolved within a few
    days and the fix reaches every Defender installation.
 3. As an interim measure, add a path exclusion for
-   `C:\Program Files\jt-snmpd\` — and remove it once the submission is resolved,
+   `C:\Program Files\JT SNMP Agent\` — and remove it once the submission is resolved,
    since a permanent exclusion on a directory is itself a weakness.
 
 Do not disable real-time protection as a workaround.
