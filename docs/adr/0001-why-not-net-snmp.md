@@ -1,14 +1,13 @@
 # ADR-0001：為何不重建 Net-SNMP for Windows，改以 Python 自建
 
-> 對應規格：spec.md §1.5（閘門 E）
 > 狀態：已決策（Accepted）
 > 日期：2026-08-24
 
 ## 背景
 
-原計畫前提是「Net-SNMP 缺乏現代官方 Windows binary」。這是事實，但不等於不能重建——
+原計畫前提是「Net-SNMP 缺乏現代官方 Windows binary」。這是事實，但不等於不能重建，
 Net-SNMP 的 win32 mibgroup 已有相當完整的 HOST-RESOURCES / IF-MIB 實作。因此
-spec §1.5 要求以書面比較後再定案，避免未來重問。
+本閘門要求以書面比較後再定案，避免日後重複討論。
 
 ## 選項比較
 
@@ -31,14 +30,14 @@ poller 納管。且客戶環境普遍要求「不得有主動對外連線的代�
 
 1. **長期維護成本高**：需持續跟上游 Net-SNMP 版本，且 win32 mibgroup 的建置鏈
    （vcpkg + MSVC）在 CI 上脆弱。
-2. **擴充 JT 私有 MIB 需寫 C**：自我健康 OID（§7）、與 LibreNMS 的相容性微調，
+2. **擴充 JT 私有 MIB 需寫 C**：自我健康 OID、與 LibreNMS 的相容性微調，
    全部要改 C 程式碼並重新編譯，迭代慢。
 3. **團隊技能不匹配**：既有 jt-* 專案（jt-doc-tools）皆為 Python，重建 Net-SNMP
    需 C / autotools / win32 建置專長。
 4. **自包含部署較難**：C binary 需處理 MSVC runtime 相依；Python + PyInstaller
-   one-folder 天生自包含（已於閘門 D 驗證，見 phase0-findings §4.2）。
+   one-folder 天生自包含，此點已於閘門 D 以實機驗證。
 
-### 為何選 A（Python 自建）——且已有實證
+### 為何選 A（Python 自建），且已有實證
 
 初期成本雖高，但：
 
@@ -53,7 +52,7 @@ poller 納管。且客戶環境普遍要求「不得有主動對外連線的代�
 ## 後果
 
 - 承擔純 Python BER 的效能挑戰（已知，對策見閘門 C：wire 預編碼 + 專用解析器）。
-- 需自行維護與 LibreNMS 的相容性（優先修 agent，見 §10-34）。
+- 需自行維護與 LibreNMS 的相容性，且以修 agent 為優先，而非改 LibreNMS。
 - 換得：迭代快、自包含、技能匹配、正確性由架構保證。
 
 這份 ADR 的目的不是重新開會，而是讓未來的自己與外部審閱者不必重問。

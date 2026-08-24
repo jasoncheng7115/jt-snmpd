@@ -27,7 +27,7 @@ description: Security assessment - what installing jt-snmpd adds to a Windows ho
 
 ## 1. 新增的網路暴露面：UDP/161
 
-裝了之後多開一個 UDP 監聽埠。SNMP 是**反射式 DDoS 的經典協定**——
+裝了之後多開一個 UDP 監聽埠。SNMP 是**反射式 DDoS 的經典協定**，
 攻擊者偽造來源 IP 送一個小請求，讓被害者收到大回應。
 
 ### 實測放大倍率
@@ -79,10 +79,10 @@ JT SNMP Agent (ICMPv4):  Allow proto=ICMPv4         from=192.168.1.0/255.255.255
 ### 為什麼一定要 LocalSystem
 
 磁碟 SMART 需要 `SMART_RCV_DRIVE_DATA` 這類 IOCTL，而
-`\\.\PhysicalDriveN` 必須以 `GENERIC_READ | GENERIC_WRITE` 開啟——
+`\\.\PhysicalDriveN` 必須以 `GENERIC_READ | GENERIC_WRITE` 開啟，
 那需要系統管理權限。虛擬服務帳戶做不到。
 
-### 緩解：權杖權限已剝到最小
+### 緩解：權杖權限已縮減到最小
 
 ```
 SERVICE_NAME: jt-snmpd
@@ -109,15 +109,16 @@ $ snmpget -v2c -c mon2 -Oqv 192.0.2.63 .1.3.6.1.2.1.1.6.0
 "LAB"
 ```
 
-SET 不是「回錯誤」而是**直接丟棄**——不回應就不提供任何可探測的訊息。
+SET 不是「回錯誤」而是**直接丟棄**，不回應就不提供任何可探測的訊息。
 實作上是不覆寫 `write_variables()`，所以唯讀不是靠檢查，是靠**沒有那條路徑**。
 
 ### 緩解：不引入核心驅動
 
 CPU 溫度需要讀 MSR，那需要核心驅動。業界慣用的 WinRing0 已列入
-Microsoft 易受攻擊驅動封鎖清單——**為了一個溫度值，在數百台政府與醫院主機上
+Microsoft 易受攻擊驅動封鎖清單，**為了一個溫度值，在數百台政府與醫院主機上
 安裝一個能任意讀寫 MSR 與實體記憶體的驅動，是把監控工具變成提權管道。**
-本專案因此放棄 CPU 溫度（見 `CLAUDE.md` 鐵則 8）。
+本專案因此不提供 CPU 核心溫度。這是專案的硬性規則之一：不為了任何一個數值
+引入核心驅動。
 
 ### 緩解：解析器面對敵意輸入
 
@@ -126,7 +127,7 @@ Microsoft 易受攻擊驅動封鎖清單——**為了一個溫度值，在數�
 （`tests/test_sensors_parsing.py`，34 項）。
 
 ctypes 是 Python 記憶體安全性失效之處：緩衝區配小了，核心會直接寫出界。
-已修正的案例——`CallNtPowerInformation` 原型用 `os.cpu_count()` 決定緩衝區大小，
+已修正的案例，`CallNtPowerInformation` 原型用 `os.cpu_count()` 決定緩衝區大小，
 在超過 64 個邏輯處理器的機器上會少報，導致核心寫出界。
 現改用 `GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)`。
 
@@ -134,11 +135,11 @@ ctypes 是 Python 記憶體安全性失效之處：緩衝區配小了，核心�
 
 ## 3. 自我阻斷服務
 
-一個亂寫的長度欄位不會讓 Python 越界，但會讓迴圈跑四十億次——
-在「絕不能拖慢 host」的硬性要求下，這是一次自我 DoS。所有解析都有上限常數
+一個亂寫的長度欄位不會讓 Python 越界，但會讓迴圈跑四十億次，
+在「不能拖慢 host」的硬性要求下，這是一次自我 DoS。所有解析都有上限常數
 （`MAX_INSTANCES`、`MAX_WMI_BUFFER`、`MAX_PROCESSORS`、`MAX_NAME_CHARS`）。
 
-輪詢造成的負載已量測（`CLAUDE.md`）：7,000 倍真實輪詢速率下，
+輪詢造成的負載已在實機上量測：7,000 倍真實輪詢速率下，
 固定基準工作負載退化 **0.41%**（程序設為 `BELOW_NORMAL_PRIORITY_CLASS` 之後）。
 單次完整 walk 12.5 ms CPU；LibreNMS 每 5 分鐘一次 → 實際約 0.004% CPU。
 
@@ -149,7 +150,7 @@ ctypes 是 Python 記憶體安全性失效之處：緩衝區配小了，核心�
 
 ## 4. 資訊揭露：刻意不提供的資料
 
-威脅模型（spec §3.1）認定主要對手是**已經在內網的攻擊者**。
+威脅模型認定主要對手是**已經在內網的攻擊者**。
 一次未認證的唯讀 walk 若能取得完整弱點評估報告與內網拓撲，
 這個 agent 就是攻擊者的資產。因此以下**預設關閉**（合計 3,175 個 OID）：
 
@@ -172,9 +173,9 @@ ctypes 是 Python 記憶體安全性失效之處：緩衝區配小了，核心�
 |---|---|---|
 | **community 明文傳輸** | v2c 沒有加密或認證，網路上可嗅探 | SNMPv3（SHA-256 + AES-128，金鑰以 DPAPI 儲存）為 v1.0 需求 |
 | **來源 IP 可偽造** | UDP 無連線，白名單擋得住反射但擋不住盲送 | v3 的認證可根治；目前靠速率限制與唯讀降低影響 |
-| **執行檔未簽章** | 沒有 Authenticode 憑證，目前也沒有申請計畫 | 完整性改以公布的 SHA-256 建立；WDAC 雜湊規則與自行簽章見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
+| **執行檔未簽章** | 目前沒有 Authenticode 憑證 | 日後規劃透過開源專案憑證方案申請。在那之前完整性以公布的 SHA-256 建立，手動信任、WDAC 雜湊規則與自行簽章見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | **pysnmp BER 解碼器** | 前置閘門擋在它之前，但授權來源仍會走到它 | 專用小解析器（Phase 1），縮小這塊攻擊面 |
-| **LocalSystem** | 權限已剝到 3 項 | 無法再降：SMART IOCTL 需要系統管理權限 |
+| **LocalSystem** | 權限已縮減為 3 項 | 無法再降：SMART IOCTL 需要系統管理權限 |
 
 ---
 
@@ -182,7 +183,7 @@ ctypes 是 Python 記憶體安全性失效之處：緩衝區配小了，核心�
 
 | 方案 | UDP/161 | 執行身分 | 寫入 | 來源控制 | 速率限制 | 支援狀態 |
 |---|---|---|---|---|---|---|
-| **Windows 內建 SNMP** | 開 | LocalSystem（權限未剝除）| **支援 SET** | `PermittedManagers`，**在解析之後**生效 | 無 | Microsoft 已標記停止支援 |
+| **Windows 內建 SNMP** | 開 | LocalSystem（權限未縮減）| **支援 SET** | `PermittedManagers`，**在解析之後**生效 | 無 | Microsoft 已標記停止支援 |
 | **jt-snmpd** | 開 | LocalSystem（僅 3 項權限）| 唯讀 | 前置閘門，**在 BER 解碼器之前** | 每來源 token bucket | 持續維護 |
 | 不做 SNMP 監控 | 不開 | — | — | — | — | 沒有監控 |
 

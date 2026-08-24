@@ -131,8 +131,9 @@ industry's usual choice, WinRing0, is on Microsoft's vulnerable driver blocklist
 **Installing a driver that can read and write arbitrary MSRs and physical memory
 across hundreds of government and hospital machines, in exchange for one
 temperature reading, turns a monitoring tool into a privilege escalation
-channel.** The project therefore does without CPU temperature (see `CLAUDE.md`,
-rule 8).
+channel.** The project therefore does without CPU core temperature. It is one of
+the project's hard rules: no kernel driver is introduced for the sake of any
+single value.
 
 ### Mitigation: the parsers assume hostile input
 
@@ -158,7 +159,7 @@ down, that is a self-inflicted denial of service. Every parser carries explicit
 ceilings (`MAX_INSTANCES`, `MAX_WMI_BUFFER`, `MAX_PROCESSORS`,
 `MAX_NAME_CHARS`).
 
-The load polling imposes has been measured (`CLAUDE.md`): at 7,000× the real
+The load polling imposes has been measured on real hardware: at 7,000× the real
 polling rate, a fixed benchmark workload degrades by **0.41%** (with the process
 set to `BELOW_NORMAL_PRIORITY_CLASS`). A single full walk costs 12.5 ms of CPU;
 at LibreNMS's one poll every five minutes that is roughly 0.004% CPU.
@@ -171,7 +172,7 @@ memory exhaustion.
 
 ## 4. Information disclosure: what is deliberately withheld
 
-The threat model (spec §3.1) treats the primary adversary as **someone already
+The threat model  treats the primary adversary as **someone already
 inside the network**. If a single unauthenticated read-only walk yields a
 complete vulnerability assessment and an internal network map, the agent is an
 asset to the attacker rather than to the operator. The following are therefore
@@ -197,7 +198,7 @@ never appear.
 |---|---|---|
 | **Community string in clear text** | v2c has neither encryption nor authentication and can be sniffed | SNMPv3 (SHA-256 + AES-128, keys stored with DPAPI) is a v1.0 requirement |
 | **Source addresses can be spoofed** | UDP is connectionless; the allow-list stops reflection but not blind sends | v3 authentication resolves it; for now rate limiting and read-only bound the impact |
-| **The executable is unsigned** | No Authenticode certificate, and none planned | Integrity comes from the published SHA-256; [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) covers WDAC hash rules and signing with your own certificate |
+| **The executable is unsigned** | No Authenticode certificate yet | A certificate through an open-source code-signing programme is planned. Until then integrity comes from the published SHA-256 — [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) covers trusting it manually, WDAC hash rules, and signing with your own certificate |
 | **pysnmp's BER decoder** | The pre-parse gate sits in front of it, but authorised sources still reach it | A small purpose-built parser (Phase 1) to shrink this surface |
 | **LocalSystem** | Reduced to three privileges | It cannot go lower: the SMART IOCTLs require administrative rights |
 

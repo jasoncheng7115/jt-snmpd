@@ -18,7 +18,7 @@ description: Release checklist - what must be true before anything is pushed
 
 ## 0. 一次性：公開 repo 的歷史起點
 
-本專案的開發歷史裡含有 `spec.md`（內部規格書，不對外）。**即使現在把它移除，
+本專案的開發歷史裡含有不對外的內部文件。**即使現在把它們移除，
 推送既有歷史仍會把內容帶上去。** 因此公開 repo 以**全新歷史**起始：
 
 ```bash
@@ -61,7 +61,7 @@ python3 tools/check-privacy.py
 正規表示式讀不到像素。**每一張新增或修改過的圖片都必須被人實際看過。**
 
 實際踩過：為 README 拍的連接埠對照截圖，把 LibreNMS 畫出來的 SNMP 鄰居
-一併帶了出去——`host-101-ipmi`、`vas1`、`dc2`、`router-003`、`ap-112`、`nas4`，
+一併帶了出去，`host-101-ipmi`、`vas1`、`dc2`、`router-003`、`ap-112`、`nas4`，
 外加四組 MAC 位址。那等於公開內網拓撲圖。
 
 檢查每張圖有沒有：
@@ -104,8 +104,8 @@ python3 tools/check-privacy.py --update-images
 
 | 項目 | 原因 |
 |---|---|
-| `spec.md` | 內部規格書 |
-| `CLAUDE.md` | 內部工作筆記，含正式環境的位址與作業紀律 |
+| 內部規格書 | 不對外 |
+| 內部工作筆記 | 含正式環境的位址與作業紀律 |
 | `reports/` | 掃描報告，含本機路徑 |
 | `*.log`、`logs/` | agent 記錄檔會寫入介面名稱、磁碟型號與序號 |
 | `state/`、`index-map.json`、`engine.json` | 執行時期狀態，含網路卡 LUID 與 engineID |
@@ -119,7 +119,7 @@ python3 tools/check-privacy.py --update-images
 
 這兩件事要分清楚：
 
-- **agent 本身會回報真實序號、真實介面名稱、真實 IP。** 那是它的工作——
+- **agent 本身會回報真實序號、真實介面名稱、真實 IP。** 那是它的工作，
   現場要換哪一顆磁碟、哪一條記憶體時，序號才是找得到的依據。
   這些資料停留在**客戶自己的監控系統**內。
 - **公開 repo 裡不該有任何一台真實主機的資料。** 文件裡的位址一律使用

@@ -1,12 +1,12 @@
-"""SMBIOS parsing (spec §2.10) — where the ENTITY-MIB data comes from.
+"""SMBIOS parsing  — where the ENTITY-MIB data comes from.
 
-spec §2.10 is explicit that **WMI is not needed**: call
+**WMI is not needed** here: call
 `GetSystemFirmwareTable(FIRMWARE_TABLE_PROVIDER 'RSMB', 0, buffer, size)`
 to fetch the raw SMBIOS table and parse it here. That path **needs no special
-privilege**, follows the data-source precedence in spec §31, and honours the rule
+privilege**, follows the documented data-source precedence, and honours the rule
 against wmic and PowerShell subprocesses (§10-32).
 
-The mapping (spec §2.10):
+The mapping :
 
     Type 0   BIOS          → entPhysicalFirmwareRev
     Type 1   System        → manufacturer, model, serial, UUID
@@ -230,7 +230,7 @@ def memory_devices(structs) -> list[dict]:
 def collect() -> dict:
     """Fetch the whole inventory in one pass.
 
-    spec §2.7: hardware inventory is read once at startup and **cached for the
+    hardware inventory is read once at startup and **cached for the
     lifetime of the process** — SMBIOS does not change after boot.
     """
     structs = parse_smbios(get_raw_smbios())

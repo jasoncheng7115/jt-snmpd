@@ -9,7 +9,7 @@
     voltsDC voltsAC amperes watts hertz percentRH rpm celsius dBm
 
 `other` 不在裡面，整筆被**無聲丟棄**。agent 端一切正常、walk 也查得到值，
-只是 LibreNMS 不收——這種「兩邊都沒錯，但接不起來」的落差最難查。
+只是 LibreNMS 不收，這種「兩邊都沒錯，但接不起來」的落差最難查。
 
 LibreNMS 讀 SMART 的正規路徑是 `json_app_get()`，**完全走 SNMP**：
 
@@ -22,7 +22,7 @@ SMART 屬性，序列化成同樣的 JSON 即可。
 
 `sysUpTime` 是 TimeTicks（Unsigned32，百分之一秒），2^32/100 秒 ≈ 497.1 天
 必然回捲。這是 RFC 3418 規定的型別，任何相容 agent 都一樣，Windows 內建
-SNMP 也不例外——回捲本身修不掉。
+SNMP 也不例外，回捲本身修不掉。
 
 修得掉的是**假重開機告警**。LibreNMS 的 `Core.php::calculateUptime()`：
 
@@ -122,7 +122,7 @@ def test_ata_attributes_map_to_correct_ids():
 
 
 def test_nvme_fields_map_conservatively():
-    """NVMe 沒有 ATA 屬性表。只映射語意確定等價的欄位，其餘留 null——
+    """NVMe 沒有 ATA 屬性表。只映射語意確定等價的欄位，其餘留 null，
     一個對錯的 ID 會讓現場照著錯誤指標做決策。"""
     disks = [{"name": "PhysicalDrive1",
               "health": {"power_on_hours": 4321, "temp_c": 41,
@@ -179,7 +179,7 @@ def test_encoding_matches_librenms_detection_regex():
 
 
 def test_encoding_is_deterministic():
-    """gzip 標頭預設塞入當前時間，會讓相同資料每次產生不同位元組——
+    """gzip 標頭預設塞入當前時間，會讓相同資料每次產生不同位元組，
     快照因此每 5 秒無謂變動，測試也無法比對。必須固定 mtime。"""
     doc = smartjson.build_smart_json(_sample())
     assert smartjson.encode_extend_output(doc) == smartjson.encode_extend_output(doc)
@@ -201,7 +201,7 @@ def test_compression_actually_helps():
 
 
 def test_agent_enforces_a_varbind_size_cap():
-    """磁碟很多時輸出會超過單一 varbind 上限。必須砍，而且**必須留記錄**——
+    """磁碟很多時輸出會超過單一 varbind 上限。必須砍，而且**必須留記錄**，
     無聲截斷會讓人以為所有磁碟都在監控中。"""
     assert "MAX_EXTEND_BYTES" in AGENT_SRC
     i = AGENT_SRC.find("MAX_EXTEND_BYTES")
@@ -252,7 +252,7 @@ def test_engine_time_is_clamped_to_int32():
 
 
 def test_engine_boots_is_persisted():
-    """(boots, time) 這組值永不重複是 RFC 3414 的要求。
+    """(boots, time) 這組值不得重複是 RFC 3414 的要求。
     重開機後 time 歸零，boots 就必須加一，因此得保存。"""
     fn = next(n for n in ast.walk(ast.parse(AGENT_SRC))
               if isinstance(n, ast.FunctionDef) and n.name == "_engine_boots")
@@ -263,7 +263,7 @@ def test_engine_boots_is_persisted():
 
 def test_engine_id_is_stable_across_restarts():
     """SNMPv3 的使用者金鑰以 engineID 做 localization，變了就全部失效。"""
-    # 取原始碼文字而非 ast.unparse——後者會把 0x80 正規化成 128，
+    # 取原始碼文字而非 ast.unparse，後者會把 0x80 正規化成 128，
     # 而這裡要斷言的正是「有沒有設那個最高位元」這個意圖。
     i = AGENT_SRC.index("def _engine_id()")
     body = AGENT_SRC[i:AGENT_SRC.index("\ndef ", i + 1)]
@@ -281,7 +281,7 @@ def test_engine_id_is_stable_across_restarts():
 
 def test_max_temp_is_emitted_when_observed():
     """LibreNMS 的 smart 應用程式以 `if (isset($disk['max_temp']))` 決定是否
-    寫入 maxtemp RRD。不提供的話那張面板仍會渲染，但圖是 404 破圖——
+    寫入 maxtemp RRD。不提供的話那張面板仍會渲染，但圖是 404 破圖，
     每個客戶都會看到。這是靠截圖才發現的缺陷。"""
     disks = [{"name": "PhysicalDrive0", "health": {"temp_c": 33}, "max_temp": 41}]
     d = smartjson.build_smart_json(disks)["data"]["disks"]["PhysicalDrive0"]
@@ -290,7 +290,7 @@ def test_max_temp_is_emitted_when_observed():
 
 
 def test_max_temp_absent_when_never_observed():
-    """沒觀測到就不給這個鍵——LibreNMS 的 isset() 會跳過，不會產生假資料。"""
+    """沒觀測到就不給這個鍵，LibreNMS 的 isset() 會跳過，不會產生假資料。"""
     disks = [{"name": "PhysicalDrive0", "health": {"temp_c": 33}}]
     assert "max_temp" not in smartjson.build_smart_json(disks)["data"]["disks"]["PhysicalDrive0"]
 
@@ -335,13 +335,13 @@ def test_health_pass_drives_the_ok_fail_badge():
 
 def test_health_pass_omitted_when_disk_did_not_answer():
     """USB 橋接器等不轉送 SMART 命令。此時不輸出，讓 LibreNMS 的 `?? null`
-    分支什麼都不顯示——比顯示一個猜出來的 (OK) 誠實得多。"""
+    分支什麼都不顯示，比顯示一個猜出來的 (OK) 誠實得多。"""
     d = [{"name": "PhysicalDrive0", "health": {"temp_c": 33}}]
     assert "health_pass" not in smartjson.build_smart_json(d)["data"]["disks"]["PhysicalDrive0"]
 
 
 def test_health_pass_is_not_derived_from_attributes():
-    """重新配置磁區為 0 不代表健康——韌體可能因為別的屬性跌破門檻而已在
+    """重新配置磁區為 0 不代表健康，韌體可能因為別的屬性跌破門檻而已在
     預測故障。真正的判斷是韌體做的，不可從屬性反推。"""
     d = [{"name": "PhysicalDrive0",
           "health": {"smart": {"reallocated_sectors": {"value": 100, "worst": 100, "raw": 0}},
@@ -399,7 +399,7 @@ def test_disk_health_state_table_exists():
     所以 SMART 的 (OK)/(FAIL) 只出現在 Apps 分頁。
 
     要讓健康狀態顯示在概觀頁需要 state 類別感測器，而那需要 LibreNMS 端的
-    `os_discovery/windows.yaml`——本專案不修改 LibreNMS 伺服器，因此那條路
+    `os_discovery/windows.yaml`，本專案不修改 LibreNMS 伺服器，因此那條路
     不採用。這張表仍然提供，讓使用者能以自訂警報或其他工具取用單一健康值。
     """
     for node in ast.parse(AGENT_SRC).body:
@@ -409,7 +409,7 @@ def test_disk_health_state_table_exists():
 
 
 def test_disk_health_states_are_conservative():
-    """`unknown` 必須是獨立狀態，不可把「問不到」預設成健康——
+    """`unknown` 必須是獨立狀態，不可把「問不到」預設成健康，
     USB 橋接器不轉送 SMART 命令時，一個假的綠燈比沒有燈更危險。"""
     for name in ("DISK_STATE_OK", "DISK_STATE_WARNING",
                  "DISK_STATE_CRITICAL", "DISK_STATE_UNKNOWN"):

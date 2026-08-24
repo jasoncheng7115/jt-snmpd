@@ -1,7 +1,7 @@
 # 圖片人工審閱紀錄
 
 正規表示式讀不到像素。README 的截圖曾經把 LibreNMS 畫出來的 SNMP 鄰居
-一併帶了出去——MAC 位址、內部主機名稱、IPv6 位址，等於公開內網拓撲。
+一併帶了出去，MAC 位址、內部主機名稱、IPv6 位址，等於公開內網拓撲。
 
 **每一張圖在加入或更新後都必須被人實際看過**，確認沒有：
 
@@ -30,7 +30,7 @@
 | `docs/images/memory-zh-TW.png` | `10e0c3ae5666dc94f866d7566d6ada3d3485f7ca53dbeb4f0f774c45630daa1e` |
 | `docs/images/ports-en.png` | `3668e17341f1e0baba92bad0fbb0fe1bbccda8b228589bd004b87338dd75ff86` |
 | `docs/images/ports-zh-TW.png` | `88fea3208bf03a1573082bf2879970e7b91f17db527bd76fb46899771e755d78` |
-| `docs/images/smart-en.png` | `85768b3cd98386538213f3b965e6244a975c8b61fe1837a0e81c5e76af37e8bd` |
-| `docs/images/smart-zh-TW.png` | `cd2300a19ebdf2c27f0dc71896b3558cd71255dd5eb20ea2240878a03d7b40c7` |
+| `docs/images/smart-en.png` | `3074c3d5cd5a24487d899fa53e71497845731e8e553173ab4a65e926b0904438` |
+| `docs/images/smart-zh-TW.png` | `7a97a20acfbcd5909efca4c1a21e0a6b8f1f6079551dd90b320cc6aff52513b1` |
 | `docs/images/temperature-en.png` | `36f1001d21aa29ceed8cc67e9828660ed665ce80069d7d67dd19390376fc42ea` |
 | `docs/images/temperature-zh-TW.png` | `c008033143d03b458b4e57b76e1623d3adf54a0c18d8f0b578a96839a4f1b8ca` |

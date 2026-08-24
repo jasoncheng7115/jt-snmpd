@@ -11,7 +11,6 @@ description: Security scanning toolchain and the report a review will accept
 
 | Item | Value |
 |---|---|
-| Specification | `spec.md` §3.9 (security CI harness, mandatory on every release) |
 | Purpose | Security reviews for government and hospital tenders need **a report that can be submitted**, not a verbal assurance |
 
 ## Why ZAP does not apply
@@ -42,7 +41,7 @@ SNMP-specific kind)**.
 These need custom Semgrep rules; the standard rule sets do not catch them:
 
 ```yaml
-# Every ctypes foreign function must declare argtypes/restype (CLAUDE.md rule 11)
+# Every ctypes foreign function must declare argtypes/restype
 # Without them a 64-bit return value is truncated -- measured: drive C: showing 0 GB
 - id: ctypes-missing-argtypes
   pattern: $LIB.$FUNC(...)
@@ -50,13 +49,13 @@ These need custom Semgrep rules; the standard rule sets do not catch them:
       $LIB.$FUNC.argtypes = ...
       ...
 
-# OCTET STRINGs must go through octet() (CLAUDE.md rule 13)
+# OCTET STRINGs must go through octet()
 # A bare rfc1902.OctetString(str) raises PyAsn1UnicodeEncodeError on non-ASCII
 - id: bare-octetstring
   pattern: rfc1902.OctetString($X)
   pattern-not: rfc1902.OctetString($X.encode(...))
 
-# Internal timing must never use the wall clock (CLAUDE.md rule 2)
+# Internal timing must not use the wall clock
 - id: wall-clock-timing
   patterns:
     - pattern-either:
@@ -72,7 +71,7 @@ These need custom Semgrep rules; the standard rule sets do not catch them:
 |---|---|
 | **pip-audit** | Python dependency CVEs against the PyPI Advisory DB and OSV |
 | **OSV-Scanner** | Google's cross-ecosystem scanner; wider coverage than pip-audit |
-| **CycloneDX-python** | Produces the **SBOM** that spec §3.9 explicitly requires |
+| **CycloneDX-python** | Produces the **SBOM** a security review will ask for |
 | **Trivy** | Also scans the filesystem and the SBOM, and checks for secrets in passing |
 
 jt-snmpd has very few dependencies (`pysnmp` → `pyasn1`, plus `pywin32` and
@@ -88,7 +87,7 @@ a cleaner SCA report and an easier review.**
 | **gitleaks** | Scans the whole git history, not only the working tree |
 | **detect-secrets** | Supports a baseline, which keeps false-positive fatigue down |
 
-CLAUDE.md rule 7: keys must never appear in clear text in the configuration, the
+A project rule: keys must not appear in clear text in the configuration, the
 logs, the Event Log or MSI properties. Secret scanning is the automated
 enforcement of that rule.
 
@@ -96,7 +95,7 @@ enforcement of that rule.
 
 ## 4. DAST — protocol-level fuzzing (what replaces ZAP here)
 
-spec §3.9 names two:
+Two are mandatory:
 
 | Item | Tool | Pass condition |
 |---|---|---|
@@ -121,9 +120,9 @@ audit:
 
 | Item | Tool or method | Why |
 |---|---|---|
-| **Authenticode signature** | `signtool verify /pa /v`, Sysinternals `sigcheck` | This project does not sign; the check is for verifying the result after you sign it yourself — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
+| **Authenticode signature** | `signtool verify /pa /v`, Sysinternals `sigcheck` | Until a certificate is in place, this verifies the result after you sign it yourself — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
 | **Unquoted service path** | `sc qc jt-snmpd`, confirming binPath is quoted | The single most commonly raised audit finding. The default install path contains a space |
-| **Service account and privileges** | `sc qprivs jt-snmpd` | Confirms the privilege stripping took effect (spec §3.6) |
+| **Service account and privileges** | `sc qprivs jt-snmpd` | Confirms the privilege stripping took effect  |
 | **File and directory ACLs** | Sysinternals `accesschk -d` | `C:\ProgramData` lets Users create subdirectories by default, so an attacker can get there first |
 | **Weak-ACL escalation paths** | **PowerUp** / **PrivescCheck** | Purpose-built for Windows service escalation paths; covers the three items above as well |
 | **DLL hijacking** | Confirm one-folder rather than one-file; watch load paths in Process Monitor | one-file extracts to `%TEMP%` and runs from there |
@@ -147,13 +146,13 @@ Every PR (medium)
   gitleaks detect --report-format json --report-path reports/gitleaks.json
   cyclonedx-py env -o reports/sbom.json
 
-Every release (slow; required by spec §3.9)
+Every release (slow; required before shipping)
   all of the above, plus
   boofuzz for 24 hours against UDP/161
   PROTOS c06-snmpv1
   Windows platform checks (signtool / accesschk / PrivescCheck)
-  the §5.8 installation test matrix
-  §6.10 30-day stability (major releases)
+  the installation test matrix
+  30-day stability (major releases)
 ```
 
 ## 7. Report output

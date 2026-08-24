@@ -32,11 +32,61 @@ This is the difference an operator actually sees.
 | **sensors** (Temperature) | **0** | **2** | No sensors at all in the built-in service. We provide disk temperature and ACPI thermal zones (33 °C / 25 °C measured on real hardware) |
 | **applications** (SMART) | **0** | **1** | Not available in the built-in service. We serve LibreNMS's `smart` application through NET-SNMP-EXTEND-MIB (requires `discovery_modules.applications`) |
 | **mempools** (Memory) | 2 | **4** | The built-in service has physical and virtual only. We add cached and swap |
-| storage (Disk Usage) | 2 | 2 | The same, except our descriptions carry the real volume labels, including non-ASCII ones |
+| **System graphs** | 3 | **8** | The built-in service gives Processes, Users and Uptime only, because those three come from HOST-RESOURCES. The other five come from UCD-SNMP-MIB on Linux, and the built-in Windows service does not implement that MIB |
+| storage (Disk Usage) | 2 | 2 | Same row count, different descriptions: we read the real volume label and serial number, including non-ASCII labels |
 | processors | 8 | 6 | Each machine's actual core count; no difference in behaviour |
 | ipv4_addresses | 2 | 2 | The same |
 | **ports** | 9 | **1** | **Deliberately different**, see below |
 | **hrDevice** | 68 | 9 | **Deliberately different**, see below |
+
+## System graphs: Windows only ever had three
+
+LibreNMS's System graph group shows eight graphs for a Linux device and three for
+Windows. That is not weak Windows support in LibreNMS: the other five are drawn
+from **UCD-SNMP-MIB's `systemStats`**, a net-snmp enterprise MIB that the built-in
+Windows SNMP Service does not implement.
+
+| Graph | Source | Built-in SNMP | jt-snmpd |
+|---|---|---|---|
+| Processes | HOST-RESOURCES `hrSystemProcesses` | ✅ | ✅ |
+| Users | HOST-RESOURCES `hrSystemNumUsers` | ✅ | ✅ |
+| Uptime | `sysUpTime` | ✅ | ✅ |
+| Detailed Processor Usage | UCD `ssCpuRawUser/Nice/System/Idle` | ❌ | ✅ |
+| Context Switches | UCD `ssRawContexts` | ❌ | ✅ |
+| Interrupts | UCD `ssRawInterrupts` | ❌ | ✅ |
+| I/O | UCD `ssIORawSent` / `ssIORawReceived` | ❌ | ✅ |
+| Swap I/O | UCD `ssRawSwapIn` / `ssRawSwapOut` | ❌ | ✅ |
+
+The data comes from `NtQuerySystemInformation`
+(`SystemPerformanceInformation` plus per-CPU times); no WMI and no subprocess.
+
+Fields that cannot be measured on Windows (`ssCpuRawWait`, `ssCpuRawSteal`,
+`ssCpuRawSoftIRQ`, `ssCpuRawGuest`) are **not emitted** rather than filled with
+zero. A zero would make LibreNMS create the graph and draw a flat line at zero,
+which reads as "measured, and it was zero" when the truth is "not measurable at
+all".
+
+`ssCpuRawNice` is the exception: Windows has no nice, but zero is emitted,
+because "there is never any nice time on Windows" is a true statement, and
+LibreNMS's ucd-mib poller requires user, nice, system and idle to be **all four
+present** before it creates the Detailed Processor Usage graph. Omit one and the
+whole graph never appears.
+
+## Volume label encoding
+
+`hrStorageDescr` carries the volume label, and in the field those labels are
+frequently non-ASCII. This is a place that genuinely breaks: pysnmp's
+`rfc1902.OctetString(str)` raises `PyAsn1UnicodeEncodeError` on non-ASCII input,
+the snapshot fails to build, and the agent presents as "started, but no data".
+
+The fix is that every OCTET STRING is encoded to UTF-8 bytes before it reaches
+pysnmp, rather than letting pysnmp guess an encoding. The rule covers volume
+labels, interface descriptions, `sysContact` and `sysLocation`, and the strings
+parsed out of SMBIOS.
+
+Measured result: a volume labelled 乙太網路 renders correctly on the LibreNMS Disk
+Usage page, with no mojibake and no question marks. This is verified end to end
+rather than only in an encoding unit test.
 
 ## Why ports and hrDevice are so much smaller
 
@@ -70,7 +120,7 @@ F5), Kernel Debug, Loopback, and Teredo / IP-HTTPS / 6to4.
 
 The gap is concentrated in a handful of tables. Each is accounted for below.
 
-### Deliberately withheld (information disclosure, spec §3.5)
+### Deliberately withheld (information disclosure)
 
 | Subtree | Built-in | jt-snmpd | Why it is withheld |
 |---|---:|---:|---|
@@ -84,11 +134,47 @@ The gap is concentrated in a handful of tables. Each is accounted for below.
 That is **3,175 OIDs**, the large majority of the difference.
 
 All of these are **implemented or implementable**; they are off by default. The
-threat model (spec §3.1) treats the primary adversary as someone already inside
+threat model  treats the primary adversary as someone already inside
 the network: a single unauthenticated read-only walk would otherwise yield a
 complete vulnerability assessment and an internal network map, from a process
-running as LocalSystem. The ARP table is already implemented and can be switched
-on in the configuration.
+running as LocalSystem.
+
+### What the 3,175 withheld OIDs would actually buy you
+
+"Deliberately withheld" carries an implication that publishing them would be
+useful. Checked against the LibreNMS 26.8.1 source, three of the four categories
+have **no consumer in LibreNMS at all**: publishing them produces no page, no
+graph and no table row.
+
+| Subtree | OIDs | Consumer in LibreNMS | What publishing it gets you |
+|---|---:|---|---|
+| `hrSWInstalled` | 407 | Only `LibreNMS/OS/Junos.php`, which reads two specific instances to parse a JUNOS version string | No software inventory page exists. On Windows, nothing |
+| `hrSWRun` / `hrSWRunPerf` | 1,792 | Only `LibreNMS/OS/Edgeos.php` and `Edgeosolt.php` | LibreNMS has no processes module. Nothing |
+| `tcpConnTable` / `udpTable` | 528 | **None.** Zero references in the entire source tree | Nothing |
+| `ipNetToMedia` / `ipNetToPhysical` | 448 | **Yes**: `LibreNMS/Modules/ArpTable.php` walks both and stores them in `ipv4_mac` | ARP search, FDB search, and per-port neighbour data |
+
+Put plainly: 2,727 of those OIDs would disclose a vulnerability list and a
+connection state table in exchange for **no LibreNMS functionality whatsoever**.
+That is not a security-versus-features trade-off; there is simply no reason to
+publish them.
+
+ARP is the one that genuinely is useful, and it is **already implemented** and
+off by default. To turn it on, edit `C:\ProgramData\JT-SNMP\config.json`:
+
+```json
+{
+  "enable_arp_table": true
+}
+```
+
+Save it, restart the service (`Restart-Service jt-snmpd`), and it appears on the
+next discovery.
+
+Weigh it before enabling: the ARP table is a list of this host's neighbours, and
+to an attacker already inside the network that is a target list for lateral
+movement. On a Windows endpoint it is usually a handful of same-subnet entries,
+and its value to LibreNMS is mostly MAC-to-IP resolution, which pays off far
+better on routers and switches.
 
 ### Since filled in (genuinely missing at first)
 

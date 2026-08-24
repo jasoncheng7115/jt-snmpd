@@ -19,10 +19,10 @@ Public repository: <https://github.com/jasoncheng7115/jt-snmpd>
 
 ## 0. One-off: where the public repository's history starts
 
-This project's development history contains `spec.md`, an internal specification
-that is not published. **Removing it now would not help — pushing the existing
-history would carry its contents along.** The public repository therefore starts
-from a **fresh history**:
+This project's development history contains internal documents that are not
+published. **Removing them now would not help: pushing the existing history
+would carry their contents along.** The public repository therefore starts from a
+**fresh history**:
 
 ```bash
 # Build a repository containing only publishable content, in a clean temp dir
@@ -113,8 +113,8 @@ has to happen again.
 
 | Item | Reason |
 |---|---|
-| `spec.md` | Internal specification |
-| `CLAUDE.md` | Internal working notes, including production addresses and operating discipline |
+| The internal specification | Not published |
+| Internal working notes | They carry production addresses and operating discipline |
 | `reports/` | Scan reports, containing local paths |
 | `*.log`, `logs/` | Agent logs record interface names, disk models and serial numbers |
 | `state/`, `index-map.json`, `engine.json` | Runtime state, including adapter LUIDs and the engineID |

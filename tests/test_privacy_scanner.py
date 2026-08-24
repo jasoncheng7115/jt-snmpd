@@ -4,7 +4,7 @@
 
 掃描器的失效模式很特別：它不會噴錯，它會說「未發現問題」。
 
-實測踩過——在剛用 `prepare-public-repo.py` 產生、還沒 `git init` 的目錄裡執行，
+實測踩過，在剛用 `prepare-public-repo.py` 產生、還沒 `git init` 的目錄裡執行，
 兩個 `git ls-files` 都以退出碼 128 失敗，例外被吞掉，檔案清單是空的，
 於是印出「掃描範圍：0 個檔案」與「未發現問題」。
 
@@ -37,7 +37,7 @@ def _func(name: str) -> str:
 def test_scanner_exists_and_is_executable():
     assert SCANNER.exists()
     if sys.platform != "win32":
-        # Windows 沒有 POSIX 執行位元，git 也不保留它——在那裡驗這個
+        # Windows 沒有 POSIX 執行位元，git 也不保留它，在那裡驗這個
         # 只會得到與程式碼無關的失敗。
         assert SCANNER.stat().st_mode & 0o111, "掃描器應可直接執行"
 
@@ -88,7 +88,7 @@ def test_images_require_review_not_pattern_matching():
 
 
 def test_allowlist_entries_require_a_reason():
-    """允許清單是刻意做成需要理由的——沒有理由的例外，久了就會變成
+    """允許清單是刻意做成需要理由的，沒有理由的例外，久了就會變成
     「把所有警告關掉」的地方。"""
     al = TOOLS / "privacy-allowlist.txt"
     assert al.exists()
@@ -97,7 +97,7 @@ def test_allowlist_entries_require_a_reason():
     rule_lines = [l for l in text.splitlines()
                   if l.strip() and not l.strip().startswith("#")]
     assert len(comment_lines) >= len(rule_lines), (
-        "註解行數應不少於規則行數——每條例外都要有理由")
+        "註解行數應不少於規則行數，每條例外都要有理由")
 
 
 def test_ip_rule_ignores_oids():

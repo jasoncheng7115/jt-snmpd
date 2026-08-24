@@ -42,17 +42,17 @@ def test_detects_builtin_snmp_and_records_original_state():
 
 
 def test_disables_rather_than_removes():
-    """spec §5.9.5：停用，不移除。移除是不可逆的，而我們只是借用 UDP/161。"""
+    """停用，不移除。移除是不可逆的，而我們只是借用 UDP/161。"""
     assert "Set-Service -Name SNMP -StartupType Disabled" in SRC
     assert "Stop-Service -Name SNMP -Force" in SRC
     assert not re.search(r"Remove-WindowsCapability|Uninstall-WindowsFeature|"
                          r"sc\.exe delete SNMP\b", SRC), (
-        "不得移除內建 SNMP——停用即可，且必須可還原")
+        "不得移除內建 SNMP，停用即可，且必須可還原")
 
 
 def test_disable_result_is_verified():
     """群組原則或第三方管控可能擋下停用。沒真的停掉，內建 SNMP 仍佔著 UDP/161，
-    我們會綁定失敗——那時只會看到一個查不出原因的健康檢查逾時。"""
+    我們會綁定失敗，那時只會看到一個查不出原因的健康檢查逾時。"""
     i = SRC.find("if ($msCfg.service_exists -and $KeepMsSnmp -ne '1')")
     assert i != -1, "找不到停用區塊"
     block = SRC[i:i + 1400]
@@ -74,7 +74,7 @@ def test_existing_restore_record_takes_precedence():
     """核心斷言：既有記錄優先，只有第一次安裝才寫入當下狀態。"""
     assert "$RESTORE_FILE" in SRC, "還原記錄路徑應集中為變數，避免兩處不一致"
     assert "if (Test-Path $RESTORE_FILE)" in SRC, (
-        "未檢查既有還原記錄——升級會用已停用的狀態覆寫掉真正的原狀")
+        "未檢查既有還原記錄，升級會用已停用的狀態覆寫掉真正的原狀")
     i = SRC.find("if (Test-Path $RESTORE_FILE)")
     j = SRC.find("$restore = [ordered]@{", i)
     assert j != -1
@@ -97,7 +97,7 @@ def test_restore_block_is_not_rebuilt_unconditionally():
 def test_uninstall_restores_original_start_type():
     assert "Set-Service -Name SNMP -StartupType $orig" in SRC
     assert "$r.ms_snmp.disabled_by_us" in SRC, (
-        "只還原我們動過的機器——KEEPMSSNMP 安裝的不該被我們改回去")
+        "只還原我們動過的機器，KEEPMSSNMP 安裝的不該被我們改回去")
     assert "original_status -eq 'Running'" in SRC, (
         "原本在執行中的才需要重新啟動")
 
@@ -154,7 +154,7 @@ def test_restore_record_shape_is_json_serialisable():
         assert k in SRC, f"PowerShell 端未寫出欄位 {k}"
 
 
-# --- 安全規則優先於忠實移轉（spec §5.9.4）----------------------------------
+# --- 安全規則優先於忠實移轉----------------------------------
 
 def test_writable_communities_are_downgraded_not_copied():
     assert "ValidCommunities" in SRC

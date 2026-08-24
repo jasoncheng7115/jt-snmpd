@@ -13,14 +13,50 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ### 新增
 
+- **程式碼簽章文件補上「手動信任」章節**，涵蓋單機做法（SmartScreen 的
+  「仍要執行」、`Unblock-File`、在 Defender 中允許被隔離的檔案）與整個網域的做法
+  （從內部共用資料夾派送，或用自己的憑證簽章後以群組原則推送到受信任的發行者，
+  一次解決其餘所有提示）。
+- **預設關閉的 OID 送出去到底有沒有用**，這次去查 LibreNMS 原始碼而不是用猜的。
+  四類裡有三類（已安裝軟體、執行中處理程序、連線表）**在 LibreNMS 根本沒有取用端**，
+  送出 2,727 個 OID 的弱點與連線資料，換不到任何一個頁面或圖表。
+  只有 ARP 有人取用（`LibreNMS/Modules/ArpTable.php` → `ipv4_mac` → ARP 與 FDB 搜尋），
+  而它早就實作好，在 `enable_arp_table` 後面。
+- **對照文件補上 System 圖表與磁碟區標籤編碼**。Windows 只有三張 System 圖，
+  Linux 有八張，差的五張來自 UCD-SNMP-MIB，而內建服務沒有實作那個 MIB。
+  中文磁碟區標籤不是錦上添花而是真的會炸：pysnmp 遇到非 ASCII 會拋
+  `PyAsn1UnicodeEncodeError`，整份快照建不起來。
+
+### 變更
+
+- **程式碼簽章是規劃中，不是放棄。** 日後規劃透過開源專案的憑證方案取得簽章；
+  在那之前，文件寫清楚會看到什麼，以及如何安全地通過。
+- **公開的檔案不再引用內部文件。** 所有指向內部規格書與內部工作筆記的引用，
+  一律改成把內容直接寫出來。讀者跟不過去的引用，比沒有引用更糟。
+  閘門 0 的查證報告不再公開，因為它整份是照著內部規格書的章節編號寫的。
+- **`msiexec` 指令改成一行。** 那道指令沒幾個字，接續符號純粹是雜訊。
+- **SMART 截圖裡的 Proxmox 麵包屑已移除。** 那是 LibreNMS 在對照組主機上探索到的
+  不相干應用程式，放在 SMART 對照旁邊會被當成對照的一部分。
+
+### 修正
+
+- **`prepare-public-repo.py` 只保留 `dist/` 與 `build/` 裡的 `README.md`**，
+  兩個目錄的繁中版 README 因此從來沒被發佈過。
+- **更多用語修正**：權限縮減（非剝除）、受阻（非阻塞）、處理程序（非行程）、
+  安裝檔（非安裝包）、溫度區（非熱區，並補上它到底是什麼的說明，
+  因為直譯完全沒解釋到）、網頁標記（Mark of the Web）。
+  絕對化的說法（絕不、永不）改為平實描述，中文也不再使用破折號。
+
+### 新增
+
 - **雙語說明文件。** 每一份公開文件現在都有英文（`docs/<名稱>.md`）與
   繁體中文（`docs/<名稱>_zh-TW.md`）兩版，每頁最上方有語言切換與回到說明文件
   首頁的連結，最下方有相關文件清單。在此之前，英文版 README 與英文版網站指向的
   文件只有中文，對大多數讀者而言等於是斷路。
 - **`docs/code-signing_zh-TW.md`**（以及英文版），說明未簽章的安裝檔在安裝時
-  實際會遇到什麼——SmartScreen 提示、UAC 對話框中顯示為「不明」的發行者、
-  GPO 派送會看到什麼（什麼都不會看到）、WDAC 與 AppLocker 的行為——
-  以及各自的處理方式：核對公布的 SHA-256、清除 Mark of the Web、
+  實際會遇到什麼，SmartScreen 提示、UAC 對話框中顯示為「不明」的發行者、
+  GPO 派送會看到什麼（什麼都不會看到）、WDAC 與 AppLocker 的行為，
+  以及各自的處理方式：核對公布的 SHA-256、清除網頁標記、
   加入 WDAC 雜湊規則，以及自行以憑證簽章。
 - **專案網站的安裝段加上下載連結與 GPO 說明。** 原本頁面上有一道 `msiexec`
   指令，卻沒有任何地方可以取得 MSI，也沒有說明同一道指令就是群組原則
@@ -31,7 +67,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **確定不申請程式碼簽章憑證。** 原本各處寫著「SignPath Foundation 申請中」，
   現在一律明確寫出安裝檔未簽章、這是長期狀態，以及該去哪裡看處理方式。
   沒有期限的「即將支援」比明確的「不做」更糟：它會讓部署者去等一個不會來的東西。
-- **發行說明改為英文為主、中文輔助**，且每一行都是完整句子而非硬換行的片段——
+- **發行說明改為英文為主、中文輔助**，且每一行都是完整句子而非硬換行的片段，
   GitHub 會把發行說明當 Markdown 算繪，句中的換行就成了頁面上的換行。
 - **「攻擊面分析」更名為「安全性評估」**，這才是這份文件的內容：
   實測的暴露面、緩解措施，以及未緩解項目的誠實清單。
@@ -55,14 +91,14 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 - **圖形安裝介面。** 雙擊 MSI 原本會直接無訊息安裝，使用者沒有機會填入管理網段
   與 community，安裝就以「無法決定 community」失敗。現在安裝路徑與確認畫面之間
-  多了一頁設定，而且管理網段沒填不讓過——空白代表 agent 只回應本機查詢，
+  多了一頁設定，而且管理網段沒填不讓過，空白代表 agent 只回應本機查詢，
   等於裝了卻沒有在監控。無訊息安裝不受影響：`/qn` 下 UI 序列不會執行，
   兩條路徑讀的是同一組屬性。
 
 ### 修正
 
 - **「加入或移除程式」沒有圖示。** `ARPPRODUCTICON` 指向 Icon 表是文件寫的做法，
-  但在這裡沒有作用——屬性在、Icon 表項目在，登錄檔的值就是空的；
+  但在這裡沒有作用，屬性在、Icon 表項目在，登錄檔的值就是空的；
   把 .ico 重新編碼成不含 PNG 壓縮項目也沒有差別。現在改為直接寫入
   `DisplayIcon` 指向已安裝的執行檔，而那個執行檔本來就內嵌了圖示。
 
@@ -70,12 +106,12 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   不檢查新舊，於是一個沒有重新建置的修正，被包進帶著新版本號、新 SHA-256、
   獨立歸檔目錄的 MSI 裡。它也從來沒有檢查 WiX 的結束碼，因此建置失敗時會取到
   上一顆 MSI 並以舊版本號回報成功。兩者現在都是閘門，
-  並由 `tests/test_build_gates.py` 守著——這已經是同一類問題第三次發生：
+  並由 `tests/test_build_gates.py` 守著，這已經是同一類問題第三次發生：
   舊東西掛著新標籤出貨。
 
 ### 變更
 
-- 在 LibreNMS 啟用 SMART 的說明改以網頁介面為主——齒輪圖示 → Settings →
+- 在 LibreNMS 啟用 SMART 的說明改以網頁介面為主，齒輪圖示 → Settings →
   Discovery → Discovery Modules → `applications`，`lnms` 指令列為次要方法。
 
 ## [0.9.1] - 2026-08-24
@@ -84,12 +120,12 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 - **agent 從來沒有讀取過自己的設定檔。** 安裝程式收集了 community 與管理網段、
   驗證過、寫進 `config.json`。而 agent 宣告的 `CFG_PATH` 指向 `config.yaml`
-  ——不同的檔案——而且兩個它都沒有打開過。每一次安裝跑的都是原始碼裡的預設值。
+，不同的檔案，而且兩個它都沒有打開過。每一次安裝跑的都是原始碼裡的預設值。
 
   那組預設值是 `community="mon2"` 與 `allowed_networks=("192.168.1.0/24",)`，
   正好就是開發實驗室用的值，這也是為什麼數個月的測試都沒發現。換成別的值安裝，
   loopback 健康檢查會用操作者的 community 查詢、agent 卻在另一個上面回應，
-  檢查逾時，MSI 以 1603 回滾整筆交易。失敗是徹底的，卻仍然看不見——
+  檢查逾時，MSI 以 1603 回滾整筆交易。失敗是徹底的，卻仍然看不見，
   因為唯一能成功的那組設定，正是唯一被試過的那組。
 
   agent 現在在啟動時載入 `config.json`，而且是在進入點讀取任何設定**之前**：
@@ -103,17 +139,17 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **未設定來源 ACL 時等於放行所有來源。** 前置閘門把空的網段清單當成「不過濾」。
   在安裝程式是設定檔唯一作者的時候，那個狀態到不了；但手動編輯設定檔現在是
   受支援的流程，一個被清空的清單會無聲地把 agent 暴露給整個網路。
-  現在改為除 loopback 外一律拒絕——監控會明顯停掉，而不是安靜地過度分享。
+  現在改為除 loopback 外一律拒絕，監控會明顯停掉，而不是安靜地過度分享。
   要刻意服務所有來源，請明確寫出 `0.0.0.0/0`。
 
 ### 新增
 
-- **專案圖示**——一棵 OID 樹，因為物件識別碼的階層正是 SNMP 的本質。
+- **專案圖示**，一棵 OID 樹，因為物件識別碼的階層正是 SNMP 的本質。
   以單一線寬繪製，讓它在瀏覽器分頁與 Windows 服務清單的 16 px 下仍然可辨。
-  它取代了原本的空白佔位圖示——那讓「加入或移除程式」裡的項目看起來像
+  它取代了原本的空白佔位圖示，那讓「加入或移除程式」裡的項目看起來像
   安裝到一半的東西。
 
-- **持續整合**——測試在 Linux 與 Windows 上執行；打上標籤即建置 MSI 並發佈。
+- **持續整合**，測試在 Linux 與 Windows 上執行；打上標籤即建置 MSI 並發佈。
   失敗會以工作流程註記呈現，因為 GitHub 的執行日誌需要認證才讀得到，
   而「exit code 1」不構成診斷。Linux 端會安裝 net-snmp，並在之後確認
   協定正確性測試真的跑過，不讓它們悄悄跳過。
@@ -122,26 +158,26 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ### 新增
 
-- **磁碟健康狀態顯示於 LibreNMS**——SMART 應用程式現在會在每顆磁碟旁顯示
+- **磁碟健康狀態顯示於 LibreNMS**，SMART 應用程式現在會在每顆磁碟旁顯示
   `PhysicalDrive0 (OK)` / `(FAIL)` / `(Overheating)`。判定來自 ATA
   `SMART RETURN STATUS`（0xDA），也就是 `smartctl -H` 顯示的那一行，
-  或 NVMe 的 critical warning 位元圖，**絕不從屬性推導**：重新配置磁區為 0
+  或 NVMe 的 critical warning 位元圖，**不從屬性推導**：重新配置磁區為 0
   不代表健康，韌體可能因為別的屬性跌破門檻而已在預測故障；反過來說少量
   重新配置磁區在某些型號上完全正常。磁碟完全不回答時（USB 橋接器通常不轉送
   SMART 命令）就不輸出該鍵，LibreNMS 顯示空白，而不是一個捏造的 `(OK)`。
 
-- **`jtDiskHealthTable`** 置於私有 OID 子樹——每顆磁碟一個狀態值
+- **`jtDiskHealthTable`** 置於私有 OID 子樹，每顆磁碟一個狀態值
   （ok / warning / critical / unknown），供需要直接告警的使用者取用。
   要注意的是，LibreNMS **裝置概觀頁**上的綠 / 紅燈必須在 LibreNMS 伺服器端
   新增探索定義才做得到，而本專案刻意不要求修改伺服器。
 
-- **公開前的個資檢查工具**——`tools/check-privacy.py` 掃描的正是 git 會推上去
+- **公開前的個資檢查工具**，`tools/check-privacy.py` 掃描的正是 git 會推上去
   的那些檔案，檢查金鑰、密碼、community 字串、MAC 位址、位址與序號；
   `docs/release-checklist_zh-TW.md` 記錄完整流程。圖片改用「人工審閱 + 雜湊」而非
   比對規則，因為正規表示式讀不到像素：第一批 README 截圖帶出了四組 MAC 位址
   與六個鄰居裝置名稱，那等於一張內網拓撲圖。
 
-- **磁碟 SMART 透過 SNMP 提供（`NET-SNMP-EXTEND-MIB`）**——LibreNMS 讀 SMART 走它的
+- **磁碟 SMART 透過 SNMP 提供（`NET-SNMP-EXTEND-MIB`）**，LibreNMS 讀 SMART 走它的
   `smart` 應用程式，而那個應用程式**完全透過 SNMP** 取得
   （`snmp_get nsExtendOutputFull."smart"`）。被監控端不需要安裝 LibreNMS agent、
   不需要 smartctl、不需要任何腳本。jt-snmpd 本來就以 IOCTL 直接讀到 SMART 屬性，
@@ -149,35 +185,35 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   重新配置磁區 0、磨損平衡 4、UDMA CRC 錯誤 0、溫度 33°C、通電 491 小時，
   確實寫入 `app-smart-*.rrd`。
 
-  內容是 `base64(gzip(json))`——這是 `json_app_get()` 明確支援的形式，而且是必要的：
+  內容是 `base64(gzip(json))`，這是 `json_app_get()` 明確支援的形式，而且是必要的：
   回應上限 1400 位元組且不分片，未壓縮的 JSON 在兩顆磁碟時就會超出。
-  沒量到的屬性一律 `null`，絕不填 `0`；在「重新配置磁區」欄位填一個假的 0，
+  沒量到的屬性一律 `null`，不填 `0`；在「重新配置磁區」欄位填一個假的 0，
   讀起來的意思是「這顆磁碟很健康」。
 
-  **這需要在 LibreNMS 啟用 `discovery_modules.applications`**——它預設是 `false`。
+  **這需要在 LibreNMS 啟用 `discovery_modules.applications`**，它預設是 `false`。
   沒啟用的話，extend 資料照樣供應，但不會有人來取。
 
-- **磁碟最高溫度**（`max_temp`）——LibreNMS 的 SMART 應用程式無論有沒有資料都會
+- **磁碟最高溫度**（`max_temp`），LibreNMS 的 SMART 應用程式無論有沒有資料都會
   渲染一張「Max Temp(C)」面板，因此少了這個鍵，每一套安裝都會看到一張破圖。
   Windows 的儲存 API 給的是門檻值（warning、critical），不是「這輩子最高溫」，
   拿門檻值去填那條線是標錯標籤；因此 jt-snmpd 改記錄**自己實際觀測到**的最高溫，
-  跨重新啟動保存，且只在最高溫真的上升時才寫檔——快照每五秒重建一次，
+  跨重新啟動保存，且只在最高溫真的上升時才寫檔，快照每五秒重建一次，
   每次都寫會是一天一萬七千次不必要的磁碟寫入。
 
 - **對照截圖**置於 `docs/images/`，取自正式 LibreNMS，英文與台灣繁體中文各一套，
   皆為淺色主題：感測器、SMART、連接埠、記憶體，每組都以同一個頁面對照
   「使用內建 SNMP Service 的 Windows 10 主機」與「使用 jt-snmpd 的主機」。
 
-- **ACPI 熱區溫度**——不需核心驅動的系統 / 主機板溫度，以
+- **ACPI 溫度區溫度**，不需核心驅動的系統 / 主機板溫度，以
   `advapi32!WmiOpenBlock` + `WmiQueryAllDataW`（WMI 資料區塊 API，不是 WMI COM，
   也不開子行程）讀取。實體機實測 25°C，臨界跳脫點 107°C；虛擬機回
   `ERROR_WMI_GUID_NOT_FOUND`，該感測器直接不出現。
 
   CPU 封裝溫度仍然做不到，而且會一直做不到：它需要存取 MSR，而那需要核心驅動。
   業界慣用的那個驅動（WinRing0）已列入 Microsoft 的易受攻擊驅動封鎖清單，
-  在 HVCI/WDAC 下載不進去——那正是我們客戶的環境設定。
+  在 HVCI/WDAC 下載不進去，那正是我們客戶的環境設定。
 
-- **CPU 頻率感測器**（`entPhySensorType = hertz`，`mega` 刻度）——只輸出一筆而非
+- **CPU 頻率感測器**（`entPhySensorType = hertz`，`mega` 刻度），只輸出一筆而非
   每個邏輯處理器一筆，因為 `CallNtPowerInformation` 回報的是封裝層級的 P-state，
   各核心數值相同。要注意 LibreNMS 目前會丟棄這類感測器：
   `entity-sensor.inc.php` 把 `hertz` 對應到類別 `freq`，但
@@ -191,7 +227,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   沒有 charge 或 percent，送成標準感測器不會有任何結果。
 
 - **`SNMP-FRAMEWORK-MIB` engine 群組**（`snmpEngineID`、`snmpEngineBoots`、
-  `snmpEngineTime`、`snmpEngineMaxMessageSize`）——這修掉了一個原本會在每台主機
+  `snmpEngineTime`、`snmpEngineMaxMessageSize`），這修掉了一個原本會在每台主機
   開機滿 497 天後發出的假「Device rebooted」告警。`sysUpTime` 的型別是
   `TimeTicks`，在 2^32 個百分之一秒 ≈ 497.1 天必然回捲；這是 RFC 3418 規定的，
   Windows 內建 SNMP Service 一樣會回捲。能修的是後果：LibreNMS 取
@@ -202,16 +238,16 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **記錄檔輪替與 Windows 事件檢視器整合。** agent 的記錄檔原本沒有大小上限；
   快照重建持續失敗時每五秒一行，一天一萬七千行。數百台跑上數年，
   監控代理程式把它所監控主機的系統碟寫滿，是最不能接受的失效方式。
-  錯誤現在同時進事件檢視器——現場人員第一個看的是那裡，
+  錯誤現在同時進事件檢視器，現場人員第一個看的是那裡，
   而遠端診斷數百台時 `Get-WinEvent` 可以集中撈。
 
-- **完整生命週期測試**（`tests/lifecycle.ps1`）——安裝、升級、移除、重裝、
+- **完整生命週期測試**（`tests/lifecycle.ps1`），安裝、升級、移除、重裝、
   PURGE 移除，共 40 項斷言，在實機上以打包好的 MSI 執行。
 
 ### 修正
 
 - **agent 執行緒死亡後，服務仍回報 `Running`。** `SvcDoRun` 只等停止事件，
-  因此啟動階段的任何失敗——綁定失敗、MIB 載入失敗、快照建置失敗——都會讓
+  因此啟動階段的任何失敗，綁定失敗、MIB 載入失敗、快照建置失敗，都會讓
   服務控制管理員回報一個健康的服務，而實際上沒有任何監聽器。
   服務控制管理員說 `Running`、監控系統說逾時，是現場最難查的狀態；
   而且這也代表已設定的三段式自動復原永遠不會觸發，因為程序根本沒有結束。
@@ -220,7 +256,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   都重讀內建服務的當下狀態並覆寫還原記錄。第一次安裝時讀到的是真實原狀；
   升級時該服務早已被上一次安裝停用，於是 `Disabled` 被當成原始設定寫回，
   解除安裝端的 `$orig -ne 'Disabled'` 判斷從此不會成立。
-  安裝 → 移除可以正確還原，安裝 → 升級 → 移除不行——而升級正是這個產品的常態操作。
+  安裝 → 移除可以正確還原，安裝 → 升級 → 移除不行，而升級正是這個產品的常態操作。
 
 - **`PURGE=1` 沒有清掉資料目錄。** 自訂動作的記錄檔就放在它要刪除的目錄裡，
   刪完之後的兩行收尾訊息又把 `logs\` 重建了回來。刪除失敗也被
@@ -248,14 +284,14 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ### 新增
 
-- **UCD-SNMP-MIB `systemStats`**——這是 LibreNMS 的 System 圖表群組真正的來源。
+- **UCD-SNMP-MIB `systemStats`**，這是 LibreNMS 的 System 圖表群組真正的來源。
   Windows 主機先前只有三張圖（Processes、Users、Uptime），因為那些來自
   HOST-RESOURCES；Linux 裝置上其餘的 Detailed Processor Usage、Context Switches、
   Interrupts、I/O、Swap I/O 全部來自 UCD-SNMP-MIB。現以
   `NtQuerySystemInformation`（`SystemPerformanceInformation` 與逐 CPU 時間）供應，
   新增五張圖表
 
-- **`hrFSTable`、`hrPartitionTable` 與 `ipRouteTable`**——在製作與內建 SNMP Service
+- **`hrFSTable`、`hrPartitionTable` 與 `ipRouteTable`**，在製作與內建 SNMP Service
   的對照表時發現這三張表我們真的沒有。檔案系統與分割來自 `GetVolumeInformationW`，
   路由來自 `GetIpForwardTable2`。它們都沒有「軟體清單 / 連線表」那類資訊揭露顧慮，
   故預設輸出
@@ -263,7 +299,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   仍使用內建 SNMP Service 的 Windows 10 主機，並為每一處「我們回報得更少」
   給出理由
 
-- **MSI 安裝檔（WiX v5）**——這是群組原則派送的前提，GPO 軟體安裝只接受 MSI。
+- **MSI 安裝檔（WiX v5）**，這是群組原則派送的前提，GPO 軟體安裝只接受 MSI。
   已在 Windows 11 端對端驗證：無訊息安裝（`msiexec /qn`）、
   **直接安裝新版即完成升級**（0.1.0 → 0.1.1，「加入或移除程式」維持一筆，
   `index-map.json` 位元組完全相同，LibreNMS 不會重新 discovery）、
@@ -273,36 +309,36 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **README** 英文與台灣繁體中文雙檔，格式參照 jt-ipam
 - **資安檢測工具鏈**寫入 `docs/security-scanning_zh-TW.md`，並產出第一份基線：
   Bandit HIGH=0、pip-audit 掃過 59 個相依無弱點、CycloneDX SBOM 已產出。
-  ZAP 不適用——它是 web DAST，而本 agent 沒有 HTTP 介面；正確組合是
+  ZAP 不適用，它是 web DAST，而本 agent 沒有 HTTP 介面；正確組合是
   SAST + SCA/SBOM + 協定層 fuzzing，加上 Windows 專屬檢查（Authenticode、
   unquoted service path、`sc qprivs`、`accesschk`、PrivescCheck）
 - **三分支 `sysObjectID`**，以 `DsRoleGetPrimaryDomainInformation` 判定網域控制站。
   LibreNMS 靠第三分支呼叫 `getDatacenterVersion()`，先前 DC 會顯示錯誤的 Windows 版本
-- **Windows Server 情境**整理進 `TEST_PLAN.md` §5.5——22 項，涵蓋版本與安裝型態、
+- **Windows Server 情境**整理進 `TEST_PLAN.md` §5.5，22 項，涵蓋版本與安裝型態、
   Server 特有資料來源、部署差異
 
 - **IP 位址表**：`ipAddrTable`（RFC 1213）與 `ipAddressTable`（IP-MIB，IPv4 + IPv6），
   以 `GetUnicastIpAddressTable` 取得，供 LibreNMS 的 ipv4-addresses /
   ipv6-addresses 模組使用
 - **鄰居快取**（`ipNetToPhysicalTable`，ARP 與 IPv6 ND），以 `GetIpNetTable2` 取得。
-  **預設停用**——spec §3.5 指出內網 ARP 表等同現成的橫向移動目標清單
+  **預設停用**：內網 ARP 表等同現成的橫向移動目標清單
 - **磁碟溫度與健康度**（ENTITY-SENSOR-MIB `entPhySensorTable`），以
   `IOCTL_STORAGE_QUERY_PROPERTY` 搭配 `StorageDeviceTemperatureProperty`
-  與 NVMe SMART health log 取得。依 spec §2.9 刻意不使用 LibreHardwareMonitor——
+  與 NVMe SMART health log 取得。刻意不使用 LibreHardwareMonitor，
   其 WinRing0 驅動已列入 Microsoft vulnerable driver blocklist，
   在 HVCI 端點會觸發 Defender
 
 - **以 `GetPerformanceInfo` 補齊記憶體資訊**：除了 Physical 與 Virtual Memory，
   新增 **Cached Memory**、**Swap Space**（commit limit 中屬於分頁檔的部分，
-  與 commit charge 是不同概念，見 spec §2.2）以及核心分頁 / 非分頁集區。
+  與 commit charge 是不同概念）以及核心分頁 / 非分頁集區。
   LibreNMS 上的記憶體池由 2 個增為 4 個
 - **`hrStorageDescr` 讀取真實磁碟區標籤與序號**（`GetVolumeInformationW`），
   取代原本硬編碼的預留字串。非 ASCII 標籤（例如中文磁碟區名稱）以 UTF-8 編碼，
   並已透過 LibreNMS 端對端驗證
 
 - **`sysContact` / `sysLocation` 設定來源**：ADMX 原則優先，其次沿用
-  Windows 內建 SNMP Service 的既有登錄檔設定（spec §5.5、§5.9.3）。
-  客戶原本就在用內建 SNMP 時，換過來不必重新填寫——即使內建服務已停用，
+  Windows 內建 SNMP Service 的既有登錄檔設定。
+  客戶原本就在用內建 SNMP 時，換過來不必重新填寫，即使內建服務已停用，
   其登錄檔仍在，設定仍會自動沿用。`jtAgentConfigSource` 會回報實際生效的來源
 - **`build/` 與 `dist/` 資料夾**：`build/` 放 PyInstaller one-folder 的執行檔產物，
   `dist/` 放對外交付的安裝檔（MSI 等）。兩者都只有 README 進版本控制
@@ -317,24 +353,24 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   丟棄量的對外出口
 
 - **完整 inventory**：
-  - **ENTITY-MIB `entPhysicalTable`**（LibreNMS Inventory 頁）——資料來自
-    `GetSystemFirmwareTable('RSMB')` 解析 SMBIOS，不需 WMI、不需特權（spec §2.10）。
+  - **ENTITY-MIB `entPhysicalTable`**（LibreNMS Inventory 頁），資料來自
+    `GetSystemFirmwareTable('RSMB')` 解析 SMBIOS，不需 WMI、不需特權。
     涵蓋 Type 0 BIOS、Type 1 System、Type 2 Baseboard、Type 4 Processor、
-    Type 17 Memory Device，以 §34.5 的分段 index 配置
+    Type 17 Memory Device，以分段 index 配置
     （1000 system / 1100 mainboard / 2000+ CPU / 3000+ DIMM / 4000+ 磁碟）
   - **`hrDeviceTable` 全家族**（LibreNMS 設備頁）：處理器、網路介面、實體磁碟，
     搭配 `hrProcessorTable`、`hrNetworkTable`、`hrDiskStorageTable`。
-    所有衍生表共用同一組 `hrDeviceIndex`（spec §2.3）
+    所有衍生表共用同一組 `hrDeviceIndex`
   - **實體磁碟 inventory**：以 `IOCTL_STORAGE_QUERY_PROPERTY` 取型號、序號、
     匯流排類型，`IOCTL_DISK_GET_DRIVE_GEOMETRY_EX` 取容量
-  - 硬體 inventory 永久快取（spec §2.7）——SMBIOS 開機後不會變
+  - 硬體 inventory 永久快取，SMBIOS 開機後不會變
 
-- **前置解析閘門**（spec §3.2，標為最高優先的資安項目）：位於 pysnmp 之前的
-  四道檢查——來源 IP 白名單、封包大小上限、每來源 token bucket 速率限制、
+- **前置解析閘門**：位於 pysnmp 之前的
+  四道檢查，來源 IP 白名單、封包大小上限、每來源 token bucket 速率限制、
   外層 TLV 粗略合法性。被擋下的封包**完全不會進入 BER decoder**，
   因此深度巢狀、超長長度欄位、OID 放大等攻擊碰不到 pyasn1
 
-- **自我健康 OID**（spec §7，從 Phase 7 提前）：agent 的失效是無聲的，
+- **自我健康 OID**：agent 的失效是無聲的，
   這組 OID 讓 LibreNMS 能監控 agent 本身。含版本、服務執行時間、RSS、
   執行緒與 handle 數、快照年齡與建立耗時、設定路徑、安全性警告摘要
 - **`jtAgentCollectorTable`**：每個 collector 的狀態、上次成功時間、耗時、
@@ -363,7 +399,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **UCD `systemStats` 的欄位編號是憑記憶寫的，而且寫錯了。**
   正確順序是 IOSent(57) / IOReceived(58) / Interrupts(59) / Contexts(60) /
   SwapIn(62) / SwapOut(63)，我卻把 SwapIn/SwapOut 排在前面，
-  結果 context switches 被畫在 I/O 圖上。從 agent 端完全看不出異常——
+  結果 context switches 被畫在 I/O 圖上。從 agent 端完全看不出異常，
   walk 成功、圖表有線、數字在動。唯一能發現的方法是用 MIB 解析輸出
   （`snmpwalk -m UCD-SNMP-MIB -O QUs`）。
   `tests/test_ucd_field_numbers.py` 已把每個欄位釘死在 MIB 名稱上
@@ -375,7 +411,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   保留 metric 最小者（即實際會被選用的路由）。此問題在單網路卡機器上永遠不會出現
 
 - **`hrSystemNumUsers` 原本固定回 1。** 在遠端桌面工作階段主機上這直接就是錯的
-  ——一台可能有數十個使用者。改以 `WTSEnumerateSessions` 列舉實際工作階段，
+，一台可能有數十個使用者。改以 `WTSEnumerateSessions` 列舉實際工作階段，
   計入 Active 與 Disconnected（斷線的使用者仍在登入狀態、仍佔用資源）
 - **NIC team 成員與 team 介面同時被輸出**，導致 LibreNMS 對同一份流量計算兩次。
   team 成員的 `ConnectionType` 為 `Passive`，現已排除

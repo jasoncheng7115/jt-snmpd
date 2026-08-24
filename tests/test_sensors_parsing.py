@@ -6,8 +6,8 @@ WMI 資料區塊的每一個偏移量與長度都**取自緩衝區自身**，而
 韌體與驅動程式。Python 是記憶體安全的，所以不會有典型的堆疊破壞；真正的
 風險換了一種形式：
 
-1. 一個亂寫的 `InstanceCount`（例如 0xFFFFFFFF）會讓迴圈跑四十億次——
-   在「絕不能拖慢 host」這條硬性要求下，這就是一次自我 DoS。
+1. 一個亂寫的 `InstanceCount`（例如 0xFFFFFFFF）會讓迴圈跑四十億次，
+   在「不能拖慢 host」這條硬性要求下，這就是一次自我 DoS。
 2. 一個亂寫的 `BufferSize` 會讓我們配置任意大的記憶體。
 3. 韌體提供的字串直接進 SNMP OCTET STRING，控制字元與超長字串會讓
    回應變形或撐破 1400 位元組上限。
@@ -83,7 +83,7 @@ def test_empty_and_short_buffers():
 
 
 def test_random_garbage_never_raises():
-    """任何位元組序列都不得讓解析拋例外——拋了就是一次快照建置失敗。"""
+    """任何位元組序列都不得讓解析拋例外，拋了就是一次快照建置失敗。"""
     for pattern in (b"\xff", b"\x00", b"\xaa", b"\x7f"):
         for length in (64, 100, 512, 4096):
             sensors.parse_wnode_all_data(pattern * length)
@@ -117,7 +117,7 @@ def test_instance_size_larger_than_buffer_is_rejected():
 
 
 def test_buffer_size_field_larger_than_actual_bytes():
-    """緩衝區自稱 1 MB 但實際只有 1 KB —— 必須以實際持有的位元組為準。"""
+    """緩衝區自稱 1 MB 但實際只有 1 KB，必須以實際持有的位元組為準。"""
     raw = _wnode(instances=2, inst_size=76, buffer_size=1 << 20,
                  total=64 + 2 * 76, payload=_zone_payload(2981) * 2)
     out = sensors.parse_wnode_all_data(raw)
@@ -185,7 +185,7 @@ def test_absurd_name_length_is_rejected():
     assert out[0].name == ""                     # 長度不可信 → 不給名稱
 
 
-# --- 熱區欄位解析 -----------------------------------------------------------
+# --- 溫度區欄位解析 -----------------------------------------------------------
 
 def test_thermal_zone_round_trip():
     raw = _wnode(instances=1, payload=_zone_payload(2981, critical=3800),
@@ -210,7 +210,7 @@ def test_thermal_zone_too_short_is_dropped():
 
 
 def test_critical_trip_point_may_be_absent_without_dropping_reading():
-    """跳脫點不可信時仍應保留溫度本身——那才是主要資料。"""
+    """跳脫點不可信時仍應保留溫度本身，那才是主要資料。"""
     raw = _wnode(instances=1, payload=_zone_payload(2981, critical=0, passive=0),
                  total=1024)
     z = sensors.parse_thermal_zone(sensors.parse_wnode_all_data(raw)[0])
@@ -244,7 +244,7 @@ def test_module_imports_on_non_windows():
 def test_windows_collectors_return_sane_shapes():
     """在 Windows 上改驗**型別與範圍**，而不是「一定是空的」。
 
-    虛擬機沒有熱區與電池是正常的，所以不能斷言一定有值；
+    虛擬機沒有溫度區與電池是正常的，所以不能斷言一定有值；
     但只要有值，就必須落在合理範圍內。
     """
     for z in sensors.read_thermal_zones():
@@ -260,13 +260,13 @@ def test_windows_collectors_return_sane_shapes():
 
 def test_processor_buffer_uses_group_aware_count():
     """os.cpu_count() 只反映呼叫端所屬的處理器群組，在 64 核以上會少報，
-    而核心是照**實際處理器數**寫回緩衝區的——配小了就是真正的堆積毀損。
+    而核心是照**實際處理器數**寫回緩衝區的，配小了就是真正的堆積毀損。
     這是原型階段實際存在的缺陷，修正必須留在程式碼裡。"""
     src = (Path(__file__).resolve().parent.parent / "deploy"
            / "sensors.py").read_text(encoding="utf-8")
     assert "GetActiveProcessorCount" in src, "必須使用群組感知的處理器計數"
     assert "_ALL_PROCESSOR_GROUPS" in src
-    # 只看可執行的敘述——說明文字裡本來就會提到 os.cpu_count()，
+    # 只看可執行的敘述，說明文字裡本來就會提到 os.cpu_count()，
     # 那是在解釋為什麼**不能**用它。
     import ast
     fn = next(n for n in ast.walk(ast.parse(src))

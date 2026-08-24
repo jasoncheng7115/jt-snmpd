@@ -8,16 +8,16 @@
     This is the interim installer that predates the MSI. Its behaviour deliberately
     mirrors the MSI flow, so logic verified here moves straight into the WiX
     custom action:
-      1. Pre-checks (spec §5.6)
-      2. Detect the built-in Windows SNMP service and copy its settings (spec §5.9)
-      3. Stop and remove any previous version (the upgrade path, spec §5.7)
+      1. Pre-checks
+      2. Detect the built-in Windows SNMP service and copy its settings
+      3. Stop and remove any previous version (the upgrade path)
       4. Copy files to %ProgramFiles%
-      5. Create %ProgramData% and fix its ACL (spec §3.7)
-      6. Disable the built-in SNMP service (spec §5.9.5; reversible)
-      7. Register the service, configure failure recovery and reduce privileges (spec §6.2)
-      8. Create firewall rules (spec §3.3: mandatory, never Any/Any)
-      9. Start it and run a loopback health check (spec §5.7 step 7, §6.5)
-     10. Print the migration report and the paths (spec §5.9.7, §5.10)
+      5. Create %ProgramData% and fix its ACL
+      6. Disable the built-in SNMP service
+      7. Register the service, configure failure recovery and reduce privileges
+      8. Create firewall rules
+      9. Start it and run a loopback health check
+     10. Print the migration report and the paths
 
     Usage:
       .\install.ps1 -ManagementNetworks 192.168.1.0/24
@@ -58,7 +58,7 @@ function Die  { param($m) Write-Host "[FAIL] $m" -ForegroundColor Red; exit 1 }
 $script:Report = @()
 function Report { param($m) $script:Report += $m }
 
-# --- Pre-checks (spec §5.6) --------------------------------------------------
+# --- Pre-checks  --------------------------------------------------
 function Test-Prerequisites {
     Log 'running pre-checks ...'
 
@@ -80,7 +80,7 @@ function Test-Prerequisites {
     $free = (Get-PSDrive -Name ($env:SystemDrive[0]) -ErrorAction SilentlyContinue).Free
     if ($free -and $free -lt 200MB) { Die "not enough free space on the system drive ($([math]::Round($free/1MB)) MB)." }
 
-    # Whatever holds UDP/161 (spec §5.6, §5.9.6)
+    # Whatever holds UDP/161
     $ep = Get-NetUDPEndpoint -LocalPort 161 -ErrorAction SilentlyContinue
     if ($ep) {
         foreach ($e in $ep) {
@@ -93,7 +93,7 @@ function Test-Prerequisites {
             } elseif ($isOurs) {
                 Log "UDP/161 is held by an existing $SERVICE_NAME; taking the upgrade path"
             } else {
-                # spec §5.9.6: never automatically disable a non-Microsoft service
+                # never automatically disable a non-Microsoft service
                 Die @"
 UDP/161 is held by a non-Microsoft program. Installation stopped; nothing was changed.
     PID      : $($p.Id)
@@ -106,7 +106,7 @@ Disable that program manually and run the installer again.
     }
 }
 
-# --- Copy the built-in SNMP settings (spec §5.9) -----------------------------
+# --- Copy the built-in SNMP settings  -----------------------------
 function Get-MsSnmpConfig {
     $cfg = [ordered]@{
         service_exists = $false; status = $null; start_type = $null
@@ -159,7 +159,7 @@ function Get-MsSnmpConfig {
 function Resolve-Migration {
     param($MsCfg)
 
-    # community: the -Community argument wins, otherwise migrate a read-only one (spec §5.9.4)
+    # community: the -Community argument wins, otherwise migrate a read-only one
     $community = $Community
     if (-not $community) {
         foreach ($name in $MsCfg.communities.Keys) {
@@ -186,7 +186,7 @@ function Resolve-Migration {
     }
 
     # Management networks: the argument wins, otherwise PermittedManagers, which
-    # need name resolution (spec §5.9.3)
+    # need name resolution
     if ($ManagementNetworks) {
         $nets = $ManagementNetworks
     } elseif ($MsCfg.permitted_managers.Count -gt 0) {
@@ -212,11 +212,11 @@ function Resolve-Migration {
         if ($nets.Count -gt 0) { Report "[OK] imported $($nets.Count) PermittedManagers entries as the source ACL" }
     }
 
-    # spec §5.9.4 (1): an empty PermittedManagers means "accept anything"; never migrate that as Any/Any
+    # An empty PermittedManagers means "accept anything"; never migrate that as Any/Any
     if ($nets.Count -eq 0) {
         Die @"
 No management networks were supplied and none could be taken from the existing configuration.
-This agent denies by default and does not allow Any/Any (spec §3.3).
+This agent denies by default and does not allow Any/Any.
 Specify them with -ManagementNetworks, for example:
     .\install.ps1 -ManagementNetworks 192.168.1.0/24
 "@
@@ -273,7 +273,7 @@ function Initialize-DataDir {
     foreach ($d in @($DATA_DIR, $STATE_DIR, $LOG_DIR, $SECRETS_DIR)) {
         if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force $d | Out-Null }
     }
-    # spec §3.7: the default ACL on C:\ProgramData lets Users create
+    # the default ACL on C:\ProgramData lets Users create
     # subdirectories, so an attacker can create ours first and keep write access.
     # Creating it only when absent is not enough; the ACL has to be reset to
     # SYSTEM and Administrators only.
@@ -313,10 +313,10 @@ function Register-Service {
         Die 'service registration failed'
     }
     & sc.exe description $SERVICE_NAME 'SNMP agent serving Windows host monitoring data over standard MIBs' | Out-Null
-    # Three-stage automatic recovery; failureflag 1 makes a non-zero exit code trigger it too (spec §6.2)
+    # Three-stage automatic recovery; failureflag 1 makes a non-zero exit code trigger it too
     & sc.exe failure $SERVICE_NAME reset= 86400 actions= restart/60000/restart/60000/restart/300000 | Out-Null
     & sc.exe failureflag $SERVICE_NAME 1 | Out-Null
-    # Privilege reduction (spec §3.6)
+    # Privilege reduction
     & sc.exe privs $SERVICE_NAME SeChangeNotifyPrivilege/SeSystemProfilePrivilege/SeIncreaseQuotaPrivilege | Out-Null
     $svc = Get-CimInstance Win32_Service -Filter "Name='$SERVICE_NAME'"
     Ok "service registered: $($svc.StartName) / $($svc.StartMode)"
@@ -338,7 +338,7 @@ function Start-AndVerify {
     param($CommunityName)
     Log 'starting the service ...'
     Start-Service -Name $SERVICE_NAME
-    # spec §5.7 step 7: by default an MSI only confirms the service started, and
+    # By default an MSI only confirms the service started, and
     # a service that started is not one that answers SNMP (the "alive but dead"
     # case in §6.5).
     $okResp = $false
@@ -391,7 +391,7 @@ function Write-Config {
     }
     $cfg | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $DATA_DIR 'config.json') -Encoding UTF8
 
-    # Restore information (spec §5.9.5). The community is never written here in clear text
+    # Restore information. The community is never written here in clear text
     $restore = [ordered]@{
         schema_version = 1
         migrated_at    = (Get-Date).ToString('s')
@@ -494,7 +494,7 @@ function Invoke-Uninstall {
     Remove-NetFirewallRule -DisplayName "$FW_RULE*" -ErrorAction SilentlyContinue
     Ok 'firewall rules removed'
 
-    # Restore the built-in SNMP service (spec §5.9.5)
+    # Restore the built-in SNMP service
     $restorePath = Join-Path $STATE_DIR 'ms-snmp-restore.json'
     if (Test-Path $restorePath) {
         try {
@@ -522,7 +522,7 @@ function Invoke-Uninstall {
         if (Test-Path $DATA_DIR) { Remove-Item $DATA_DIR -Recurse -Force -ErrorAction SilentlyContinue }
         Ok 'data directory completely removed (PURGE)'
     } else {
-        # spec §5.7: keeping ProgramData by default is deliberate. Customers
+        # keeping ProgramData by default is deliberate. Customers
         # commonly uninstall and reinstall to troubleshoot, and clearing the index
         # map makes LibreNMS rediscover everything, orphaning the existing RRDs.
         Ok "data directory kept: $DATA_DIR (add -Purge to remove it)"

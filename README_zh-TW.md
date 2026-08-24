@@ -14,7 +14,7 @@
 >
 > 作者 Jason Cheng (Jason Tools) · 授權 GPL-3.0-or-later · English: [README.md](README.md)
 
-> **專案頁面：[https://jasoncheng7115.github.io/jt-snmpd/](https://jasoncheng7115.github.io/jt-snmpd/)** —— 對照截圖、實測數字與設計取捨，英文與繁體中文可切換。
+> **專案頁面：[https://jasoncheng7115.github.io/jt-snmpd/](https://jasoncheng7115.github.io/jt-snmpd/)**，對照截圖、實測數字與設計取捨，英文與繁體中文可切換。
 
 ---
 
@@ -22,23 +22,23 @@
 
 Microsoft 已停止支援內建的 SNMP Service，而 Net-SNMP 也沒有現行的官方 Windows
 建置。結果是 Windows 主機要嘛沒被監控，要嘛只能改用「主動推送到時序資料庫」的
-agent——但當 NMS 講的是 SNMP 時，那並不能解決問題。
+agent，但當 NMS 講的是 SNMP 時，那並不能解決問題。
 
 jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目標環境
 （政府機關與醫院：無對外網路、Defender / HVCI / WDAC 普遍啟用、
 數十到數百台以 GPO 部署）：
 
 - **唯讀。** 不支援 SNMP SET、不發 trap、不做任何寫入。
-- **絕不主動對外連線。** 不檢查更新、不回報遙測、不在執行時下載任何程式碼。
-  安裝包完全自包含。
+- **不主動對外連線。** 不檢查更新、不回報遙測、不在執行時下載任何程式碼。
+  安裝檔完全自包含。
 - **不依賴核心驅動程式。** 磁碟溫度走 Windows 原生 IOCTL，**不用**
-  LibreHardwareMonitor——它依賴的 WinRing0 驅動已列入 Microsoft
+  LibreHardwareMonitor，它依賴的 WinRing0 驅動已列入 Microsoft
   vulnerable driver blocklist，在啟用 HVCI 的端點上會觸發 Defender 告警。
 - **資料路徑不用 WMI、不用 PowerShell 子行程。** collector 以 ctypes 直接呼叫
   Win32 API。
 - **從內建服務移轉設定。** community、允許的管理主機、sysContact、sysLocation
   都會從既有的 SNMP Service 登錄檔沿用，換過來不必在每台機器重新填一次。
-- **設計上就不該拖慢主機。** 這是量測出來的，不是講出來的——見
+- **設計上就不該拖慢主機。** 這是量測出來的，不是講出來的，見
   [對主機的影響](#對主機的影響)。
 
 ## LibreNMS 上會看到什麼
@@ -50,12 +50,12 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 | OS 偵測（Hardware / Version / Features）| 模仿 Microsoft 格式的 `sysDescr` / `sysObjectID` | ✅ |
 | 連接埠 | IF-MIB `ifTable` + `ifXTable`（64-bit 計數器），保存 `ifIndex` | ✅ |
 | Processor | `hrProcessorTable`，來源 `NtQuerySystemInformation` | ✅ |
-| Memory | `hrStorage` —— 實體、虛擬、快取、分頁檔 | ✅ |
+| Memory | `hrStorage`，實體、虛擬、快取、分頁檔 | ✅ |
 | Disk Usage | `hrStorage` 固定磁碟，含真實磁碟區標籤 | ✅ |
 | Disk I/O | UCD-DISKIO，來源 `IOCTL_DISK_PERFORMANCE` | ✅ |
-| 溫度 | ENTITY-SENSOR-MIB —— 磁碟溫度，走 SMART / NVMe | ✅ |
+| 溫度 | ENTITY-SENSOR-MIB，磁碟溫度，走 SMART / NVMe | ✅ |
 | Inventory | ENTITY-MIB `entPhysicalTable`，解析 SMBIOS 而得 | ✅ |
-| 設備 | `hrDeviceTable` —— 處理器、網路卡、實體磁碟 | ✅ |
+| 設備 | `hrDeviceTable`，處理器、網路卡、實體磁碟 | ✅ |
 | IP 位址 | `ipAddrTable` + `ipAddressTable`（IPv4 + IPv6）| ✅ |
 | Netstats | `ip` / `icmp` / `tcp` / `udp` / `snmp` 群組 | ✅ |
 | Agent 自我健康 | JT 私有 OID（見下）| ✅ |
@@ -65,7 +65,7 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 
 這個 agent 的失效是**無聲的**：服務顯示「執行中」，而圖表卻是平的。
 因此我們用一組私有 OID 把 agent 自己的狀態暴露出來，讓 LibreNMS
-可以監控 agent 本身——版本、服務執行時間、RSS、執行緒與 handle 數、
+可以監控 agent 本身，版本、服務執行時間、RSS、執行緒與 handle 數、
 快照年齡與建立耗時、設定來源與各路徑，加上一張逐 collector 的健康表
 （狀態、上次成功時間、耗時、累計錯誤數）。
 
@@ -88,13 +88,15 @@ LibreNMS 端未做任何客製。
 #### 感測器
 
 內建服務完全不回報感測器，所以 LibreNMS 根本不會建立「溫度」頁籤。
-jt-snmpd 提供磁碟溫度與 ACPI 熱區，兩者都帶著韌體自己宣告的門檻值。
+jt-snmpd 提供磁碟溫度與 ACPI 溫度區，兩者都帶著韌體自己宣告的門檻值。
+ACPI 溫度區是主機板韌體自己定義的溫度量測點，通常對應 CPU 周邊或機殼區域；
+讀它不需要核心驅動，這也是本專案能提供系統溫度而不必裝驅動的原因。
 
 ![感測器對照](docs/images/temperature-zh-TW.png)
 
 #### 磁碟 SMART
 
-SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`——
+SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`，
 被監控端不需要 LibreNMS agent，也不需要 smartctl。
 沒量到的屬性保持 `null`，不會以 0 回報。
 
@@ -104,7 +106,7 @@ SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`——
 > 展開「探索模組」→ 打開「應用程式」**，然後回到該裝置按「重新探索裝置」。
 > 完成後裝置的「應用程式」分頁就會出現 SMART。命令列的等效指令是
 > `lnms config:set discovery_modules.applications true`。
->（內建那台顯示的 `Proxmox` 是先前探索留下的誤判，與本對照無關——
+>（內建那台顯示的 `Proxmox` 是先前探索留下的誤判，與本對照無關，
 > 內建服務並不提供任何 SMART 資料。）
 
 ![SMART 對照](docs/images/smart-zh-TW.png)
@@ -183,23 +185,23 @@ pysnmp（只負責 message / USM / VACM / transport）
 | 面向 | 做法 |
 |---|---|
 | 威脅模型 | 主要對手是**已經在內網的攻擊者**，不是外部掃描。agent 以 LocalSystem 執行，任何 RCE 直接等同 SYSTEM 被攻陷 |
-| 前置認證 | 來源 IP 白名單、4096 位元組封包上限、每來源 token bucket、外層 TLV 合法性——全部在 BER decoder 之前 |
+| 前置認證 | 來源 IP 白名單、4096 位元組封包上限、每來源 token bucket、外層 TLV 合法性，全部在 BER decoder 之前 |
 | 存取控制 | 預設 deny。安裝時必須提供管理網段，`Any/Any` 會被拒絕 |
 | 防火牆 | 入向 UDP/161 限制在管理網段，由安裝程式建立，解除安裝時移除 |
 | 特權 | 以 `sc privs` 只保留 `SeChangeNotify` / `SeSystemProfile` / `SeIncreaseQuota` |
 | 檔案系統 | 程式在 `%ProgramFiles%`，狀態在 `%ProgramData%` 且 ACL 重設為 SYSTEM + Administrators（`ProgramData` 的預設 ACL 允許任何使用者建立子目錄）|
 | 打包 | 只用 PyInstaller **one-folder**。one-file 會先解壓到 `%TEMP%` 再執行，那是已知的 DLL 劫持路徑 |
-| 回應大小 | 上限 1400 位元組，回應永不分片 |
+| 回應大小 | 上限 1400 位元組，回應不分片 |
 | 資訊揭露 | 已安裝軟體、執行中程序、ARP 表、監聽埠一律預設停用 |
-| 掃描 | Bandit / Semgrep / Ruff-S / pip-audit / CycloneDX SBOM，加上協定層 fuzzing 與 Windows 專屬檢查——見 [`docs/security-scanning_zh-TW.md`](docs/security-scanning_zh-TW.md) |
+| 掃描 | Bandit / Semgrep / Ruff-S / pip-audit / CycloneDX SBOM，加上協定層 fuzzing 與 Windows 專屬檢查，見 [`docs/security-scanning_zh-TW.md`](docs/security-scanning_zh-TW.md) |
 
 ## 技術組成
 
 | 層 | 選擇 |
 |---|---|
 | 語言 | Python 3.12 |
-| SNMP | pysnmp 7.1 —— 只用它的 message / USM / VACM / transport 層，MIB 層由我們取代 |
-| 資料來源 | 以 ctypes 呼叫 Win32 API —— iphlpapi、psapi、ntdll、kernel32 IOCTL、SMBIOS、登錄檔 |
+| SNMP | pysnmp 7.1，只用它的 message / USM / VACM / transport 層，MIB 層由我們取代 |
+| 資料來源 | 以 ctypes 呼叫 Win32 API，iphlpapi、psapi、ntdll、kernel32 IOCTL、SMBIOS、登錄檔 |
 | 執行時相依 | `pysnmp` → `pyasn1`。就這樣 |
 | 打包 | PyInstaller one-folder → 自包含的 `jt-snmpd.exe`，目標機不需安裝 Python |
 | 服務 | pywin32 服務框架，LocalSystem，自動啟動 |
@@ -207,7 +209,7 @@ pysnmp（只負責 message / USM / VACM / transport）
 
 ## 安裝
 
-需要以系統管理員身分執行 PowerShell。**管理網段是必填的**——
+需要以系統管理員身分執行 PowerShell。**管理網段是必填的**，
 agent 不接受監聽 `Any/Any`。
 
 ```powershell
@@ -223,10 +225,10 @@ agent 不接受監聽 `Any/Any`。
 3. 停止任何舊版本，並**等待其檔案控制代碼真的釋放**
 4. 安裝到 `%ProgramFiles%\JT SNMP Agent\`，建立 `%ProgramData%\JT-SNMP\`
    並收緊 ACL
-5. 停用內建 SNMP Service——是**停用，不是移除**，並記錄足以還原的資訊
+5. 停用內建 SNMP Service，是**停用，不是移除**，並記錄足以還原的資訊
 6. 註冊服務，設定失效自動復原與特權縮減
 7. 建立僅限管理網段的防火牆規則
-8. 啟動服務並**確認它真的回應 loopback SNMP 查詢**——
+8. 啟動服務並**確認它真的回應 loopback SNMP 查詢**，
    服務處於「執行中」不等於服務會回應
 9. 輸出移轉報告，以及管理員可能需要的每一個路徑
 
@@ -269,7 +271,7 @@ jt-snmpd/
 ├── packaging/       # build-exe.ps1、install.ps1、make-release.ps1
 ├── build/           # PyInstaller one-folder 產物（不進 git）
 ├── dist/            # 發佈成品（不進 git）
-├── tests/           # 跨平台測試——以靜態解析為基礎，可在 Linux CI 上跑
+├── tests/           # 跨平台測試，以靜態解析為基礎，可在 Linux CI 上跑
 ├── bench/gate_c/    # 架構原型與效能量測
 └── docs/            # 查證結果、命名決策、資安掃描、fixtures
 ```
@@ -285,7 +287,7 @@ jt-snmpd/
 | SNMPv3（SHA-256 + AES-128）| ⛔ 未實作 |
 | VACM 檢視預設集 | ⛔ 未實作 |
 | 供 GPO / Intune / SCCM 使用的 MSI | ⛔ 未實作 |
-| Authenticode 簽章 | ⛔ 不申請 —— 見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
+| Authenticode 簽章 | ⏳ 日後規劃申請開源專案憑證，見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | Windows Server、Server Core、網域控制站 | ⛔ 尚未驗證 |
 | 多網路卡來源位址選擇 | ⛔ 尚未驗證 |
 

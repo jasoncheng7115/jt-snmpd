@@ -1,14 +1,14 @@
-"""collector 失敗語意與健康狀態追蹤（spec §6.7 / §6.9 / §7.1）。
+"""collector 失敗語意與健康狀態追蹤。
 
 為什麼這些語意必須被測試守住：
 
-- **§6.7 啟動絕不硬失敗**：一個 collector 掛掉不能讓整個 agent 垮掉。
-  一個拒絕回應的 agent 是隱形的——LibreNMS 只看到裝置 down，
+- **§6.7 啟動不硬失敗**：一個 collector 掛掉不能讓整個 agent 垮掉。
+  一個拒絕回應的 agent 是隱形的，LibreNMS 只看到裝置 down，
   到現場一看服務是 Running。
-- **§6.9 絕不捏造數值**：collector 失敗時該列必須從 snapshot 消失，
+- **§6.9 量不到就不回報**：collector 失敗時該列必須從 snapshot 消失，
   不得回傳 0 或前一次的值。回傳 default（空 list）讓該表不出現，是正確行為。
 - **§7.1 jtAgentCollectorTable**：agent 的失效是無聲的，必須能用 LibreNMS
-  監控 agent 自己。錯誤計數是累計值，恢復後不歸零——否則間歇性故障
+  監控 agent 自己。錯誤計數是累計值，恢復後不歸零，否則間歇性故障
   （最難查的那種）在圖表上會完全看不出來。
 
 這個測試以 ast 抽出 `_collector` 與 `_health` 獨立執行，
@@ -29,7 +29,7 @@ AGENT = Path(__file__).resolve().parent.parent / "deploy" / "jt_agent.py"
 def _load_health_module():
     """從 agent 原始碼抽出 _health 與 _collector，建立獨立可測的命名空間。
 
-    直接 import agent 會失敗——它相依 winreg、ctypes.windll、iphlpapi，
+    直接 import agent 會失敗，它相依 winreg、ctypes.windll、iphlpapi，
     在 Linux 上不存在。抽取法讓核心邏輯可以跨平台測試。
     """
     tree = ast.parse(AGENT.read_text(encoding="utf-8"))
@@ -72,7 +72,7 @@ def test_successful_collector_reports_ok(health_ns):
 
 
 def test_failing_collector_returns_default_instead_of_raising(health_ns):
-    """§6.7：collector 失敗絕不能讓 agent 垮掉。"""
+    """§6.7：collector 失敗不能讓 agent 垮掉。"""
     collector, health = health_ns["_collector"], health_ns["_health"]
 
     def boom():
@@ -87,7 +87,7 @@ def test_failing_collector_returns_default_instead_of_raising(health_ns):
 
 
 def test_default_is_returned_verbatim_not_fabricated(health_ns):
-    """§6.9：絕不捏造數值。default 原封不動回傳，讓該表從 snapshot 消失。"""
+    """§6.9：量不到就不回報。default 原封不動回傳，讓該表從 snapshot 消失。"""
     collector = health_ns["_collector"]
 
     def boom():
@@ -149,7 +149,7 @@ def test_duration_is_recorded(health_ns):
 
 
 def test_duration_recorded_even_on_failure(health_ns):
-    """失敗也要記錄耗時——卡住的 collector 正是要靠這個發現。"""
+    """失敗也要記錄耗時，卡住的 collector 正是要靠這個發現。"""
     collector, health = health_ns["_collector"], health_ns["_health"]
 
     def slow_boom():

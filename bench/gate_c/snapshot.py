@@ -1,9 +1,9 @@
-"""閘門 C 原型：spec.md §4.3 的 snapshot + bisect 架構。
+"""閘門 C 原型：設計規格的 snapshot + bisect 架構。
 
-刻意不使用 pysnmp 的 MibTableColumn / MibScalarInstance 物件模型（spec §10-22）。
+刻意不使用 pysnmp 的 MibTableColumn / MibScalarInstance 物件模型。
 整份 MIB 是一個「已依 OID 字典序排好的陣列」，GET 用 bisect_left、
 GETNEXT 用 bisect_right。lexicographic ordering / 無重複 OID / 無 GETNEXT loop /
-正確的 endOfMibView 因此成為結構保證，不需人工維護（spec §4.3 效益 2）。
+正確的 endOfMibView 因此成為結構保證，不需人工維護。
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ OidTuple = tuple[int, ...]
 
 @dataclass(frozen=True)
 class Snapshot:
-    """spec §4.3 的不可變快照。整趟 walk 共用同一份，故 LibreNMS 不會
+    """設計規格的不可變快照。整趟 walk 共用同一份，故 LibreNMS 不會
     遇到「walk 到一半 ifTable 列數改變」導致 port 重複或消失。"""
 
     oids: tuple[OidTuple, ...]  # 已排序，供 bisect 使用
@@ -39,7 +39,7 @@ class SnapshotMibInstrumController(AbstractMibInstrumController):
     """把 pysnmp 的 MIB 層整個換掉，只留 message / USM / VACM / transport。
 
     pysnmp 7.1.29 的 AbstractMibInstrumController 只有三個方法，
-    write_variables 不覆寫即自動成為唯讀 agent（spec §2.12：v1.0 不支援 SET）。
+    write_variables 不覆寫即自動成為唯讀 agent。
     """
 
     def __init__(self, snapshot: Snapshot):
@@ -56,7 +56,7 @@ class SnapshotMibInstrumController(AbstractMibInstrumController):
             i = bisect_left(snap.oids, target)
             if i < len(snap.oids) and snap.oids[i] == target:
                 val = snap.values[i]
-                # VACM：spec §3.5 要求白名單過濾，GET 與 GETNEXT 都要生效
+                # VACM：設計規格要求白名單過濾，GET 與 GETNEXT 都要生效
                 if acFun and acFun("read", (name, val), **context) is False:
                     out.append((name, rfc1905.noSuchObject))
                     continue
@@ -74,7 +74,7 @@ class SnapshotMibInstrumController(AbstractMibInstrumController):
         for vb in varBinds:
             name = vb[0]
             i = bisect_right(oids, tuple(name))
-            # VACM 必須在「走訪路徑」上生效，不能只擋 GET（spec §3.5 實作陷阱 2）。
+            # VACM 必須在「走訪路徑」上生效，不能只擋 GET。
             # 被拒的項目要繼續往下找，不是回傳錯誤，否則 walk 會在此中斷。
             while i < n:
                 nxt = v2c.ObjectIdentifier(oids[i])
@@ -94,7 +94,7 @@ _BASE: OidTuple = (1, 3, 6, 1, 4, 1, 99999, 1)
 
 
 def build_synthetic_snapshot(n_varbinds: int, seed: int = 1) -> Snapshot:
-    """產生 n 個 varbind 的合成 table（spec §1.3 閘門 C 的效能實驗）。
+    """產生 n 個 varbind 的合成 table。
 
     型別分布刻意混合，貼近真實 ifTable/ifXTable：整數、計數器、
     64-bit 計數器、字串、Gauge、TimeTicks。純 Integer 會低估 BER 編碼成本。
@@ -127,7 +127,7 @@ def build_synthetic_snapshot(n_varbinds: int, seed: int = 1) -> Snapshot:
         values=values,
         sizes=precompute_sizes(oids, values),
         generation=1,
-    )
+)
 
 
 def _tlv_len(content_len: int) -> int:

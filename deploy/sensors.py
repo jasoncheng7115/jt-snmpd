@@ -10,7 +10,8 @@ not load under the HVCI/WDAC configurations our customers run. Even where it
 would load, installing something that can read and write arbitrary MSRs and
 physical memory across hundreds of government and hospital machines, for one
 temperature reading, turns a monitoring tool into a privilege-escalation path.
-CLAUDE.md rule 8 forbids it.
+A project rule forbids it: no kernel driver is introduced for the sake of any
+single value.
 
 What this module exposes is what the firmware already publishes:
 
@@ -69,7 +70,7 @@ TENTHS_K_MAX = 4732             # 200.0 °C
 
 def tenths_kelvin_to_celsius(v: int) -> float | None:
     """Tenths of a kelvin to Celsius; None for implausible values (never
-    fabricate — spec §6.9)."""
+    fabricate)."""
     if not isinstance(v, int) or not (TENTHS_K_MIN <= v <= TENTHS_K_MAX):
         return None
     return round(v / 10.0 - 273.15, 1)
@@ -230,7 +231,7 @@ def parse_thermal_zone(inst: WnodeInstance) -> ThermalZone | None:
         celsius=celsius,
         critical_c=tenths_kelvin_to_celsius(f[7]),
         passive_c=tenths_kelvin_to_celsius(f[6]),
-    )
+)
 
 
 # --- Below here needs Windows; importing this module on Linux stays safe ----
@@ -344,7 +345,7 @@ if sys.platform == "win32":  # pragma: no cover - only runs on Windows
             on_ac=(st.ACLineStatus == 1),
             # 0xFFFFFFFF means unknown, and on AC power it has no meaning anyway
             seconds_left=None if secs == 0xFFFFFFFF else int(secs),
-        )
+)
 
     class CpuFreq(NamedTuple):
         number: int

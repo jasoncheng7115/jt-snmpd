@@ -3,7 +3,7 @@
 # Note: saved as UTF-8 with BOM; without one PowerShell 5.1 reads the file using
 # the system ANSI code page.
 #
-# Why MSI (spec §5.4): Group Policy software installation accepts MSI and
+# Why MSI : Group Policy software installation accepts MSI and
 # nothing else. That single fact decides whether a customer can deploy this
 # through Active Directory at all.
 #

@@ -7,14 +7,14 @@
 但在「服務起不來」這個情境下它幫不上忙，而且有兩個更嚴重的問題：
 
 1. **記錄檔無上限成長。** 快照重建失敗時每 5 秒一行，一天一萬七千行。
-   數百台跑數年，監控代理程式把被監控主機的系統碟寫滿——這是最不能接受的失敗。
+   數百台跑數年，監控代理程式把被監控主機的系統碟寫滿，這是最不能接受的失敗。
 2. **服務假活著。** `SvcDoRun` 啟動 agent 執行緒後就 `WaitForSingleObject(hstop,
    INFINITE)`。agent 執行緒若在啟動階段死掉（綁定失敗、MIB 載入失敗、快照建置
    失敗），`run_agent` 記錄完就返回，而服務**永遠停在 Running**。
    SCM 說 Running、LibreNMS 說逾時，兩邊說法不一致是現場最難查的狀況。
-   更糟的是 `sc failure` 的三段式自動復原設定完全不會觸發——程序沒結束。
+   更糟的是 `sc failure` 的三段式自動復原設定完全不會觸發，程序沒結束。
 
-spec §6.5 已經點名過「假活著」，而它在這裡換了個地方重演。
+設計規格已經點名過「假活著」，而它在這裡換了個地方重演。
 """
 
 from __future__ import annotations
@@ -40,10 +40,10 @@ def _func(name: str) -> str:
 # --- 記錄檔輪替 -------------------------------------------------------------
 
 def test_log_has_a_size_cap():
-    assert "LOG_MAX_BYTES" in SRC, "記錄檔缺少大小上限——會無限成長"
+    assert "LOG_MAX_BYTES" in SRC, "記錄檔缺少大小上限，會無限成長"
     for node in TREE.body:
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "LOG_MAX_BYTES":
-            cap = eval(ast.unparse(node.value))  # noqa: S307 —— 來源是本 repo 的常數
+            cap = eval(ast.unparse(node.value))  # noqa: S307，來源是本 repo 的常數
             assert 0 < cap <= 64 * 1024 * 1024, f"上限 {cap} 不合理"
             return
     pytest.fail("LOG_MAX_BYTES 不是模組層級常數")
@@ -105,7 +105,7 @@ def test_routine_collector_failures_stay_out_of_the_event_log():
     真正重要的那筆就再也找不到。"""
     body = _func("_collector")
     assert "error=True" not in body, (
-        "collector 的例行失敗不應寫入事件檢視器——會稀釋掉真正重要的事件")
+        "collector 的例行失敗不應寫入事件檢視器，會稀釋掉真正重要的事件")
 
 
 # --- 服務假活著 -------------------------------------------------------------
@@ -121,7 +121,7 @@ def test_service_does_not_wait_on_stop_event_alone():
     """核心斷言：只等 hstop 就是「假活著」。"""
     body = _svc_do_run()
     assert "WaitForSingleObject(self.hstop, win32event.INFINITE)" not in body, (
-        "只等 hstop 會讓 agent 執行緒死亡後服務仍顯示 Running（spec §6.5 假活著）")
+        "只等 hstop 會讓 agent 執行緒死亡後服務仍顯示 Running")
     assert "WaitForMultipleObjects" in body, "必須同時等待「停止」與「agent 已死」"
 
 
@@ -143,7 +143,7 @@ def test_unexpected_death_exits_nonzero_to_trigger_recovery():
 
 
 def test_normal_stop_is_not_treated_as_a_crash():
-    """正常停止時不可誤觸發復原——否則 `sc stop` 之後服務會自己爬回來。"""
+    """正常停止時不可誤觸發復原，否則 `sc stop` 之後服務會自己爬回來。"""
     body = _svc_do_run()
     assert "not self.stop_event.is_set()" in body, (
         "必須排除正常停止路徑，否則 SvcStop 後會被自動復原重新拉起")
@@ -160,7 +160,7 @@ def test_recovery_is_configured_by_the_installer():
 # --- 記錄檔位置必須答得出來 -------------------------------------------------
 
 def test_log_path_is_exposed_over_snmp():
-    """CLAUDE.md：「設定檔在哪」必須在四處都答得出來。
-    記錄檔同理——遠端診斷時 walk 一下就知道要去哪台的哪個目錄撈。"""
+    """專案規則：「設定檔在哪」必須在四處都答得出來。
+    記錄檔同理，遠端診斷時 walk 一下就知道要去哪台的哪個目錄撈。"""
     assert "jtAgentLogPath" in SRC, "記錄檔路徑未透過 SNMP 揭露"
     assert "octet(LOG_DIR)" in SRC

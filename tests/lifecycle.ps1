@@ -23,7 +23,7 @@ $MSI  = "C:\jtdev\dist\jt-snmpd-0.2.0-x64.msi"
 function Arp { (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\* -EA SilentlyContinue | Where-Object DisplayName -like "*JT SNMP*") }
 function SvcState { $s=Get-Service jt-snmpd -EA SilentlyContinue; if($s){"$($s.Status)"}else{"absent"} }
 function Port161 { (Get-NetUDPEndpoint -LocalPort 161 -EA SilentlyContinue | Measure-Object).Count }
-# 移除後 161 不會是空的——內建 SNMP 被我們歸還並重新啟動，理當接手回去。
+# 移除後 161 不會是空的，內建 SNMP 被我們歸還並重新啟動，理當接手回去。
 # 該檢查的是「jt-snmpd 不再持有」，不是「沒人在聽」。第一次寫成後者，
 # 於是把正確的歸還行為判成失敗。
 function Port161Owner {
@@ -31,7 +31,7 @@ function Port161Owner {
     (Get-Process -Id $_.OwningProcess -EA SilentlyContinue).ProcessName }) | Sort-Object -Unique
   if ($o) { $o -join ',' } else { 'none' } }
 function FwRules { (Get-NetFirewallRule -DisplayName "JT SNMP Agent*" -EA SilentlyContinue | Measure-Object).Count }
-# 注意：不可用 $args 當參數名——那是 PowerShell 的保留自動變數，
+# 注意：不可用 $args 當參數名，那是 PowerShell 的保留自動變數，
 # 會被自身的未具名參數陣列覆蓋，傳入值永遠是空的（實測踩過）。
 function MsiRun { param([string[]]$MsiArgs)
   (Start-Process msiexec.exe -ArgumentList $MsiArgs -Wait -PassThru).ExitCode }
@@ -111,7 +111,7 @@ if ($msExists) {
   Start-Sleep 3
   Check "內建 SNMP 已歸還為 Automatic" ((Get-Service SNMP).StartType -eq "Automatic") "(得到 $((Get-Service SNMP).StartType))"
   Check "內建 SNMP 已重新啟動" ((Get-Service SNMP).Status -eq "Running") "(得到 $((Get-Service SNMP).Status))"
-  # 歸還之後才輪到我們讓位——重裝前先讓開 UDP/161
+  # 歸還之後才輪到我們讓位，重裝前先讓開 UDP/161
   Stop-Service SNMP -Force -EA SilentlyContinue
   Set-Service -Name SNMP -StartupType Automatic -EA SilentlyContinue
   Start-Service SNMP -EA SilentlyContinue

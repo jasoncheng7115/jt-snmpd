@@ -1,4 +1,4 @@
-"""閘門 C 效能實驗（spec §1.3 / §4.2）。
+"""閘門 C 效能實驗。
 
 量測三件事：
   1. 每 varbind 處理成本      門檻 < 80 µs
@@ -55,7 +55,7 @@ def _walk(timeout: int) -> tuple[float, int]:
         ["snmpbulkwalk", "-v2c", "-c", COMMUNITY, "-Cr25", "-r0", "-t", "10", "-On",
          f"{HOST}:{PORT}", BASE_OID],
         capture_output=True, text=True, timeout=timeout,
-    )
+)
     d = time.perf_counter() - t
     lines = [ln for ln in r.stdout.splitlines() if ln.startswith(".1.3.6.1.4.1.99999")]
     return d, len(lines)
@@ -71,7 +71,7 @@ def _getbulk_latency(samples: int = 40) -> list[float]:
             ["snmpbulkget", "-v2c", "-c", COMMUNITY, "-Cr25", "-Cn0", "-r0", "-t", "5", "-On",
              f"{HOST}:{PORT}", oid],
             capture_output=True, text=True, timeout=15,
-        )
+)
         out.append((time.perf_counter() - t) * 1000)
     return out
 

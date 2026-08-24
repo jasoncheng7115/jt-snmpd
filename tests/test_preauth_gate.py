@@ -1,11 +1,11 @@
-"""前置解析閘門的對抗式測試（spec §3.2 / §3.9）。
+"""前置解析閘門的對抗式測試。
 
 這個檔案的立場是**攻擊者**，不是使用者。每個測試都在問「這樣能不能繞過」，
 而不是「正常請求會不會通過」。
 
-spec §3.1 的威脅模型指出：agent 以 LocalSystem 常駐，任何 RCE 直接等同 SYSTEM，
+設計規格的威脅模型指出：agent 以 LocalSystem 常駐，任何 RCE 直接等同 SYSTEM，
 而 UDP/161 上每一個位元組都會先經過純 Python 的 BER decoder 才輪到認證。
-主要對手是**已在內網的攻擊者**——所以「來源 IP 在內網」不能當成信任依據，
+主要對手是**已在內網的攻擊者**，所以「來源 IP 在內網」不能當成信任依據，
 速率限制與畸形封包檢查一樣要對內網來源生效。
 
 位址一律使用 RFC 5737 的文件用保留範圍（192.0.2.0/24、198.51.100.0/24）。
@@ -41,7 +41,7 @@ def gate():
     return PreAuthGate(
         allowed_networks=PreAuthGate.parse_networks(["192.0.2.0/24"]),
         rate_pps=50, burst=100,
-    )
+)
 
 
 # --- ① 來源 IP 白名單 -------------------------------------------------------
@@ -58,7 +58,7 @@ def test_source_outside_acl_is_dropped_with_zero_parsing(gate):
 
 def test_acl_is_checked_before_everything_else(gate):
     """ACL 必須是第一道。畸形又超大的封包若來自被拒 IP，
-    應以 ACL 記數，代表它根本沒被檢查內容——零解析。"""
+    應以 ACL 記數，代表它根本沒被檢查內容，零解析。"""
     evil = b"\xff" * 100_000
     ok, reason = gate.check(evil, "10.0.0.1", now=0.0)
     assert not ok
@@ -125,7 +125,7 @@ def test_oversized_packet_dropped(gate):
 
 
 def test_size_limit_is_checked_before_tlv_parsing(gate):
-    """超大封包不應進入 TLV 解析——那正是記憶體/CPU 放大的入口。"""
+    """超大封包不應進入 TLV 解析，那正是記憶體/CPU 放大的入口。"""
     gate.check(b"\xff" * 9000, "192.0.2.68", now=0.0)
     assert gate.counters[DropReason.OVERSIZE] == 1
     assert gate.counters[DropReason.MALFORMED] == 0
@@ -151,7 +151,7 @@ def test_tokens_refill_over_time(gate):
 
 
 def test_rate_limit_is_per_source_not_global(gate):
-    """單一來源不得耗盡全域配額——否則一台被入侵的機器就能讓
+    """單一來源不得耗盡全域配額，否則一台被入侵的機器就能讓
     正常管理主機取不到資料。"""
     for _ in range(100):
         gate.check(GOOD, "192.0.2.10", now=0.0)
@@ -188,7 +188,7 @@ def test_malformed_outer_tlv_rejected(gate, data, desc):
 
 
 def test_deeply_nested_sequence_is_size_or_tlv_bounded(gate):
-    """深度巢狀 SEQUENCE 是 pyasn1 RecursionError 的入口（spec §3.2）。
+    """深度巢狀 SEQUENCE 是 pyasn1 RecursionError 的入口。
 
     閘門不做深度解析（那正是要避免的），但巢狀攻擊要嘛超過大小上限、
     要嘛外層長度對不上。這裡驗證一個「外層長度正確」的深巢狀封包
@@ -203,7 +203,7 @@ def test_deeply_nested_sequence_is_size_or_tlv_bounded(gate):
 
 
 def test_long_form_length_accepted_when_correct(gate):
-    """合法的長格式長度不能被誤殺——正常的大型 GETBULK 回應請求會用到。"""
+    """合法的長格式長度不能被誤殺，正常的大型 GETBULK 回應請求會用到。"""
     body = b"\x04" + bytes([0x82]) + (200).to_bytes(2, "big") + b"A" * 200
     ok, reason = gate.check(_seq(body), "192.0.2.68", now=0.0)
     assert ok, f"合法長格式被誤殺: {reason}"
@@ -223,7 +223,7 @@ def test_counters_track_each_drop_reason(gate):
 
 
 def test_bucket_table_does_not_grow_unbounded(gate):
-    """偽造來源 IP 洗一輪就能讓 bucket dict 無限成長——這本身是攻擊面。
+    """偽造來源 IP 洗一輪就能讓 bucket dict 無限成長，這本身是攻擊面。
 
     注意：這些來源都不在 ACL 內，所以連 bucket 都不該建立。
     """
@@ -249,7 +249,7 @@ def test_prune_keeps_active_buckets(gate):
     assert "192.0.2.68" not in gate._buckets
 
 
-# --- loopback 永遠放行（spec §6.5 / §5.7 第 7 步）---------------------------
+# --- loopback 永遠放行---------------------------
 
 @pytest.mark.parametrize("addr", ["127.0.0.1", "127.0.0.53", "::1"])
 def test_loopback_always_allowed_regardless_of_acl(gate, addr):

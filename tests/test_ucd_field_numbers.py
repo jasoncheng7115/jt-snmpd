@@ -8,7 +8,7 @@ SwapIn / SwapOut / IOSent / IOReceived / Contexts / Interrupts，
 IOSent(57) / IOReceived(58) / Interrupts(59) / Contexts(60) / SwapIn(62) / SwapOut(63)。
 
 **錯位完全不會被察覺**：agent 正常啟動、SNMP walk 有回應、LibreNMS 圖表有線、
-數字持續變動——只是 context switches 被畫在 I/O 圖上。既有的
+數字持續變動，只是 context switches 被畫在 I/O 圖上。既有的
 「無重複 OID」「排序正確」「回應大小」測試一個都抓不到，因為結構完全合法，
 只是語意錯了。
 
@@ -67,7 +67,7 @@ def _emitted() -> dict[int, str]:
     out: dict[int, str] = {}
     for m in _EMIT.finditer(SRC):
         num = int(m.group(1))
-        # 中間不可跨到下一個 add(UCDSS —— 那代表這個欄位自己沒有註解
+        # 中間不可跨到下一個 add(UCDSS，那代表這個欄位自己沒有註解
         if "add(UCDSS" in m.group(2):
             continue
         out.setdefault(num, m.group(3))
@@ -129,14 +129,14 @@ def test_cpu_four_fields_all_present_for_librenms():
     for num, name in ((50, "ssCpuRawUser"), (51, "ssCpuRawNice"),
                       (52, "ssCpuRawSystem"), (53, "ssCpuRawIdle")):
         assert emitted.get(num) == name, (
-            f"{name} 未輸出——LibreNMS 會因此不建立 Detailed Processor Usage 圖表")
+            f"{name} 未輸出，LibreNMS 會因此不建立 Detailed Processor Usage 圖表")
 
 
 def test_unmeasurable_fields_are_not_emitted():
     """無法在 Windows 上量測的欄位必須**不輸出**，而不是填 0。
 
     填 0 會讓 LibreNMS 建立圖表並畫出一條零線，看起來像「量測過且為零」，
-    實際上是「根本無法量測」。spec §6.9：絕不捏造數值。
+    實際上是「根本無法量測」。量不到就不回報。
     """
     emitted = _emitted()
     for num, name in ((54, "ssCpuRawWait"), (64, "ssCpuRawSteal"),

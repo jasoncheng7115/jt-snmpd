@@ -1,6 +1,5 @@
 # 命名與路徑定案
 
-> 對應規格：spec.md §3.7、§5.10。本文件取代 spec 中暫用的 `jt-win-snmp` 命名。
 
 ## 命名
 
@@ -10,16 +9,16 @@
 | Windows 服務名稱 | **jt-snmpd** | 與專案同名，`sc query jt-snmpd` 直覺 |
 | 服務顯示名稱 | **JT SNMP Agent** | services.msc 中可讀 |
 | 服務描述 | 以標準 MIB 提供 Windows 主機監控資料的 SNMP Agent | |
-| 主執行檔 | **jt-snmpd.exe** | 服務主程式（spec §1.4：服務主程式必須是自己的 exe）|
+| 主執行檔 | **jt-snmpd.exe** | 服務主程式|
 | 管理 CLI | **jt-snmpdctl.exe** | 與服務主程式分離，避免混淆（對照 systemctl）|
 | 安裝目錄名 | **JT SNMP Agent** | |
 | 資料目錄名 | **JT-SNMP** | |
 | GPO 原則路徑 | `HKLM\SOFTWARE\Policies\JasonTools\JTSNMPD` | |
 
-## 安裝路徑（程式與資料嚴格分離，spec §3.7）
+## 安裝路徑（程式與資料嚴格分離）
 
 ```
-%ProgramFiles%\JT SNMP Agent\          ← 程式本體，唯讀。絕不放 ProgramData
+%ProgramFiles%\JT SNMP Agent\          ← 程式本體，唯讀。不放 ProgramData
     jt-snmpd.exe
     jt-snmpdctl.exe
     _internal\                          PyInstaller one-folder 執行環境
@@ -29,7 +28,7 @@
     config.yaml
     config.example.yaml
     secrets\usm.dat                     SNMPv3 localized key（DPAPI machine scope）
-    state\index-map.json                ifIndex 保存（最貴的失效模式，§6.6）
+    state\index-map.json                ifIndex 保存（弄丟它，LibreNMS 會重建全部 port）
     state\engine-state.json             engineID / engineBoots
     state\ms-snmp-migration.json        Windows SNMP 移轉與還原資訊
     logs\jt-snmpd.log                   輪替：5 MB × 5 份
@@ -39,8 +38,8 @@
 ## 硬性路徑規則
 
 1. **ImagePath 必須加引號**。實測過：`C:\程式集測試\JT SNMP 代理程式\jt_snmpd.py`
-   未加引號時被空白截斷成 `C:\程式集測試\JT`，行程直接死掉且無任何 log。
-   這就是資安稽核最常抓到的 *unquoted service path*（spec §3.7）。
+   未加引號時被空白截斷成 `C:\程式集測試\JT`，處理程序直接死掉且無任何 log。
+   這就是資安稽核最常抓到的 *unquoted service path*。
    預設安裝路徑 `%ProgramFiles%\JT SNMP Agent\` **本身就含空白**，所以這不是邊緣案例。
 
 2. **ProgramData ACL 必須驗證擁有者並重設**。`C:\ProgramData` 預設 ACL 允許 Users
@@ -72,5 +71,5 @@ diskIODevice = PhysicalDrive0            ← UCD-DISKIO
 中文（「乙太網路」），所以這在台灣環境是**必踩**的，不是邊緣案例。
 
 一律經過 `octet()` 包裝明確編成 UTF-8，禁止裸用 `rfc1902.OctetString(str)`。
-同理，所有檔案 I/O 一律明確 `encoding="utf-8"`——Windows 的 `open()` 預設是系統
+同理，所有檔案 I/O 一律明確 `encoding="utf-8"`，Windows 的 `open()` 預設是系統
 ANSI 代碼頁（正體中文為 cp950），寫入非 cp950 字元會丟 `UnicodeEncodeError`。

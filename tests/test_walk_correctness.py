@@ -1,8 +1,8 @@
-"""walk 正確性與回應大小測試（spec §36、§4.4）。
+"""walk 正確性與回應大小測試。
 
-spec §36 把下列每一種都列為「不可接受」，而它們全部發生在 MIB 層：
+設計規格把下列每一種都列為「不可接受」，而它們全部發生在 MIB 層：
 GETNEXT loop、ordering 錯亂、duplicate OID、endOfMibView 不正確、
-bulk response 太大。§4.3 的 snapshot + bisect 架構聲稱這些是「結構保證」——
+bulk response 太大。§4.3 的 snapshot + bisect 架構聲稱這些是「結構保證」，
 這個檔案就是在驗證那個聲稱，不是相信它。
 """
 
@@ -49,7 +49,7 @@ def agent():
         [sys.executable, "-m", "bench.gate_c.agent", "--varbinds", str(N_VARBINDS),
          "--port", str(PORT), "--community", COMMUNITY],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-    )
+)
     try:
         for _ in range(600):
             line = proc.stdout.readline()
@@ -76,7 +76,7 @@ def _walk(port: int, oid: str = BASE, maxrep: int = 25) -> list[tuple[str, str]]
         ["snmpbulkwalk", "-v2c", "-c", COMMUNITY, f"-Cr{maxrep}", "-r0", "-t", "10",
          "-On", "-Oe", f"127.0.0.1:{port}", oid],
         capture_output=True, text=True, timeout=180,
-    )
+)
     out = []
     for ln in r.stdout.splitlines():
         if " = " not in ln or not ln.startswith(".1"):
@@ -103,7 +103,7 @@ def test_walk_is_strictly_lexicographically_ordered(agent):
 
 
 def test_walk_terminates_and_does_not_loop(agent, expected):
-    """GETNEXT loop 的症狀是 walk 永不結束。用筆數上界當守門。"""
+    """GETNEXT loop 的症狀是 walk 不會結束。用筆數上界當守門。"""
     got = _walk(agent)
     assert len(got) == len(expected), f"預期 {len(expected)} 筆，實得 {len(got)} 筆"
 
@@ -156,7 +156,7 @@ def test_response_never_exceeds_mtu_budget(agent, max_reps):
     assert len(data) <= MAX_RESPONSE_BYTES, (
         f"max-repetitions={max_reps} 的回應為 {len(data)} bytes，"
         f"超過 {MAX_RESPONSE_BYTES}，會造成 IP 分片"
-    )
+)
 
 
 def test_oversized_max_repetitions_is_capped_not_rejected(agent):
@@ -190,7 +190,7 @@ def _snmpcmd(tool: str, port: int, oid: str) -> str:
     r = subprocess.run(
         [tool, "-v2c", "-c", COMMUNITY, "-r0", "-t", "10", "-On", f"127.0.0.1:{port}", oid],
         capture_output=True, text=True, timeout=30,
-    )
+)
     return (r.stdout + r.stderr).strip()
 
 

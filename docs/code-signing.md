@@ -7,17 +7,18 @@ description: The installer is unsigned - what you will see, and how to handle it
 [← All documentation](https://jasoncheng7115.github.io/jt-snmpd/) ·
 **English** | [繁體中文](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html)
 
-# The installer is not code signed
+# The installer is not yet code signed
 
-The MSI, and the executable it installs, carry **no Authenticode signature**.
-There is no plan to obtain a certificate at present, so this is the state you
-should expect from every release rather than a temporary gap.
+The MSI, and the executable it installs, carry **no Authenticode signature**
+today. A certificate through one of the code-signing programmes for open-source
+projects is planned, and once it is in place the warnings described below stop
+appearing. Until then, this page covers what you will see and how to get past it
+safely.
 
 An Authenticode signature does two things: it proves the file came from a named
 publisher, and it proves the bytes have not been altered since. This project
-answers the second with a **published SHA-256** for every release asset, and
-leaves the first unanswered. The sections below cover what that looks like at
-install time and what to do about it.
+answers the second with a **published SHA-256** for every release asset. The
+first is what the certificate will supply.
 
 ---
 
@@ -30,7 +31,7 @@ install time and what to do about it.
 | The UAC elevation prompt | Publisher shown as **Unknown**, on the yellow banner rather than the blue verified one | Expected. Confirm you are elevating for the file you just verified |
 | `msiexec /qn` from an elevated console | Nothing — SmartScreen only intercepts interactive launches | Nothing |
 | GPO software deployment | Nothing — the installation runs as SYSTEM with no interactive session | Nothing. Host the MSI on an internal share (§3) |
-| WDAC or AppLocker enforced | **Blocked.** No publisher rule can match an unsigned file | Add a hash rule (§4), or sign it yourself (§5) |
+| WDAC or AppLocker enforced | **Blocked.** No publisher rule can match an unsigned file | Add a hash rule (§4), or sign it yourself (§6) |
 | Microsoft Defender | PyInstaller output has a history of heuristic false positives | If it is quarantined, submit the sample and add an exclusion (§6) |
 
 None of these are errors in the installer. They are Windows correctly reporting
@@ -77,7 +78,58 @@ marker entirely, which is why GPO deployment never encounters it.
 
 ---
 
-## 4. WDAC and AppLocker: add a hash rule
+## 4. Trusting the installer manually
+
+An unsigned file has no certificate to trust, so "trusting it manually" really
+means one of two things: allowing it on a single machine, or settling the
+question across the whole domain at once.
+
+### On a single machine
+
+| What stops you | How to allow it |
+|---|---|
+| SmartScreen's "Windows protected your PC" | Click **More info**, then **Run anyway** |
+| The file's Mark of the Web | Right-click the file → **Properties** → tick **Unblock**, or run `Unblock-File` |
+| Defender quarantining the file | Open **Windows Security** → **Virus & threat protection** → **Protection history**, find the entry and choose **Allow on device** |
+
+Do all three only after checking the SHA-256 (§2). The order matters: establish
+that the file is the right one, then decide whether to let it through. The other
+way round is opening the door before knowing what is behind it.
+
+### Across a domain
+
+Clicking "Run anyway" on each of several hundred machines is not a procedure.
+Two routes actually work:
+
+**One: deploy from an internal file share.** The Mark of the Web is applied only
+to files downloaded through a browser. Put the MSI on a domain file share and
+install it through GPO software deployment, and neither SmartScreen nor the
+unblock step ever arises, because the installation runs as SYSTEM with no
+interactive session. This is the least effort of anything on this page.
+
+**Two: sign with your own certificate and push it as a trusted publisher.** If
+your organisation runs an internal PKI, sign the MSI (§6) and then use Group
+Policy to place that certificate in the clients' **Trusted Publishers** store:
+
+```
+Computer Configuration → Windows Settings → Security Settings → Public Key Policies
+  → Trusted Publishers               <- import your code-signing certificate
+  → Trusted Root Certification Authorities   <- also import, if an internal CA issued it
+```
+
+Once that is deployed, the UAC prompt names your organisation instead of showing
+an unknown publisher, SmartScreen does not intervene, and your existing WDAC and
+AppLocker publisher rules apply directly. This one route settles everything else
+on this page.
+
+> Do not "solve" this by adding jt-snmpd to a global SmartScreen or Defender
+> exclusion list. Exclusions apply to a path rather than to a file, they stay
+> there indefinitely, and anything later placed in that directory is skipped
+> along with it.
+
+---
+
+## 5. WDAC and AppLocker: add a hash rule
 
 In an environment with Windows Defender Application Control or AppLocker in
 enforcement, an unsigned file cannot be allowed by publisher — there is no
@@ -109,7 +161,7 @@ service from starting.
 
 ---
 
-## 5. Sign it yourself
+## 6. Sign it yourself
 
 If your organisation runs an internal PKI with a code-signing template — common
 in government agencies and hospitals — signing the MSI with your own certificate
@@ -133,7 +185,7 @@ record your own hash of the signed artefact for your internal records.
 
 ---
 
-## 6. If Defender quarantines the file
+## 7. If Defender quarantines the file
 
 PyInstaller-produced executables are periodically flagged by heuristics, not by
 signature matches. If that happens:
@@ -151,7 +203,7 @@ Do not disable real-time protection as a workaround.
 
 ---
 
-## 7. Deciding whether this is acceptable
+## 8. Deciding whether this is acceptable
 
 It may not be, and that is a legitimate conclusion. Some points to weigh:
 
@@ -161,7 +213,7 @@ It may not be, and that is a legitimate conclusion. Some points to weigh:
 - **The hash chain is complete** from the release page to the installed file, as
   long as you fetch the hash from the release page.
 - **What is missing is publisher identity**, and no amount of hashing supplies
-  it. If your controls require a named, certificate-backed publisher, §5 is the
+  it. If your controls require a named, certificate-backed publisher, §6 is the
   route that satisfies them.
 - **Building from source is supported.** If you would rather not trust a binary
   at all, `packaging/build-msi.ps1` produces the same MSI locally.

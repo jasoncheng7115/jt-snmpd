@@ -13,6 +13,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A "manual trust" section in the code-signing document**, covering both the
+  single-machine route (SmartScreen "Run anyway", `Unblock-File`, allowing a
+  quarantined file in Defender) and the fleet route (deploy from an internal
+  share, or sign with your own certificate and push it to Trusted Publishers by
+  Group Policy, which settles every other prompt at once).
+- **What the withheld OIDs would actually buy you**, checked against the
+  LibreNMS source rather than assumed. Of the four categories held back, three —
+  installed software, running processes, and the connection tables — have **no
+  consumer in LibreNMS at all**; publishing 2,727 OIDs of vulnerability and
+  connection data would produce no page and no graph. Only ARP is consumed
+  (`LibreNMS/Modules/ArpTable.php` → `ipv4_mac` → ARP and FDB search), and it is
+  already implemented behind `enable_arp_table`.
+- **System graphs and volume-label encoding** added to the comparison. Windows
+  shows three System graphs where Linux shows eight, because the other five come
+  from UCD-SNMP-MIB, which the built-in service does not implement. Non-ASCII
+  volume labels are a real failure mode rather than a nicety: pysnmp raises
+  `PyAsn1UnicodeEncodeError` on them, and the whole snapshot fails to build.
+
+### Changed
+
+- **Code signing is planned, not abandoned.** A certificate through an
+  open-source code-signing programme is intended; until it arrives the documents
+  say what you will see and how to get past it safely.
+- **Published files no longer cite internal documents.** Every reference to the
+  internal specification and to the internal working notes has been replaced by
+  the substance it was pointing at. A citation a reader cannot follow is worse
+  than no citation. The Phase 0 gate report is no longer published: it is
+  structured entirely around the internal specification's section numbering.
+- **The `msiexec` line is one line.** It is short enough that the caret
+  continuations were noise.
+- **The Proxmox breadcrumb is gone from the SMART screenshot.** It was an
+  unrelated application LibreNMS had discovered on the control host, and next to
+  a SMART comparison it read as part of the comparison.
+
+### Fixed
+
+- **`prepare-public-repo.py` kept only `README.md` from `dist/` and `build/`**,
+  so the Traditional Chinese READMEs in both had never been published.
+- **More terminology**: privilege stripping is 縮減 rather than 剝除, blocked is
+  受阻, process is 處理程序, installer is 安裝檔, thermal zone is 溫度區 (with an
+  explanation of what one is, since the literal translation explains nothing),
+  and Mark of the Web is 網頁標記. Absolute phrasing (絕不, 永不) has been
+  replaced with plain description, and the em dash is gone from Chinese text.
+
+### Added
+
 - **Bilingual documentation.** Every published document now exists in both
   English (`docs/<name>.md`) and Traditional Chinese (`docs/<name>_zh-TW.md`),
   with a language switch and a link back to the documentation home at the top of
@@ -342,18 +388,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   IPv4 + IPv6) via `GetUnicastIpAddressTable`, feeding the LibreNMS
   ipv4-addresses and ipv6-addresses modules
 - **Neighbour cache** (`ipNetToPhysicalTable`, ARP and IPv6 ND) via `GetIpNetTable2`.
-  **Disabled by default** — spec §3.5 identifies an internal ARP table as a
+  **Disabled by default**: an internal ARP table is a
   ready-made lateral-movement target list
 - **Disk temperature and health** (ENTITY-SENSOR-MIB `entPhySensorTable`) via
   `IOCTL_STORAGE_QUERY_PROPERTY` with `StorageDeviceTemperatureProperty` and the
-  NVMe SMART health log. Per spec §2.9 this deliberately avoids
+  NVMe SMART health log. This deliberately avoids
   LibreHardwareMonitor, whose WinRing0 driver is on the Microsoft vulnerable
   driver blocklist and triggers Defender on HVCI endpoints
 
 - **Complete memory reporting via `GetPerformanceInfo`**: in addition to Physical
   and Virtual Memory, the agent now reports **Cached Memory**, **Swap Space**
   (the page-file portion of the commit limit, which is a different concept from
-  commit charge — see spec §2.2) and the kernel paged / non-paged pools.
+  commit charge) and the kernel paged / non-paged pools.
   LibreNMS now shows four memory pools instead of two
 - **Real volume labels and serial numbers** in `hrStorageDescr` via
   `GetVolumeInformationW`, replacing a hard-coded placeholder. Non-ASCII labels
@@ -362,7 +408,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **`sysContact` / `sysLocation` configuration sources**: values are resolved with
   ADMX policy taking precedence over the existing Windows SNMP Service registry
-  settings (spec §5.5, §5.9.3). Customers already running the built-in SNMP
+  settings. Customers already running the built-in SNMP
   service do not have to re-enter these when switching over — the settings are
   picked up automatically, even after the built-in service has been disabled,
   because its registry keys remain. `jtAgentConfigSource` reports which source won
@@ -383,24 +429,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Complete inventory**:
   - **ENTITY-MIB `entPhysicalTable`** (LibreNMS Inventory page), sourced by parsing
     SMBIOS via `GetSystemFirmwareTable('RSMB')` — no WMI and no special privileges
-    required (spec §2.10). Covers Type 0 BIOS, Type 1 System, Type 2 Baseboard,
+    required. Covers Type 0 BIOS, Type 1 System, Type 2 Baseboard,
     Type 4 Processor and Type 17 Memory Device, using the segmented index layout
-    from §34.5 (1000 system / 1100 mainboard / 2000+ CPU / 3000+ DIMM / 4000+ disks)
+    (1000 system / 1100 mainboard / 2000+ CPU / 3000+ DIMM / 4000+ disks)
   - **Full `hrDeviceTable` family** (LibreNMS Devices page): processors, network
     interfaces and physical disks, with `hrProcessorTable`, `hrNetworkTable` and
-    `hrDiskStorageTable`. All derived tables share one `hrDeviceIndex` space (spec §2.3)
+    `hrDiskStorageTable`. All derived tables share one `hrDeviceIndex` space
   - **Physical disk inventory**: model, serial and bus type via
     `IOCTL_STORAGE_QUERY_PROPERTY`; capacity via `IOCTL_DISK_GET_DRIVE_GEOMETRY_EX`
-  - Hardware inventory is cached permanently (spec §2.7) — SMBIOS does not change
+  - Hardware inventory is cached permanently  — SMBIOS does not change
     after boot
 
-- **Pre-authentication gate** (spec §3.2, flagged as the highest-priority security
-  item): four checks that run before pysnmp sees any bytes — source IP allow-list,
+- **Pre-authentication gate** : four checks that run before pysnmp sees any bytes — source IP allow-list,
   packet size limit, per-source token bucket rate limiting, and a coarse outer-TLV
   sanity check. Dropped packets **never reach the BER decoder**, so deeply nested
   structures, oversized length fields and OID amplification cannot touch pyasn1
 
-- **Self-health OIDs** (spec §7, brought forward from Phase 7): this agent fails
+- **Self-health OIDs** : this agent fails
   silently, so these OIDs let LibreNMS monitor the agent itself. They cover
   version, service uptime, RSS, thread and handle counts, snapshot age and build
   time, configuration paths, and a security warning summary

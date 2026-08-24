@@ -1,7 +1,6 @@
-# JT Windows SNMP Agent — 測試計劃
+# JT Windows SNMP Agent，測試計劃
 
-> 對應規格：`spec.md`
-> 狀態標記：`[已實作]` 測試已存在且會跑 / `[待實作]` 已定義但尚未寫 / `[阻塞]` 缺環境
+> 狀態標記：`[已實作]` 測試已存在且會跑 / `[待實作]` 已定義但尚未寫 / `[受阻]` 缺環境
 
 ---
 
@@ -13,86 +12,86 @@
 
 **0.2 不得發出有已知 bug 的版本。** §10 的 Release Gate 是硬性閘門，
 任一項未通過即不得打 tag、不得產出 MSI。「先發再修」在客戶是政府與醫院的
-情況下不成立——他們的變更管控會讓修補版排到數週之後。
+情況下不成立，他們的變更管控會讓修補版排到數週之後。
 
 **0.3 測試必須能判定「變差」，不只判定「有沒有壞」。**
 效能與 host impact 一律以基準線比較，回歸超過門檻即 fail build，
 不接受「還在可接受範圍」這種人為判斷。
 
 **0.4 不寫死期望值於兩處。** 期望值只留一份來源，其餘由程式實算比對。
-同一份清單寫在兩個地方一定會漂——這是 jt-doc-tools 踩過五次的坑。
+同一份清單寫在兩個地方一定會漂，這是 jt-doc-tools 踩過五次的坑。
 
 ---
 
-## 1. L0 — 單元測試
+## 1. L0，單元測試
 
-| # | 項目 | 對應規格 | 狀態 |
-|---|---|---|---|
-| 1.1 | BER 大小解析式計算 vs 真實編碼器（含負數邊界、base-128 sub-id、長字串） | §4.4 | **[已實作]** `tests/test_ber_size.py`（540 例，含 4,000 組隨機） |
-| 1.2 | hrStorage allocation unit 動態放大：20 TB / 100 TB / 8 TB Storage Spaces 不得溢位 Integer32 | §2.1 | [待實作] |
-| 1.3 | 虛擬記憶體定義：commit limit / commit total，不得與 pagefile 大小混用 | §2.2 | [待實作] |
-| 1.4 | ifIndex 配發：同一 LUID 永遠取得同一 index；介面消失後 index 不得重用 | §2.5 | [待實作] |
-| 1.5 | hrDeviceIndex 共用：hrProcessor / hrDiskStorage / hrNetwork 的 index 必須來自同一組 | §2.3 | [待實作] |
-| 1.6 | TimeTicks 回捲：497 天邊界自然回捲，wrap count 正確遞增 | §2.6 | [待實作] |
-| 1.7 | 介面篩選：Hyper-V host 的 40～80 個介面，僅硬體介面通過 | §2.4 | [待實作] |
-| 1.8 | 快取失效語意：新鮮 / stale 內 / 超過 stale threshold（整列移除，不得捏造值） | §6.9 | [待實作] |
-| 1.9 | 狀態檔原子寫入：temp → fsync → ReplaceFileW；主檔損毀時讀 .bak | §6.6 | [待實作] |
-| 1.10 | schema_version 遷移：舊版 index-map / engine-state 能正確升級 | §6.6 | [待實作] |
-| 1.11 | 設定合併：ADMX 原則覆寫 config.yaml，`--effective` 正確標示各值來源 | §5.5 | [待實作] |
-| 1.12 | engineBoots：一次寫 +10、記憶體用實際值、超過已存值才再寫盤、單調遞增 | §3.4② | [待實作] |
-| 1.13 | MachineGuid 不符時重新產生 engineID 並將 boots 重置為 1 | §3.4① | [待實作] |
-| 1.14 | MS SNMP 移轉對照：權限 8/16 降級為唯讀、1/2 不匯入、trap/ExtensionAgents 列出但不匯入 | §5.9.3 | [待實作] |
-| 1.15 | 移轉冪等性：`import-ms-snmp` 重複執行不產生重複項目 | §8 | [待實作] |
-| 1.16 | base OID 常數對照 RFC 標準值 | §36 | **[已實作]** `tests/test_oid_constants.py`（10 例）|
-| 1.17 | collector 失敗語意：回 default 不拋出、錯誤計數累計、恢復不歸零 | §6.7 / §6.9 | **[已實作]** `tests/test_collector_health.py`（8 例）|
-| 1.18 | sysObjectID 三分支與 Server Core / DC 判定 | §1.2 | **[已實作]** `tests/test_product_type.py`（9 例）|
-| 1.19 | SMBIOS 佔位字串過濾（`To Be Filled By O.E.M.` 等） | — | [待實作] |
+| # | 項目 | 狀態 |
+|---|---|---|
+| 1.1 | BER 大小解析式計算 vs 真實編碼器（含負數邊界、base-128 sub-id、長字串） | **[已實作]** `tests/test_ber_size.py`（540 例，含 4,000 組隨機） |
+| 1.2 | hrStorage allocation unit 動態放大：20 TB / 100 TB / 8 TB Storage Spaces 不得溢位 Integer32 | [待實作] |
+| 1.3 | 虛擬記憶體定義：commit limit / commit total，不得與 pagefile 大小混用 | [待實作] |
+| 1.4 | ifIndex 配發：同一 LUID 永遠取得同一 index；介面消失後 index 不得重用 | [待實作] |
+| 1.5 | hrDeviceIndex 共用：hrProcessor / hrDiskStorage / hrNetwork 的 index 必須來自同一組 | [待實作] |
+| 1.6 | TimeTicks 回捲：497 天邊界自然回捲，wrap count 正確遞增 | [待實作] |
+| 1.7 | 介面篩選：Hyper-V host 的 40～80 個介面，僅硬體介面通過 | [待實作] |
+| 1.8 | 快取失效語意：新鮮 / stale 內 / 超過 stale threshold（整列移除，不得捏造值） | [待實作] |
+| 1.9 | 狀態檔原子寫入：temp → fsync → ReplaceFileW；主檔損毀時讀 .bak | [待實作] |
+| 1.10 | schema_version 遷移：舊版 index-map / engine-state 能正確升級 | [待實作] |
+| 1.11 | 設定合併：ADMX 原則覆寫 config.yaml，`--effective` 正確標示各值來源 | [待實作] |
+| 1.12 | engineBoots：一次寫 +10、記憶體用實際值、超過已存值才再寫盤、單調遞增 | [待實作] |
+| 1.13 | MachineGuid 不符時重新產生 engineID 並將 boots 重置為 1 | [待實作] |
+| 1.14 | MS SNMP 移轉對照：權限 8/16 降級為唯讀、1/2 不匯入、trap/ExtensionAgents 列出但不匯入 | [待實作] |
+| 1.15 | 移轉冪等性：`import-ms-snmp` 重複執行不產生重複項目 | [待實作] |
+| 1.16 | base OID 常數對照 RFC 標準值 | **[已實作]** `tests/test_oid_constants.py`（10 例）|
+| 1.17 | collector 失敗語意：回 default 不拋出、錯誤計數累計、恢復不歸零 | **[已實作]** `tests/test_collector_health.py`（8 例）|
+| 1.18 | sysObjectID 三分支與 Server Core / DC 判定 | **[已實作]** `tests/test_product_type.py`（9 例）|
+| 1.19 | SMBIOS 佔位字串過濾（`To Be Filled By O.E.M.` 等） | [待實作] |
 
 ---
 
 ## 2. L1 — SNMP 協定正確性
 
-§36 把下列每一種都列為「不可接受」。§4.3 聲稱 snapshot + bisect 架構讓這些成為
-「結構保證」——**本層存在的目的就是驗證那個聲稱，而不是相信它**。
+下列每一種都列為「不可接受」。snapshot + bisect 架構讓這些成為
+「結構保證」，**本層存在的目的就是驗證那個聲稱，而不是相信它**。
 
-| # | 項目 | 對應規格 | 狀態 |
-|---|---|---|---|
-| 2.1 | 全樹 walk 回傳每個 OID 恰好一次，內容與 snapshot 完全一致 | §36 | **[已實作]** `tests/test_walk_correctness.py` |
-| 2.2 | 嚴格字典序，無 duplicate OID | §36 | **[已實作]** |
-| 2.3 | walk 必定終止（GETNEXT loop 偵測） | §36 | **[已實作]** |
-| 2.4 | max-repetitions = 1 / 2 / 10 / 25 / 100 / 1000 結果集完全相同 | §4.4 | **[已實作]** |
-| 2.5 | 回應永不超過 1400 bytes（即使客戶端要求 10000 筆） | §4.4 | **[已實作]** |
-| 2.6 | 過大的 max-repetitions 被截斷為有效回應，而非錯誤或空回應 | §4.4 | **[已實作]** |
-| 2.7 | 走到 MIB 結尾時不得用 endOfMibView 塞滿回應 | §36 | **[已實作]** |
-| 2.8 | GET 命中 / noSuchInstance / noSuchObject 三種語意正確 | §36 | **[已實作]** |
-| 2.9 | GETNEXT 在首筆之前、末筆之後的邊界行為 | §36 | **[已實作]** |
-| 2.10 | 唯讀：SET 一律回 noSuchObject / notWritable，任何 OID 皆不可寫 | §2.12 | [待實作] |
-| 2.11 | 走訪中途快照換手：整趟 walk 必須讀同一份 snapshot，不得出現列數變動 | §4.3③ | [待實作] |
-| 2.12 | 型別正確性：Counter64 用於 ifXTable、Gauge32 不得回負值、TimeTicks 單位為 1/100 秒 | §36 | [待實作] |
-| 2.13 | Golden `.snmprec` fixture 比對：各 Windows 版本一份，回歸時逐筆對照 | §9.3 | [待實作] |
+| # | 項目 | 狀態 |
+|---|---|---|
+| 2.1 | 全樹 walk 回傳每個 OID 恰好一次，內容與 snapshot 完全一致 | **[已實作]** `tests/test_walk_correctness.py` |
+| 2.2 | 嚴格字典序，無 duplicate OID | **[已實作]** |
+| 2.3 | walk 必定終止（GETNEXT loop 偵測） | **[已實作]** |
+| 2.4 | max-repetitions = 1 / 2 / 10 / 25 / 100 / 1000 結果集完全相同 | **[已實作]** |
+| 2.5 | 回應不超過 1400 bytes（即使客戶端要求 10000 筆） | **[已實作]** |
+| 2.6 | 過大的 max-repetitions 被截斷為有效回應，而非錯誤或空回應 | **[已實作]** |
+| 2.7 | 走到 MIB 結尾時不得用 endOfMibView 塞滿回應 | **[已實作]** |
+| 2.8 | GET 命中 / noSuchInstance / noSuchObject 三種語意正確 | **[已實作]** |
+| 2.9 | GETNEXT 在首筆之前、末筆之後的邊界行為 | **[已實作]** |
+| 2.10 | 唯讀：SET 一律回 noSuchObject / notWritable，任何 OID 皆不可寫 | [待實作] |
+| 2.11 | 走訪中途快照換手：整趟 walk 必須讀同一份 snapshot，不得出現列數變動 | [待實作] |
+| 2.12 | 型別正確性：Counter64 用於 ifXTable、Gauge32 不得回負值、TimeTicks 單位為 1/100 秒 | [待實作] |
+| 2.13 | Golden `.snmprec` fixture 比對：各 Windows 版本一份，回歸時逐筆對照 | [待實作] |
 
 ---
 
-## 3. L2 — 資料正確性（collector → MIB 值）
+## 3. L2，資料正確性（collector → MIB 值）
 
 協定對了不代表數字對。本層驗證「Windows 真實狀態」與「SNMP 吐出的值」一致。
 
-| # | 項目 | 對應規格 | 狀態 |
-|---|---|---|---|
-| 3.1 | hrStorage 容量與 `Get-Volume` 一致（誤差在一個 allocation unit 內） | §2.1 | [待實作] |
-| 3.2 | ifTable/ifXTable 計數器與 `Get-NetAdapterStatistics` 一致 | §2.4 | [待實作] |
-| 3.3 | hrProcessorLoad 為過去一分鐘平均，與 PDH 對照誤差 < 5% | §2.7 | [待實作] |
-| 3.4 | 記憶體：Physical / Virtual 與 `GlobalMemoryStatusEx` 一致 | §2.2 | [待實作] |
-| 3.5 | UCD-DISKIO 與 `IOCTL_DISK_PERFORMANCE` 原始值一致 | §4.5 | [待實作] |
-| 3.6 | sysDescr 格式能被 LibreNMS `Windows.php` 的 regex 正確 match | §1.2 | [阻塞] 需 Windows |
-| 3.7 | sysObjectID 依 GetProductInfo / DsRole 正確分支（工作站 / 伺服器 / DC） | §1.2 | [阻塞] 需三種機器 |
-| 3.8 | **絕不捏造數值**：collector 失敗時該列必須消失，不得出現 0 或前值 | §6.9 | [待實作] |
+| # | 項目 | 狀態 |
+|---|---|---|
+| 3.1 | hrStorage 容量與 `Get-Volume` 一致（誤差在一個 allocation unit 內） | [待實作] |
+| 3.2 | ifTable/ifXTable 計數器與 `Get-NetAdapterStatistics` 一致 | [待實作] |
+| 3.3 | hrProcessorLoad 為過去一分鐘平均，與 PDH 對照誤差 < 5% | [待實作] |
+| 3.4 | 記憶體：Physical / Virtual 與 `GlobalMemoryStatusEx` 一致 | [待實作] |
+| 3.5 | UCD-DISKIO 與 `IOCTL_DISK_PERFORMANCE` 原始值一致 | [待實作] |
+| 3.6 | sysDescr 格式能被 LibreNMS `Windows.php` 的 regex 正確 match | [受阻] 需 Windows |
+| 3.7 | sysObjectID 依 GetProductInfo / DsRole 正確分支（工作站 / 伺服器 / DC） | [受阻] 需三種機器 |
+| 3.8 | **量不到就不回報**：collector 失敗時該列必須消失，不得出現 0 或前值 | [待實作] |
 
 ---
 
-## 4. L3 — 效能與 host impact
+## 4. L3，效能與 host impact
 
-### 4.1 Agent 自身效能（§4.2、§4.6）
+### 4.1 Agent 自身效能（、）
 
 | # | 項目 | 門檻 | 狀態 |
 |---|---|---|---|
@@ -100,8 +99,8 @@
 | 4.1.2 | 完整 `snmpbulkwalk .1.3.6` | < 10 秒 | **[已實作]** |
 | 4.1.3 | GETBULK（max-repetitions = 25）回應 | < 30 ms | **[已實作]** |
 | 4.1.4 | 完整裝置 poll wall clock | < 20 秒 | [待實作] 需真實 LibreNMS poll |
-| 4.1.5 | 快照重建 | < 500 ms，且絕不在請求路徑上 | **[已實作]** 建立時間已量測 |
-| 4.1.6 | 服務啟動到可回應 | < 10 秒 | [阻塞] 需 Windows 服務 |
+| 4.1.5 | 快照重建 | < 500 ms，且不在請求路徑上 | **[已實作]** 建立時間已量測 |
+| 4.1.6 | 服務啟動到可回應 | < 10 秒 | [受阻] 需 Windows 服務 |
 | 4.1.7 | Idle CPU | < 0.5% | [待實作] |
 | 4.1.8 | RSS | < 80 MB（250 MB 觸發自我重新啟動） | [待實作] |
 | 4.1.9 | 合成規模回歸 1k / 10k / 50k varbind，退步 > 20% 即 fail build | 基準線比較 | **[已實作]** |
@@ -109,7 +108,7 @@
 
 ### 4.2 Host impact（**spec 完全缺漏，本計劃新增**）
 
-「不能讓 Windows 在被 poll 時變慢或卡住」是硬性要求。§4 只量 agent 自己快不快，
+「不能讓 Windows 在被 poll 時變慢或卡住」是硬性要求。 只量 agent 自己快不快，
 沒有任何一項在量 host 被拖慢多少。以下為新增：
 
 | # | 項目 | 門檻 | 狀態 |
@@ -121,12 +120,12 @@
 | 4.2.5 | 程序優先權為 `BELOW_NORMAL_PRIORITY_CLASS` | 斷言 | [待實作] |
 | 4.2.6 | collector 執行緒處於 `THREAD_MODE_BACKGROUND_BEGIN`（同時降 CPU 與 I/O 優先權） | 斷言 | [待實作] |
 | 4.2.7 | 快照重建 single-flight：3 台 manager 同時 poll 只觸發 1 次採集 | 斷言採集次數 | [待實作] |
-| 4.2.8 | 最壞情境：Hyper-V host、64 vCPU、40 介面、500 ARP、20 volume、8 實體碟、hrSWInstalled 啟用 | 上列全數達標 | [阻塞] 需 Server |
-| 4.2.9 | 斷線網路磁碟存在時，poll 不得阻塞（§2.8 的 30 秒卡死） | walk 時間不變 | [待實作] |
+| 4.2.8 | 最壞情境：Hyper-V host、64 vCPU、40 介面、500 ARP、20 volume、8 實體碟、hrSWInstalled 啟用 | 上列全數達標 | [受阻] 需 Server |
+| 4.2.9 | 斷線網路磁碟存在時，poll 不得卡住（ 的 30 秒卡死） | walk 時間不變 | [待實作] |
 
 ---
 
-## 5. L4 — 資安（§3.9）
+## 5. L4，資安（）
 
 | # | 項目 | 通過條件 | 狀態 |
 |---|---|---|---|
@@ -134,23 +133,23 @@
 | 5.2 | PROTOS c06-snmpv1 測試集 | 同上 | [待實作] |
 | 5.3 | VACM 逃逸：`librenms-minimal` 下 walk `.1.3.6`，被排除的 subtree 完全取不到 | GET 與 GETNEXT 皆測 | [待實作] |
 | 5.4 | **VACM 必須在走訪路徑上生效**（典型漏洞是 GET 有過濾、walk 直接跨過去） | 專項測試 | [待實作] |
-| 5.5 | 未認證封包風暴：CPU 不超標、RSS 不成長、正常 manager 仍在 SLA 內 | §3.9 | [待實作] |
+| 5.5 | 未認證封包風暴 | CPU 不超標、RSS 不成長、正常 manager 仍在 SLA 內 | [待實作] |
 | 5.6 | Pre-auth gate：來源 IP 不在白名單者零解析即丟棄 | 斷言未進入 BER decoder | **[已實作]** `tests/test_preauth_gate.py`（32 例）+ 真機驗證 |
 | 5.6.1 | 閘門掛點正確性（覆寫不存在的方法會讓整個閘門無聲失效） | 突變測試證實可攔截 | **[已實作]** `tests/test_gate_hookpoint.py`（6 例）|
 | 5.6.2 | loopback 永遠放行（否則安裝程式健康檢查必定失敗） | 斷言 | **[已實作]** |
 | 5.6.3 | SAST / SCA / SBOM 基線 | Bandit HIGH=0、相依 CVE=0 | **[已實作]** 見 `docs/security-scanning_zh-TW.md` |
-| 5.7 | 深度巢狀 SEQUENCE 不得造成 RecursionError 逃逸到事件迴圈 | §3.2 | [待實作] |
+| 5.7 | 深度巢狀 SEQUENCE | 事件迴圈上無未攔截的 RecursionError | [待實作] |
 | 5.8 | 速率限制在 USM 密碼學處理**之前**生效 | 斷言呼叫順序 | [待實作] |
 | 5.9 | 所有 HMAC 比對使用 `compare_digest` | 靜態檢查 + code review checklist | [待實作] |
 | 5.10 | 拒絕 MD5 / DES / 3DES，即使 library 提供 | 載入即拒 | [待實作] |
 | 5.11 | 金鑰明文不得出現在 config / log / Event Log / MSI 屬性 | 全文掃描 | [待實作] |
-| 5.12 | localized key 以 DPAPI machine scope 儲存，passphrase 不落盤 | §3.4③ | [待實作] |
-| 5.13 | 回應大小驗證：所有回應 < 1400 bytes，無 IP 分片 | §4.4 | **[已實作]** L1-2.5 |
+| 5.12 | localized key 以 DPAPI machine scope 儲存 | 磁碟上找不到明文 passphrase | [待實作] |
+| 5.13 | 回應大小驗證 | 所有回應 < 1400 bytes，無 IP 分片 | **[已實作]** L1-2.5 |
 | 5.14 | 依賴弱點掃描 + SBOM 產出 | 零 High | [待實作] |
-| 5.15 | 未簽章檔案在 WDAC 強制模式下可用雜湊規則放行 | 服務可啟動 | [阻塞] 缺 WDAC 端點 |
-| 5.16 | ProgramData ACL：攻擊者搶先建目錄的情境必須被偵測並重設 ACL | §3.7 | [待實作] |
+| 5.15 | 未簽章檔案在 WDAC 強制模式下可用雜湊規則放行 | 服務可啟動 | [受阻] 缺 WDAC 端點 |
+| 5.16 | ProgramData ACL：攻擊者搶先建目錄 | 偵測到即重設 ACL 並記錄 | [待實作] |
 | 5.17 | 服務 ImagePath 加引號（unquoted service path） | 斷言 | [待實作] |
-| 5.18 | `SO_EXCLUSIVEADDRUSE` 已設定，他人無法綁同一 port 劫持流量 | §6.8 | [待實作] |
+| 5.18 | `SO_EXCLUSIVEADDRUSE` 已設定 | 第二個程序綁定同一 port 失敗 | [待實作] |
 | 5.19 | 特權縮減生效：SeDebug / SeLoadDriver / SeTcb 等已放棄 | `sc qprivs` 比對 | [待實作] |
 
 ---
@@ -165,7 +164,7 @@
 
 | # | 情境 | 風險 | 狀態 |
 |---|---|---|---|
-| 5.5.1 | Server 2016 / 2019 / 2022 / 2025 各自的 build number 對應 | LibreNMS 以 build 查表，錯了顯示錯版本 | [阻塞] 無環境 |
+| 5.5.1 | Server 2016 / 2019 / 2022 / 2025 各自的 build number 對應 | LibreNMS 以 build 查表，錯了顯示錯版本 | [受阻] 無環境 |
 | 5.5.2 | **Server Core**（無 GUI） | `InstallationType` 值為 `Server Core`，等值比較會誤判為工作站 | **[已實作]** `tests/test_product_type.py` |
 | 5.5.3 | **網域控制站** | sysObjectID 需走第三分支，LibreNMS 才會呼叫 `getDatacenterVersion()` | **[已實作]** 以 `DsRoleGetPrimaryDomainInformation` 判定 |
 | 5.5.4 | Nano Server / 容器映像 | 多數 Win32 API 不存在 | [待實作] 明確列為不支援 |
@@ -177,26 +176,26 @@
 |---|---|---|---|
 | 5.5.6 | **Hyper-V host**：`GetIfTable2()` 回 40～80 個介面 | 全部輸出會產生大量無用 port 與無主的 RRD | [待驗] 篩選邏輯已實作，未在真 Hyper-V 上驗 |
 | 5.5.7 | **NIC teaming / SET** | team 成員與 team 介面都會出現，需決定輸出哪個 | [待實作] |
-| 5.5.8 | **多網路卡跨網段**（管理網與業務網分離） | 回應來源 IP 可能錯誤 → 間歇性 timeout（閘門 A） | [阻塞] 無環境 |
+| 5.5.8 | **多網路卡跨網段**（管理網與業務網分離） | 回應來源 IP 可能錯誤 → 間歇性 timeout（閘門 A） | [受阻] 無環境 |
 | 5.5.9 | **iSCSI / FC / 多路徑磁碟** | `PhysicalDriveN` 可能重複出現同一顆 LUN | [待實作] |
 | 5.5.10 | **Storage Spaces 虛擬磁碟**（> 8 TB） | `hrStorageSize` 為 Integer32，需動態放大 allocation unit | [待實作] 邏輯已寫，未以大容量驗證 |
-| 5.5.11 | **BitLocker 鎖定的磁碟區** | `GetDiskFreeSpaceEx` 可能阻塞或失敗 | [待實作] |
-| 5.5.12 | **叢集共用磁碟區（CSV）** | 多節點看到同一磁碟區，容量重複計算 | [待實作] spec §2.12 列為非目標 |
+| 5.5.11 | **BitLocker 鎖定的磁碟區** | `GetDiskFreeSpaceEx` 可能卡住或失敗 | [待實作] |
+| 5.5.12 | **叢集共用磁碟區（CSV）** | 多節點看到同一磁碟區，容量重複計算 | [待實作] 列為非目標 |
 | 5.5.13 | **64 / 128 核心** | `hrProcessorTable` 列數大增；PDH wildcard 展開昂貴 | [待驗] 已改用 `NtQuerySystemInformation` |
 | 5.5.14 | **RAID 控制器後的實體磁碟** | SMART / 溫度路徑不同 | **[已驗]** Intel RST 需走 ATA SMART（實體機驗證） |
-| 5.5.15 | **BMC 存在的伺服器** | spec §2.9 建議感測器改由 BMC 帶外取得，不從 OS 內取 | [待決策] |
+| 5.5.15 | **BMC 存在的伺服器** | 感測器建議改由 BMC 帶外取得，不從 OS 內取 | [待決策] |
 
 ### 5.5.3 Server 環境的部署差異
 
 | # | 情境 | 狀態 |
 |---|---|---|
-| 5.5.16 | GPO 軟體安裝派送 MSI 到網域內多台 Server | [阻塞] 需 MSI + 網域 |
+| 5.5.16 | GPO 軟體安裝派送 MSI 到網域內多台 Server | [受阻] 需 MSI + 網域 |
 | 5.5.17 | Server Core 上無 GUI，安裝程式必須完全非互動 | [待驗] 安裝程式已無互動提示 |
 | 5.5.18 | 已安裝 SNMP 功能但服務停用的 Server（設定仍應移轉） | [待驗] |
-| 5.5.19 | 已有第三方監控 agent 佔用 161（Zabbix / Net-SNMP） | **[已實作]** 中止且不動它，`§5.9.6` |
+| 5.5.19 | 已有第三方監控 agent 佔用 161（Zabbix / Net-SNMP） | **[已實作]** 中止且不動它 |
 | 5.5.20 | 遠端桌面工作階段主機（大量使用者、`hrSystemNumUsers` 應正確） | [待實作] 目前固定回 1 |
 | 5.5.21 | 唯讀網域控制站（RODC）上的登錄檔存取 | [待驗] |
-| 5.5.22 | 啟用 HVCI / WDAC 的 Server | [阻塞] 無環境 |
+| 5.5.22 | 啟用 HVCI / WDAC 的 Server | [受阻] 無環境 |
 
 ### 5.5.4 已知會出錯、需明確處理的項目
 
@@ -207,7 +206,7 @@
 
 ---
 
-## 6. L5 — 安裝與部署（§5.8、§5.9.8）
+## 6. L5，安裝與部署（、）
 
 ### 6.1 安裝矩陣
 
@@ -217,22 +216,22 @@
 | 6.1.2 | 升級 v(n-1) → v(n)：index-map 保留、ifIndex 不變 | **[已驗]** 0.1.0→0.1.1 直接安裝新版，EXIT=0，安裝項目數維持 1（UpgradeCode 正確），index-map hash 完全相同 |
 | 6.1.3 | 升級失敗倒回 → 舊版本恢復且服務可用 | [待驗] |
 | 6.1.4 | 解除安裝 → 服務刪除、規則刪除、ProgramData 保留、不需重開機 | **[已驗]** `msiexec /x` EXIT=0，服務/埠/規則/程式目錄皆清除，資料目錄與 index-map 保留 |
-| 6.1.5 | PURGE 解除安裝 → 完全清除 | **[已驗]** `PURGE=1` EXIT=0，資料目錄完整消失。首次實測**失敗**——自訂動作的記錄檔就在被清除的目錄裡，刪完後收尾的 `Log` 又把 `logs\` 重建回來。已修（清除前關閉檔案記錄 + 重試 + 驗證），迴歸測試見 `tests/test_uninstall_purge.py` |
+| 6.1.5 | PURGE 解除安裝 → 完全清除 | **[已驗]** `PURGE=1` EXIT=0，資料目錄完整消失。首次實測**失敗**，自訂動作的記錄檔就在被清除的目錄裡，刪完後收尾的 `Log` 又把 `logs\` 重建回來。已修（清除前關閉檔案記錄 + 重試 + 驗證），迴歸測試見 `tests/test_uninstall_purge.py` |
 | 6.1.6 | 重複安裝冪等 | **[已驗]** 解除安裝後重裝 EXIT=0 |
 | 6.1.6a | 出現在「加入或移除程式」 | **[已驗]** `JT SNMP Agent v0.1.0 / Jason Tools` |
 | 6.1.6b | 健康檢查失敗時 MSI 倒回 | **[已驗]** loopback 失敗時 MSIEXEC_EXIT=1603 並完整倒回（實測發生過）|
 | 6.1.7 | 161 被 MS SNMP Service 佔用 → 自動停用 + 設定移轉 | **[已驗]** Win11 內建 SNMP 設為 Automatic/Running 後安裝，安裝後內建為 Stopped/Disabled、161 由 jt-snmpd 持有 |
-| 6.1.8 | 161 被非 Microsoft 程式佔用 → 中止且不動它，訊息正確 | [阻塞] |
-| 6.1.9 | 安裝過程強制斷電 → 重開機後可修復或可重裝 | [阻塞] |
-| 6.1.10 | GPO 無訊息部署到 5 台 VM → 全部就緒 | [阻塞] 需 Proxmox |
-| 6.1.11 | ADMX 原則變更 → 5 分鐘內生效 | [阻塞] |
+| 6.1.8 | 161 被非 Microsoft 程式佔用 → 中止且不動它，訊息正確 | [受阻] |
+| 6.1.9 | 安裝過程強制斷電 → 重開機後可修復或可重裝 | [受阻] |
+| 6.1.10 | GPO 無訊息部署到 5 台 VM → 全部就緒 | [受阻] 需 Proxmox |
+| 6.1.11 | ADMX 原則變更 → 5 分鐘內生效 | [受阻] |
 | 6.1.12 | 解除安裝後 → Windows SNMP Service 正確還原 | **[已驗]** 移除後內建自動還原為 Automatic 並重新啟動，161 交還給 `snmp.exe` |
-| 6.1.13 | **安裝 → 升級 → 移除後仍正確還原內建 SNMP** | **[已驗]** 首次實測**失敗**——升級時重讀當下狀態（已被停用）覆寫還原記錄，導致解除安裝端 `$orig -ne 'Disabled'` 永不成立，內建 SNMP 再也回不來。已修（既有還原記錄優先），迴歸測試見 `tests/test_ms_snmp_takeover.py` |
+| 6.1.13 | **安裝 → 升級 → 移除後仍正確還原內建 SNMP** | **[已驗]** 首次實測**失敗**，升級時重讀當下狀態（已被停用）覆寫還原記錄，導致解除安裝端 `$orig -ne 'Disabled'` 不會成立，內建 SNMP 再也回不來。已修（既有還原記錄優先），迴歸測試見 `tests/test_ms_snmp_takeover.py` |
 | 6.1.14 | 內建 SNMP 停用失敗（群組原則阻擋）→ 安裝中止並說明原因 | **[已實作]** 停用後驗證實際狀態，不符即 `exit 1`；[待驗] 需受管控環境 |
 
 ### 6.1a 完整生命週期自動化測試
 
-`tests/lifecycle.ps1` — 一次跑完五個階段，**40 項檢查全綠才算通過**。
+`tests/lifecycle.ps1`，一次跑完五個階段，**40 項檢查全綠才算通過**。
 每次改版與每次發版前都要在目標機重跑。
 
 ```powershell
@@ -289,58 +288,58 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 
 ---
 
-### 6.2 MS SNMP 移轉（§5.9.8）
+### 6.2 MS SNMP 移轉（）
 
 | # | 情境 | 狀態 |
 |---|---|---|
 | 6.2.1 | SNMP Service Running、2 組 community、有 PermittedManagers | **[部分已驗]** Running 狀態的偵測、停用與還原記錄已實測；多組 community 情境待驗 |
-| 6.2.2 | SNMP Service Stopped/Disabled（設定仍應移轉） | [阻塞] |
-| 6.2.3 | PermittedManagers 為空 → 必須要求輸入管理網段，不得 Any/Any | [阻塞] |
-| 6.2.4 | community 權限為 8（READ WRITE）→ 降級 + 警告 | [阻塞] |
-| 6.2.5 | PermittedManagers 含無法解析的主機名稱 → 列出並警告 | [阻塞] |
-| 6.2.6 | 有 TrapConfiguration → 完整列出、明確警告 | [阻塞] |
-| 6.2.7 | 有 ExtensionAgents → 完整列出、明確警告 | [阻塞] |
+| 6.2.2 | SNMP Service Stopped/Disabled（設定仍應移轉） | [受阻] |
+| 6.2.3 | PermittedManagers 為空 → 必須要求輸入管理網段，不得 Any/Any | [受阻] |
+| 6.2.4 | community 權限為 8（READ WRITE）→ 降級 + 警告 | [受阻] |
+| 6.2.5 | PermittedManagers 含無法解析的主機名稱 → 列出並警告 | [受阻] |
+| 6.2.6 | 有 TrapConfiguration → 完整列出、明確警告 | [受阻] |
+| 6.2.7 | 有 ExtensionAgents → 完整列出、明確警告 | [受阻] |
 | 6.2.8 | 乾淨機器無 SNMP Service → 流程跳過，不產生錯誤 | **[已驗]** 生命週期測試以 `$msExists` 分支涵蓋；無內建 SNMP 時全部檢查跳過且安裝成功 |
-| 6.2.9 | 功能已移除但登錄檔殘留 → 設定仍成功移轉 | [阻塞] |
-| 6.2.10 | GPO 已定義 community → 原則值優先，移轉結果不覆蓋 | [阻塞] |
+| 6.2.9 | 功能已移除但登錄檔殘留 → 設定仍成功移轉 | [受阻] |
+| 6.2.10 | GPO 已定義 community → 原則值優先，移轉結果不覆蓋 | [受阻] |
 
 ---
 
-## 7. L6 — 服務生命週期與穩定性（§6）
+## 7. L6，服務生命週期與穩定性（）
 
 | # | 項目 | 狀態 |
 |---|---|---|
-| 7.1 | preshutdown 收到後正確 flush engineBoots 與 index-map | [阻塞] |
-| 7.2 | 電源事件（睡眠恢復）後重新初始化 PDH handle 與所有 collector | [阻塞] |
+| 7.1 | preshutdown 收到後正確 flush engineBoots 與 index-map | [受阻] |
+| 7.2 | 電源事件（睡眠恢復）後重新初始化 PDH handle 與所有 collector | [受阻] |
 | 7.3 | Loopback 自我測試：事件迴圈卡死時連續 3 次失敗 → 非零碼結束 | [待實作] |
-| 7.4 | SCM failure actions 生效（`failureflag 1`，非零結束碼也觸發重新啟動） | [阻塞] |
+| 7.4 | SCM failure actions 生效（`failureflag 1`，非零結束碼也觸發重新啟動） | [受阻] |
 | 7.5 | 5 分鐘內自我重新啟動 > 3 次 → 進入降級模式，不得無限重新啟動 | [待實作] |
-| 7.6 | 啟動絕不硬失敗：config 語法錯誤 / 161 被佔用 / collector 初始化失敗 / 狀態檔損毀 | [待實作] |
+| 7.6 | 啟動不硬失敗：config 語法錯誤 / 161 被佔用 / collector 初始化失敗 / 狀態檔損毀 | [待實作] |
 | 7.7 | 降級模式下自我健康 OID 與 system group 仍可回應 | [待實作] |
 | 7.8 | 設定重新載入為原子操作，無效設定保留舊值並記 Event 3001 | [待實作] |
 | 7.9 | 所有內部計時使用單調時鐘：NTP 往回校時後快取邏輯不得卡死 | [待實作] |
 | 7.10 | 具名管線控制通道：ACL 僅 SYSTEM/Administrators，一般使用者不可連 | [待實作] |
-| 7.11 | **30 天長時間穩定性**：RSS / handle / thread 曲線平坦 | [阻塞] 需 Server |
-| 7.12 | 期間內完成：NTP 校時、NIC 熱插拔、磁碟熱插拔、config reload、服務重新啟動、主機重開機、快照還原 | [阻塞] |
-| 7.13 | LibreNMS 端無 counter reset 誤判、無 port 重複、無 storage 重複 | [阻塞] |
-| 7.14 | 動態 IP 增減時 socket 正確增減（§1.1 P1 路徑） | [阻塞] 需多網路卡 |
+| 7.11 | **30 天長時間穩定性**：RSS / handle / thread 曲線平坦 | [受阻] 需 Server |
+| 7.12 | 期間內完成：NTP 校時、NIC 熱插拔、磁碟熱插拔、config reload、服務重新啟動、主機重開機、快照還原 | [受阻] |
+| 7.13 | LibreNMS 端無 counter reset 誤判、無 port 重複、無 storage 重複 | [受阻] |
+| 7.14 | 動態 IP 增減時 socket 正確增減（ P1 路徑） | [受阻] 需多網路卡 |
 
 ---
 
-## 8. L7 — LibreNMS 端對端驗收（§9.3）
+## 8. L7 — LibreNMS 端對端驗收（）
 
 **必須在真實 LibreNMS 上進行，且不得對 LibreNMS 打任何 patch。**
 
 | # | 項目 | 狀態 |
 |---|---|---|
-| 8.1 | OS Detection：Hardware / Version / Features 三欄位皆有正確值，不得空白 | [阻塞] |
-| 8.2 | 加入裝置後執行 discovery，確認完整 OID 被抓到 | [阻塞] |
-| 8.3 | Overview / Processor / Memory / Storage / DiskIO / Ports 六個頁面全滿 | [阻塞] |
-| 8.4 | Ports：speed / state / traffic / packets / errors / discards 皆有值 | [阻塞] |
-| 8.5 | 連續 poll 24 小時後 RRD 無斷點、無孤兒 | [阻塞] |
-| 8.6 | 重新啟動 agent 後 LibreNMS 不得誤判 counter reset 或 device reboot | [阻塞] |
-| 8.7 | 升級 agent 後 port / storage / processor 不得重新 discovery | [阻塞] |
-| 8.8 | 自我健康 OID 的 alert rule 範本能正確觸發 | [阻塞] |
+| 8.1 | OS Detection：Hardware / Version / Features 三欄位皆有正確值，不得空白 | [受阻] |
+| 8.2 | 加入裝置後執行 discovery，確認完整 OID 被抓到 | [受阻] |
+| 8.3 | Overview / Processor / Memory / Storage / DiskIO / Ports 六個頁面全滿 | [受阻] |
+| 8.4 | Ports：speed / state / traffic / packets / errors / discards 皆有值 | [受阻] |
+| 8.5 | 連續 poll 24 小時後 RRD 無斷點、無孤兒 | [受阻] |
+| 8.6 | 重新啟動 agent 後 LibreNMS 不得誤判 counter reset 或 device reboot | [受阻] |
+| 8.7 | 升級 agent 後 port / storage / processor 不得重新 discovery | [受阻] |
+| 8.8 | 自我健康 OID 的 alert rule 範本能正確觸發 | [受阻] |
 
 > **注意**：deploy 到目標機器後必須主動觸發 LibreNMS discovery，
 > 否則只會跑 poll 而抓不到新增的完整 OID 集合。此步驟要寫進部署 SOP 與 8.2。
@@ -354,18 +353,18 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 | Ubuntu 24.04 開發機 | ✅ 可用 | L0、L1、L3 agent 自身效能 | — |
 | Windows 11 @ 192.0.2.54 | ⏳ SSH 待授權 | L2、L4 部分、L5 移轉、host impact 基準 | 工作站，非 Server |
 | LibreNMS @ 192.0.2.10 | ⏳ 存取待提供 | L7 全部 | **正式機，僅唯讀操作** |
-| Windows Server 2016/2019/2022/2025 | ❌ 無 | L5 安裝矩陣、L6 30 天穩定性、§9.3 平台 DoD | **需 Proxmox 或實體機** |
+| Windows Server 2016/2019/2022/2025 | ❌ 無 | L5 安裝矩陣、L6 30 天穩定性、 平台 DoD | **需 Proxmox 或實體機** |
 | 多網路卡主機（≥ 3 IP、跨網段） | ❌ 無 | 閘門 A、7.14 | **無替代方案** |
-| Server Core | ❌ 無 | §9.3 平台 DoD | — |
+| Server Core | ❌ 無 | 平台 DoD | — |
 | HVCI / WDAC 啟用端點 | ❌ 無 | 閘門 D、5.15 | — |
 
 **未涵蓋即為未通過。** 任何因缺環境而未驗證的項目，一律在
-`docs/phase0-findings.md` 與 release notes 中列為「未驗證項目與風險」，
+release notes 中列為「未驗證項目與風險」，
 不得以「應該沒問題」帶過。
 
 ---
 
-## 10. Release Gate — 出貨前必須全綠
+## 10. Release Gate，出貨前必須全綠
 
 打 tag 與產出 MSI 之前，下列每一項都必須通過。**任一項紅燈即不得出貨。**
 

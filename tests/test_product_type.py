@@ -1,4 +1,4 @@
-"""sysObjectID 三分支與 Windows Server 情境（spec §1.2 / §9.3）。
+"""sysObjectID 三分支與 Windows Server 情境。
 
 **為什麼三個分支都必須存在**
 
@@ -10,14 +10,14 @@ LibreNMS 的 `LibreNMS/OS/Windows.php` 依 sysObjectID 走三條不同的版本�
 
 同一個 build number 在三張表裡對應不同字串（例如 26100 在 client 表是
 `11 (24H2)`、在 server 表是 `Server 2025 (24H2)`）。少了 DC 分支，
-網域控制站會被歸到 server，版本字串因此不同——而這是無聲的錯誤，
+網域控制站會被歸到 server，版本字串因此不同，而這是無聲的錯誤，
 agent 照常運作、LibreNMS 照常顯示，只是顯示錯的版本。
 
 **Server Core 的陷阱**
 
 `InstallationType` 在不同 Windows 版本的值不一致：`Server`、`Server Core`、
 `Windows Server Core` 都出現過。用等值比較會讓 Server Core 被誤判為工作站，
-而 spec §9.3 的平台 DoD 明列 Server Core 必須支援。
+而設計規格的平台 DoD 明列 Server Core 必須支援。
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ def test_all_three_branches_are_distinct():
 def test_all_branches_use_microsoft_pen():
     """必須沿用 Microsoft 的 PEN 311。
 
-    spec §1.2：取得自有 PEN 之前，sysObjectID 維持 Microsoft 相容值，
+    取得自有 PEN 之前，sysObjectID 維持 Microsoft 相容值，
     否則 LibreNMS 的三個分支全部落空，Version 欄位會空白。
     """
     for ptype, oid in _sysobjid_map().items():
@@ -90,7 +90,7 @@ def test_all_branches_use_microsoft_pen():
 def test_installation_type_uses_prefix_match_not_equality():
     """Server Core 的 InstallationType 是 "Server Core" 而非 "Server"。
 
-    用等值比較會讓 Server Core 被誤判為工作站。spec §9.3 的平台 DoD
+    用等值比較會讓 Server Core 被誤判為工作站。設計規格的平台 DoD
     明列 Server Core 必須支援。
     """
     assert 'startswith("server")' in SRC or "startswith('server')" in SRC, (
@@ -101,7 +101,7 @@ def test_installation_type_uses_prefix_match_not_equality():
 def test_domain_controller_detection_exists():
     """DC 判定必須實際呼叫 DsRoleGetPrimaryDomainInformation。
 
-    spec §1.2 指定此 API（不使用 WMI）。
+    設計規格指定此 API（不使用 WMI）。
     """
     assert "DsRoleGetPrimaryDomainInformation" in SRC
     assert "DsRoleFreeMemory" in SRC, "DsRole 系列 API 配置的記憶體必須釋放"
@@ -124,7 +124,7 @@ def test_product_type_has_fallback_when_installation_type_missing():
 def test_dc_detection_failure_does_not_raise():
     """非網域環境或 API 不可用時，DC 判定必須安靜地回傳 False。
 
-    spec §6.7：啟動絕不硬失敗。一個判定不出角色的 agent
+    啟動不硬失敗。一個判定不出角色的 agent
     應該當工作站繼續服務，而不是拒絕啟動。
     """
     tree = ast.parse(SRC)

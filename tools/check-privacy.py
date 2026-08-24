@@ -4,24 +4,24 @@
 
 **為什麼需要這支程式**
 
-本專案的開發環境是一個真實的內網——那正是它的價值，量測數字都來自實機。
+本專案的開發環境是一個真實的內網，那正是它的價值，量測數字都來自實機。
 但同一件事也代表：量測結果、記錄檔、截圖、掃描報告裡到處都是主機名稱、
 IP、MAC、硬體序號、community 字串。推上 GitHub 之後這些**無法收回**：
 GitHub 會保留 fork、快取與 Git 歷史，事後刪除只是把它從畫面上拿掉。
 
 實際踩過的例子：為 README 拍的連接埠對照截圖裡，LibreNMS 把 SNMP 鄰居
-一起畫了出來——`host-101-ipmi`、`vas1`、`dc2`、`router-003.<內部網域>`、
+一起畫了出來，`host-101-ipmi`、`vas1`、`dc2`、`router-003.<內部網域>`、
 `ap-112`、`nas4`。那等於把整張內網拓撲圖公開。grep 抓不到，因為那是像素。
 
 **這支程式檢查什麼**
 
 1. **文字檔**：以正規表示式找 IP、MAC、內部網域、序號、憑證、community。
-2. **二進位檔（圖片為主）**：無法用正規表示式檢查，改用「人工審閱 + 雜湊」——
+2. **二進位檔（圖片為主）**：無法用正規表示式檢查，改用「人工審閱 + 雜湊」，
    每張圖必須列在 `docs/images/REVIEWED.md` 並附 SHA-256。圖片一改動雜湊就
    對不上，掃描直接擋下，強迫重新審閱。
 
 **掃描範圍**是「git 實際會推上去的檔案」（已追蹤 + 未被忽略的未追蹤檔），
-不是整個工作目錄——否則 `.venv` 會淹沒所有結果。
+不是整個工作目錄，否則 `.venv` 會淹沒所有結果。
 
 用法::
 
@@ -55,19 +55,19 @@ HIGH, MED, LOW = "HIGH", "MED", "LOW"
 # 因此比對後還要走 `_looks_like_real_ip()` 再判一次。
 RULES: list[tuple[str, str, re.Pattern, str]] = [
     (HIGH, "private-key", re.compile(
-        r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----"),
-     "私鑰絕不可進版控"),
+        r"-----BEGIN (?:RSA |EC |OPENSSH |PGP)?PRIVATE KEY-----"),
+     "私鑰不得進版控"),
     (HIGH, "password", re.compile(
         r"""(?ix)\b(?:password|passwd|pwd|secret)\s*[=:]\s*["']?[^\s"'{}$<>]{4,}"""),
      "明文密碼"),
     # 只抓「命令列 / 設定檔裡的實際值」，不抓程式碼中的變數指派。
     # `community = v2c.apiMessage.get_community(msg)` 與 `COMMUNITY = "bench"`
-    # 都不是機密，前者是取值、後者是測試常數——第一版把兩者都報成 HIGH，
+    # 都不是機密，前者是取值、後者是測試常數，第一版把兩者都報成 HIGH，
     # 那種雜訊會讓人開始無視掃描結果，比不掃還糟。
     (HIGH, "community", re.compile(
         r"""(?x)
         \bCOMMUNITY=                     # 命令列 / MSI 屬性形式，無空白
-        # 佔位字不算洩漏。比對不分大小寫——第一版只擋大寫 YOUR，
+        # 佔位字不算洩漏。比對不分大小寫，第一版只擋大寫 YOUR，
         # 於是文件裡的 `your-community` 被報成 HIGH。
         (?![<$%{]|(?i:public|your|change|example|placeholder|xxx)\b)
         ["']? ([A-Za-z0-9_-]{2,})
@@ -86,7 +86,7 @@ RULES: list[tuple[str, str, re.Pattern, str]] = [
         r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"),
      "IPv6 位址"),
     # 主機名稱：專案擁有者已決定可以公開，因此列為 LOW（僅供知悉，不擋推送）。
-    # 保留規則而非刪除，是為了讓每次推送前仍看得到「這次帶出去了哪些名稱」——
+    # 保留規則而非刪除，是為了讓每次推送前仍看得到「這次帶出去了哪些名稱」，
     # 決定可以公開，不等於不需要知道公開了什麼。
     (LOW, "windows-hostname", re.compile(
         r"\b(?:DESKTOP|LAPTOP|WIN)-[A-Z0-9]{7}\b"),
@@ -95,7 +95,7 @@ RULES: list[tuple[str, str, re.Pattern, str]] = [
         r"\b[A-Za-z0-9][A-Za-z0-9-]*\.(?:local|lan|internal|intranet|corp|home\.arpa)\b"),
      "內部網域名稱（已決定可公開）"),
     # 只抓「序號的值」，不抓程式碼中的欄位名稱。
-    # `SerialNumberOffset`、`serial_number` 這類識別字不是序號本身——
+    # `SerialNumberOffset`、`serial_number` 這類識別字不是序號本身，
     # 第一版把它們全報成 MED，雜訊會蓋掉真正的發現。
     # 因此要求 serial 與值之間有明確的分隔（冒號、等號、空白 + 引號）。
     (MED, "hardware-serial", re.compile(
@@ -144,7 +144,7 @@ def _looks_like_real_ip(text: str) -> bool:
 def load_allowlist() -> list[re.Pattern]:
     """允許清單：每行一個正規表示式，`#` 開頭是註解。
 
-    允許清單是**刻意做成需要理由的**——每一條都應該在旁邊寫清楚為什麼安全，
+    允許清單是**刻意做成需要理由的**，每一條都應該在旁邊寫清楚為什麼安全，
     否則久了就會變成「把所有警告都關掉」的地方。
     """
     if not ALLOWLIST.exists():
@@ -174,8 +174,8 @@ def tracked_files() -> list[Path]:
             continue
         files.update(f for f in out.splitlines() if f.strip())
 
-    # **絕不能無聲地掃 0 個檔案。** 在還沒 git init 的目錄裡，兩個 git 指令都會
-    # 失敗，若把例外吞掉就會得到「未發現問題」——一個永遠說安全的掃描器，
+    # **不能悄悄掃 0 個檔案。** 在還沒 git init 的目錄裡，兩個 git 指令都會
+    # 失敗，若把例外吞掉就會得到「未發現問題」，一個永遠說安全的掃描器，
     # 比沒有掃描器更危險，因為它讓人以為檢查過了。實測踩過這個情況。
     if not files:
         detail = "\n  ".join(failures) if failures else "（git 回報 0 個檔案）"
@@ -252,7 +252,7 @@ def check_binaries(files: list[Path]) -> list[tuple]:
         digest = sha256(f)
         if rel not in reviewed:
             problems.append((HIGH, "image-unreviewed", rel, digest,
-                             "未經人工審閱。圖片可能含 MAC、鄰居主機名稱、序號——"
+                             "未經人工審閱。圖片可能含 MAC、鄰居主機名稱、序號，"
                              "正規表示式看不到像素"))
         elif reviewed[rel] != digest:
             problems.append((HIGH, "image-changed", rel, digest,
@@ -269,7 +269,7 @@ def update_manifest(files: list[Path]) -> None:
         "# 圖片人工審閱紀錄",
         "",
         "正規表示式讀不到像素。README 的截圖曾經把 LibreNMS 畫出來的 SNMP 鄰居",
-        "一併帶了出去——MAC 位址、內部主機名稱、IPv6 位址，等於公開內網拓撲。",
+        "一併帶了出去，MAC 位址、內部主機名稱、IPv6 位址，等於公開內網拓撲。",
         "",
         "**每一張圖在加入或更新後都必須被人實際看過**，確認沒有：",
         "",
