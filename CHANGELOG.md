@@ -37,6 +37,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.4] - 2026-08-24
+
+### Fixed
+
+- **The settings page was never shown.** With the launch-condition fix in 0.9.3
+  the wizard finally ran, and went straight from Destination Folder to Ready to
+  install: the page that asks for the management networks and the community was
+  skipped entirely, so the install then failed in the configure step with nothing
+  to configure. `WixUI_InstallDir` already publishes `NewDialog=VerifyReadyDlg`
+  on that button at Order 4, and when several NewDialog events are true the last
+  one processed decides where the wizard goes. Our route was published at Order
+  3, so it was overruled every time. It is now Order 5, with the built-in row's
+  path-validation condition repeated so an invalid path still reaches
+  InvalidDirDlg. Confirmed by reading the ControlEvent table out of the built
+  MSI rather than from the source.
+- **The licence page showed *Lorem ipsum*.** With `WixUILicenseRtf` unset, WiX
+  supplies a placeholder, and a placeholder EULA is not a cosmetic defect: it is
+  a document presented as terms of use, saying nothing, in an installer for
+  software licensed GPL-3.0-or-later. The page now shows the repository's own
+  `LICENSE`, converted at build time by `packaging/make-ui-assets.py` so the two
+  cannot drift apart.
+- **The wizard wore WiX's stock artwork**, including a red "no entry" banner on
+  every page. The banner and side panel are now generated from
+  `docs/brand/icon-512.png` in the project's own colours.
+- **`NewDialog` was published before `SpawnDialog`** on the settings page's Next
+  button. Windows Installer discards every event that follows a NewDialog on the
+  same control, so the "please enter the management networks" prompt worked only
+  because the two conditions happened to be mutually exclusive. The complaint is
+  now published first and the transition last.
+
+`tests/test_msi_ui_gating.py` covers all four, and each assertion was checked by
+mutation: restoring the previous value turns it red.
+
+---
+
 ## [Unreleased]
 
 ### Added

@@ -34,6 +34,36 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
+## [0.9.4] - 2026-08-24
+
+### 修正
+
+- **設定頁面從來沒出現過。** 0.9.3 修好啟動條件之後精靈總算跑得動，
+  卻從「Destination Folder」直接跳到「Ready to install」：那個要填管理網段與
+  community 的頁面被完全跳過，安裝於是在設定階段失敗，因為根本沒有東西可以設定。
+  `WixUI_InstallDir` 本身就在同一個按鈕上以 Order 4 發佈
+  `NewDialog=VerifyReadyDlg`，而當多個 NewDialog 事件同時成立時，
+  最後被處理的那個決定精靈往哪走。我們的路由發佈在 Order 3，每次都被蓋掉。
+  現在改為 Order 5，並把內建那列的路徑驗證條件一起帶上，
+  無效路徑仍然會進 InvalidDirDlg。這是直接從建出來的 MSI 讀 ControlEvent 表確認的，
+  不是看原始碼推論的。
+- **授權頁面顯示的是 Lorem ipsum 假文。** 沒有設定 `WixUILicenseRtf` 時
+  WiX 會塞一份佔位文件，而佔位的 EULA 不是外觀問題：那是一份被當成使用條款呈現、
+  內容卻什麼都沒說的文件，出現在一個實際採用 GPL-3.0-or-later 的軟體安裝程式裡。
+  現在顯示的是本專案自己的 `LICENSE`，由 `packaging/make-ui-assets.py` 產生，
+  兩者不會各自漂移。
+- **精靈穿的是 WiX 的預設美術**，包括每一頁右上角那個紅色圖案。
+  橫幅與側欄現在由 `docs/brand/icon-512.png` 以專案自己的色彩產生。
+- **設定頁 Next 按鈕上的 `NewDialog` 發佈在 `SpawnDialog` 之前。**
+  Windows Installer 會丟棄同一個控制項上 NewDialog 之後的所有事件，
+  所以「請輸入管理網段」的提示能運作，只是因為兩個條件剛好互斥。
+  現在提示先發佈、轉頁最後發佈。
+
+`tests/test_msi_ui_gating.py` 四項全部涵蓋，每一條斷言都做過突變驗證：
+把舊值放回去就會紅。
+
+---
+
 ## [未發行]
 
 ### 新增
