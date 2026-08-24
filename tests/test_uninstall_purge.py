@@ -107,7 +107,7 @@ def test_failed_purge_is_reported_not_swallowed():
     """失敗時必須留下警告——殘骸會讓下次安裝沿用舊狀態。"""
     block = _purge_block()
     assert "WARN" in block, "清除失敗必須以 WARN 回報"
-    ok = block.find('Log "資料目錄已完整清除')
+    ok = block.find('Log "data directory completely removed')
     assert ok != -1, "找不到成功訊息"
     # 成功訊息必須在 $purged 為真的分支裡
     assert "if ($purged)" in block, "成功訊息必須以實際驗證結果為條件"
@@ -130,7 +130,7 @@ def test_default_uninstall_keeps_data_dir():
     else_block = tail[else_i:]
     assert "Remove-Item $DATA_DIR" not in else_block, (
         "預設解除安裝不可刪除資料目錄")
-    assert "資料目錄已保留" in else_block
+    assert "data directory kept" in else_block
 
 
 def test_uninstall_restores_builtin_snmp():

@@ -62,7 +62,7 @@ def test_msi_build_fails_when_wix_fails():
 
 
 def test_msi_build_rejects_a_stale_msi():
-    assert "不是本次建置的產物" in MSI, "MSI 必須確認是本次建出來的"
+    assert "is not from this build" in MSI, "MSI 必須確認是本次建出來的"
 
 
 def test_msi_build_rejects_an_exe_older_than_the_source():
@@ -88,7 +88,8 @@ def test_msi_uses_the_real_icon_and_says_so_when_it_cannot():
     """A blank placeholder icon made the Add/Remove Programs entry look like a
     half-finished install."""
     assert "brand\\jt-snmpd.ico" in MSI
-    assert "改用空白佔位圖示" in MSI, "找不到圖示時必須講出來，不可無聲退回"
+    assert "using a blank placeholder icon" in MSI, \
+        "找不到圖示時必須講出來，不可無聲退回"
 
 
 # --- 兩者共通 ----------------------------------------------------------------

@@ -1,24 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  jt-snmpd MSI 定義（WiX v5）
+  jt-snmpd MSI definition (WiX v5)
 
-  為什麼一定要 MSI（spec §5.4）：
-    **GPO 的軟體安裝原則上只接受 MSI**——這一條就決定了選型。
-    Inno Setup / NSIS 產生的 EXE 不支援 GPO 軟體安裝、沒有交易式 rollback、
-    不會出現在「加入或移除程式」。
+  Why MSI is mandatory (spec §5.4):
+    **Group Policy software installation accepts MSI and nothing else** — that
+    one fact settles the choice. An EXE from Inno Setup or NSIS supports neither
+    GPO software installation nor transactional rollback, and does not appear in
+    Add/Remove Programs.
 
-  MSI 另外免費提供：
-    - UpgradeCode 升級處理：把新版 MSI 丟過去就是升級，不必先移除舊版
-    - 安裝失敗自動倒回
-    - 出現在「加入或移除程式」（客戶資產盤點看得到，hrSWInstalledTable 亦看得到）
+  MSI also brings, at no extra cost:
+    - UpgradeCode handling: deploying a newer MSI is the upgrade; the old version
+      does not have to be removed first
+    - automatic rollback on a failed install
+    - an Add/Remove Programs entry, visible both to customer asset inventories
+      and through hrSWInstalledTable
 
-  重要決定：
-    - UpgradeCode 一旦發布就**永不變更**，否則升級會變成並存安裝
-    - ProductCode 每個版本都不同（WiX 的 * 會自動產生）
-    - 設定與狀態放 %ProgramData%，**不在 MSI 的元件清單內**，
-      所以解除安裝時不會被 MSI 移除（spec §5.7：預設保留是刻意的）
-    - 服務由自訂動作註冊，不用 ServiceInstall——因為我們需要
-      sc failure / failureflag / privs，這些 WiX 的 ServiceInstall 不提供
+  Decisions that matter:
+    - the UpgradeCode **never changes** once published, or upgrades turn into
+      side-by-side installations
+    - the ProductCode differs for every version (WiX's * generates it)
+    - configuration and state live under %ProgramData% and are **not in the MSI's
+      component list**, so uninstalling does not remove them (spec §5.7: keeping
+      them by default is deliberate)
+    - the service is registered by a custom action rather than ServiceInstall,
+      because sc failure, failureflag and privs are needed and WiX's
+      ServiceInstall does not offer them
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
@@ -34,52 +40,64 @@
            Scope="perMachine"
            Compressed="yes">
 
-    <!-- 相同 UpgradeCode 的舊版一律先移除再安裝（major upgrade）。
-         AfterInstallInitialize 讓檔案替換發生在新檔案複製之前，
-         避免「舊版移除時把新版檔案一起刪掉」的經典 MSI 陷阱。 -->
+    <!-- Any earlier version with the same UpgradeCode is removed before this one
+         is installed (a major upgrade). AfterInstallInitialize places the removal
+         before the new files are copied, avoiding the classic MSI trap where
+         removing the old version deletes the new files along with it. -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
-                  DowngradeErrorMessage="已安裝較新版本的 JT SNMP Agent。"
+                  DowngradeErrorMessage="A newer version of JT SNMP Agent is already installed."
                   Schedule="afterInstallInitialize" />
 
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- 平台與 OS 版本限制（spec §5.6 前置檢查） -->
+    <!-- Platform and OS version requirements (spec §5.6 pre-checks) -->
     <Launch Condition="VersionNT >= 603"
-            Message="需要 Windows 10 / Server 2016 或更新版本。" />
+            Message="Windows 10 / Server 2016 or newer is required." />
     <Launch Condition="Privileged"
-            Message="安裝 JT SNMP Agent 需要系統管理員權限。" />
+            Message="Installing JT SNMP Agent requires administrator rights." />
 
-    <!-- 管理網段為必填。spec §3.3：預設 deny，不允許 Any/Any。
-         未提供即中止安裝，而不是靜默開放全網。 -->
+    <!-- The management networks are mandatory. spec §3.3: deny by default, never
+         Any/Any. Without them the installation stops rather than quietly opening
+         the agent to the whole network. -->
     <Property Id="MANAGEMENTNETWORKS" Secure="yes" />
     <Launch Condition="MANAGEMENTNETWORKS OR REMOVE"
-            Message="必須指定管理網段，例如：msiexec /i jt-snmpd.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24" />
+            Message="The management networks must be specified, for example: msiexec /i jt-snmpd.msi /qn MANAGEMENTNETWORKS=10.0.0.0/24" />
 
-    <!-- community 為選填；未提供時安裝程式會嘗試從內建 SNMP 移轉。
-         spec §5.5：**不要用 MSI 屬性傳遞密碼**——MSI 屬性會出現在
-         msiexec 記錄檔與 Event ID 1033/11707。community 只是唯讀存取字串，
-         風險等級與 v3 金鑰不同；v3 金鑰一律走 ADMX 原則，絕不走 MSI 屬性。 -->
+    <!-- The community is optional; without it the installer tries to migrate one
+         from the built-in SNMP service.
+
+         spec §5.5: **do not pass passwords as MSI properties** — they appear in
+         the msiexec log and in Event IDs 1033 and 11707. A community string is a
+         read-only access token and sits at a different risk level from a v3 key;
+         v3 keys always go through ADMX policy and never through an MSI
+         property. -->
     <Property Id="COMMUNITY" Secure="yes" />
     <Property Id="KEEPMSSNMP" Secure="yes" Value="0" />
     <Property Id="PURGE" Secure="yes" Value="0" />
 
-    <!-- 出現在「加入或移除程式」的資訊 -->
+    <!-- What appears in Add/Remove Programs -->
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
     <Property Id="ARPHELPLINK" Value="https://jason.tools" />
-    <!-- ARPNOMODIFY 由 WixUI_InstallDir 提供，這裡重複定義會撞號（WIX0091）。
-         ARPNOREPAIR 仍由我們設定：修復流程會重跑自訂動作，
-         而那會重新停用內建 SNMP 並覆寫設定，不是使用者按下「修復」時預期的行為。 -->
+    <!-- ARPNOMODIFY comes from WixUI_InstallDir; defining it again here collides
+         (WIX0091). ARPNOREPAIR is still set here: a repair re-runs the custom
+         action, which would disable the built-in SNMP service again and overwrite
+         the configuration — not what someone pressing "Repair" expects. -->
     <Property Id="ARPNOREPAIR" Value="1" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="JT SNMP Agent" />
     </StandardDirectory>
 
-    <!-- 「加入或移除程式」的圖示。
-         ARPPRODUCTICON 指向 Icon 表理論上就夠，實測卻沒有寫出 DisplayIcon
-         （屬性在、Icon 表也在、BMP 編碼的 ICO 也換過，機碼裡就是沒有這個值）。
-         改為直接寫 DisplayIcon 指向已內嵌圖示的執行檔——這是多數安裝程式的
-         做法，也不必依賴 Windows Installer 把 ICO 解出來。 -->
+    <!-- The Add/Remove Programs icon.
+
+         ARPPRODUCTICON pointing at the Icon table should be enough in theory, and
+         in practice it produced no DisplayIcon at all: the property was present,
+         the Icon table entry was present, the .ico was even re-encoded without
+         PNG-compressed entries, and the registry value stayed empty.
+
+         So DisplayIcon is written directly, pointing at the installed executable,
+         which carries the icon anyway. This is what most installers do, and it
+         does not depend on Windows Installer extracting the ICO. -->
     <Component Id="ArpDisplayIcon" Directory="INSTALLFOLDER"
                Guid="8F2C41A6-7D93-4E15-B0C8-3A9E5D7F2B41">
       <RegistryValue Root="HKLM"
@@ -93,25 +111,30 @@
       <ComponentRef Id="ArpDisplayIcon" />
     </Feature>
 
-    <!-- ============ 自訂動作 ============
-         流程刻意對齊 install.ps1，讓兩者行為一致。
-         PowerShell 以 -ExecutionPolicy Bypass 呼叫，因為目標機的
-         execution policy 常是 Restricted（實測 Win11 預設就是）。 -->
+    <!-- ============ Custom actions ============
+         The sequence deliberately mirrors install.ps1 so the two behave
+         identically. PowerShell is invoked with -ExecutionPolicy Bypass because
+         the execution policy on target machines is commonly Restricted — which is
+         the default on Windows 11. -->
 
-    <!-- [INSTALLFOLDER] 展開後**帶尾端反斜線**（"C:\Program Files\JT SNMP Agent\"）。
-         直接寫成 &quot;[INSTALLFOLDER]&quot; 會讓那個反斜線跳脫結尾的引號，
-         PowerShell 收到的路徑因此多一個引號字元：
-             找不到 C:\Program Files\JT SNMP Agent"\jt-snmpd.exe
-         這是 MSI 的經典陷阱，實測踩過。解法是把腳本完整路徑先組好，
-         參數本身就不需要目錄路徑。 -->
-    <!-- 必須在 CostFinalize **之後**：目錄屬性（INSTALLFOLDER）在 CostFinalize
-         才被解析成實際路徑。放在之前會得到只有檔名、沒有目錄的值
-         （實測：CONFIGSCRIPT = "msi-configure.ps1"），自訂動作因此找不到腳本。 -->
+    <!-- [INSTALLFOLDER] expands **with a trailing backslash**
+         ("C:\Program Files\JT SNMP Agent\"). Writing &quot;[INSTALLFOLDER]&quot;
+         directly lets that backslash escape the closing quote,
+         so PowerShell receives a path with a stray quote in it:
+             cannot find C:\Program Files\JT SNMP Agent"\jt-snmpd.exe
+         A classic MSI trap, and one this hit. The fix is to assemble the full
+         script path first, after which the argument needs no directory. -->
+    <!-- This must come **after** CostFinalize: directory properties such as
+         INSTALLFOLDER are only resolved to real paths there. Placed earlier, the
+         value comes out as a bare file name with no directory (measured:
+         CONFIGSCRIPT = "msi-configure.ps1"), and the custom action cannot find
+         the script. -->
     <SetProperty Id="CONFIGSCRIPT" Value="[INSTALLFOLDER]msi-configure.ps1"
                  After="CostFinalize" Sequence="execute" />
 
-    <!-- 安裝：抄走內建 SNMP 設定 → 停用它 → 寫 config → 建 ACL → 註冊服務
-              → 防火牆 → 啟動 → loopback 健康檢查 -->
+    <!-- Install: copy the built-in SNMP settings, disable it, write the config,
+         set the ACL, register the service, add firewall rules, start it, and run
+         the loopback health check -->
     <SetProperty Id="ConfigureAgent"
                  Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[CONFIGSCRIPT]&quot; -ManagementNetworks &quot;[MANAGEMENTNETWORKS]&quot; -Community &quot;[COMMUNITY]&quot; -KeepMsSnmp &quot;[KEEPMSSNMP]&quot;"
                  Before="ConfigureAgent"
@@ -123,7 +146,8 @@
                   Impersonate="no"
                   Return="check" />
 
-    <!-- 解除安裝：停服務 → 移除防火牆 → 還原內建 SNMP -->
+    <!-- Uninstall: stop the service, remove the firewall rules, restore the
+         built-in SNMP service -->
     <SetProperty Id="UnconfigureAgent"
                  Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[CONFIGSCRIPT]&quot; -Uninstall -Purge &quot;[PURGE]&quot;"
                  Before="UnconfigureAgent"
@@ -136,55 +160,55 @@
                   Return="ignore" />
 
     <InstallExecuteSequence>
-      <!-- 移除必須在檔案被刪掉之前 -->
+      <!-- Removal has to happen before the files are deleted -->
       <Custom Action="UnconfigureAgent" Before="RemoveFiles"
               Condition="REMOVE=&quot;ALL&quot;" />
-      <!-- 設定必須在檔案複製完成之後 -->
+      <!-- Configuration has to happen after the files are copied -->
       <Custom Action="ConfigureAgent" After="InstallFiles"
               Condition="NOT REMOVE" />
     </InstallExecuteSequence>
 
 
-    <!-- ================= 圖形安裝介面 =================
-      無訊息安裝（GPO / Intune / SCCM）是主要交付方式，但雙擊 MSI 也必須能用：
-      沒有 UI 的 MSI 雙擊之後會直接安裝，使用者沒有機會填入管理網段與 community，
-      安裝就會以「找不到 community」失敗。
+    <!-- ================= Graphical installation =================
+      Silent installation (GPO, Intune, SCCM) is the primary delivery method, but
+      double-clicking the MSI has to work too. Without a UI, double-clicking goes
+      straight to installing with no opportunity to supply the management networks
 
-      這裡在標準的 InstallDir 流程之後插入一個設定畫面。無訊息安裝時整個 UI
-      序列不會執行，命令列屬性照舊生效，兩條路徑共用同一組屬性。
+      or the community, and the install then fails with "cannot determine a
+      community".
     -->
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <UI>
       <Dialog Id="JtSettingsDlg" Width="370" Height="270" Title="JT SNMP Agent">
         <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15"
-                 Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}監控設定" />
+                 Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Monitoring settings" />
         <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="20"
                  Transparent="yes" NoPrefix="yes"
-                 Text="這兩項決定誰可以查詢這台主機。安裝後可編輯 config.json 並重新啟動服務來調整。" />
+                 Text="These two decide who may query this host. They can be changed afterwards by editing config.json and restarting the service." />
         <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
                  TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
         <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
         <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
 
         <Control Id="NetLabel" Type="Text" X="20" Y="60" Width="330" Height="12"
-                 NoPrefix="yes" Text="管理網段（必填）" />
+                 NoPrefix="yes" Text="Management networks (required)" />
         <Control Id="NetHint" Type="Text" X="20" Y="73" Width="330" Height="20"
                  NoPrefix="yes"
-                 Text="只有這些來源可以查詢，例如 192.168.1.0/24。多筆以逗號分隔。" />
+                 Text="Only these sources may query the agent, for example 10.0.0.0/24. Separate several with commas." />
         <Control Id="NetEdit" Type="Edit" X="20" Y="94" Width="330" Height="17"
                  Property="MANAGEMENTNETWORKS" Indirect="no" />
 
         <Control Id="CommLabel" Type="Text" X="20" Y="122" Width="330" Height="12"
-                 NoPrefix="yes" Text="Community 字串（必填）" />
+                 NoPrefix="yes" Text="Community string (required)" />
         <Control Id="CommHint" Type="Text" X="20" Y="135" Width="330" Height="20"
                  NoPrefix="yes"
-                 Text="等同唯讀密碼。留空時會嘗試沿用 Windows 內建 SNMP 的設定。" />
+                 Text="Equivalent to a read-only password. Left blank, the installer tries to carry one over from the built-in Windows SNMP service." />
         <Control Id="CommEdit" Type="Edit" X="20" Y="156" Width="330" Height="17"
                  Property="COMMUNITY" Indirect="no" />
 
         <Control Id="KeepMs" Type="CheckBox" X="20" Y="186" Width="330" Height="17"
                  Property="KEEPMSSNMP" CheckBoxValue="1"
-                 Text="保留 Windows 內建 SNMP Service（預設會停用它並在移除時還原）" />
+                 Text="Keep the built-in Windows SNMP Service (by default it is disabled and restored on uninstall)" />
 
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
                  Text="!(loc.WixUIBack)">
@@ -192,8 +216,9 @@
         </Control>
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
                  Default="yes" Text="!(loc.WixUINext)">
-          <!-- 管理網段沒填就不讓過。spec §3.3 預設 deny，不接受 Any/Any，
-               而空白會讓 agent 只回應 loopback，等於裝了但沒在監控。 -->
+          <!-- Refuse to continue without management networks. spec §3.3 is deny by
+               default and never Any/Any, and an empty list leaves the agent
+               answering only loopback: installed, but not monitoring. -->
           <Publish Event="NewDialog" Value="VerifyReadyDlg"
                    Condition="MANAGEMENTNETWORKS" />
           <Publish Event="SpawnDialog" Value="JtNeedNetworksDlg"
@@ -209,23 +234,25 @@
               NoMinimize="yes">
         <Control Id="Text" Type="Text" X="20" Y="15" Width="220" Height="40"
                  NoPrefix="yes"
-                 Text="請填入管理網段。未指定時代理程式只會回應本機查詢，等於安裝了卻沒有在監控。" />
+                 Text="Please enter the management networks. Without them the agent answers local queries only, which means it is installed but not monitoring." />
         <Control Id="OK" Type="PushButton" X="100" Y="60" Width="56" Height="17"
                  Default="yes" Cancel="yes" Text="!(loc.WixUIOK)">
           <Publish Event="EndDialog" Value="Return" />
         </Control>
       </Dialog>
 
-      <!-- 把設定畫面插進標準流程：InstallDirDlg → JtSettingsDlg → VerifyReadyDlg -->
+      <!-- Splice the settings page into the standard flow:
+           InstallDirDlg -> JtSettingsDlg -> VerifyReadyDlg -->
       <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog"
                Value="JtSettingsDlg" Order="3" Condition="NOT Installed" />
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog"
                Value="JtSettingsDlg" Order="3" Condition="NOT Installed" />
     </UI>
 
-    <!-- Id 必須帶 .ico 副檔名。MSI 的 Icon 表以 Name 決定解出來的檔名，
-         沒有副檔名時 Windows 不會把它認成圖示，ARPPRODUCTICON 指過去也是空的——
-         「加入或移除程式」的 DisplayIcon 會是空字串（實測）。 -->
+    <!-- The Id must carry the .ico extension. The MSI Icon table takes the file
+         name from Name, and without an extension Windows does not recognise it as
+         an icon: ARPPRODUCTICON then points at nothing and DisplayIcon in
+         Add/Remove Programs ends up empty (measured). -->
     <Icon Id="AppIcon.ico" SourceFile="$(var.IconFile)" />
 
   </Package>

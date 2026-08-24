@@ -1,15 +1,19 @@
 ﻿#Requires -Version 5.1
 <#
-    jt-snmpd MSI 自訂動作腳本
+    jt-snmpd MSI custom action script
 
-    注意：本檔以 UTF-8 with BOM 儲存（PowerShell 5.1 無 BOM 時以 cp950 讀取）。
+    Note: saved as UTF-8 with BOM; without one PowerShell 5.1 reads the file
+    using the system ANSI code page.
 
-    由 MSI 的 deferred custom action 呼叫，執行 install.ps1 中「檔案複製之後」
-    的所有步驟。兩者共用同一套邏輯，避免「MSI 裝的」與「腳本裝的」
-    產生兩種不一致的狀態（spec §5.4 的關鍵設計）。
+    Called from a deferred custom action in the MSI, this performs everything
+    install.ps1 does after the files are copied. Both share the same logic so
+    that "installed by MSI" and "installed by script" cannot drift into two
+    different states (a key design point in spec §5.4).
 
-    MSI 已負責：前置檢查、檔案複製、升級時移除舊版、失敗倒回。
-    本腳本負責：內建 SNMP 移轉與停用、config、ACL、服務註冊、防火牆、健康檢查。
+    The MSI handles: pre-checks, file copying, removing the old version on
+    upgrade, and rollback on failure.
+    This script handles: migrating and disabling the built-in SNMP service, the
+    config file, ACLs, service registration, firewall rules and the health check.
 #>
 [CmdletBinding()]
 param(
@@ -33,10 +37,12 @@ $FW_RULE       = 'JT SNMP Agent (UDP 161)'
 $FW_RULE_ICMP  = 'JT SNMP Agent (ICMPv4)'
 $MSSNMP_PARAMS = 'HKLM:\SYSTEM\CurrentControlSet\Services\SNMP\Parameters'
 
-# MSI 的自訂動作沒有主控台，所有輸出寫入記錄檔供事後診斷
+# A custom action has no console, so everything is written to a log file for
+# later diagnosis
 $MSI_LOG = Join-Path $LOG_DIR 'msi-configure.log'
-# PURGE 之後必須停止寫檔——記錄檔就在要清除的目錄裡，
-# 再寫一行就會把 logs\ 重建回來，讓「完整清除」實際上留下殘骸（實測踩過）。
+# File logging has to stop before a PURGE: this log lives inside the directory
+# being removed, and one more line recreates logs\ — leaving debris behind after
+# what claimed to be a complete removal. This happened.
 $script:LogToFile = $true
 function Log {
     param($m)
@@ -54,7 +60,8 @@ function Stop-AgentService {
     $svc = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
     if (-not $svc) { return }
     if ($svc.Status -ne 'Stopped') { Stop-Service -Name $SERVICE_NAME -Force -ErrorAction SilentlyContinue }
-    # 停服務回來不代表檔案控制代碼已釋放（jt-doc-tools v1.1.66~69 的實際 bug）
+    # Stopping the service does not mean its file handles are released (the
+    # actual bug in jt-doc-tools v1.1.66-69)
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
         if (-not (Get-Process -Name $SERVICE_NAME -ErrorAction SilentlyContinue)) { break }
@@ -64,18 +71,18 @@ function Stop-AgentService {
         Stop-Process -Force -ErrorAction SilentlyContinue
     & sc.exe delete $SERVICE_NAME | Out-Null
     Start-Sleep -Seconds 2
-    Log "已停止並移除舊服務"
+    Log "stopped and removed the previous service"
 }
 
-# ---------------- 解除安裝 ----------------
+# ---------------- Uninstall ----------------
 if ($Uninstall) {
-    Log "=== 解除安裝開始 ==="
+    Log "=== uninstall starting ==="
     Stop-AgentService
     Remove-NetFirewallRule -DisplayName "$FW_RULE*" -ErrorAction SilentlyContinue
     Remove-NetFirewallRule -DisplayName "$FW_RULE_ICMP*" -ErrorAction SilentlyContinue
-    Log "防火牆規則已移除"
+    Log "firewall rules removed"
 
-    # 還原內建 SNMP（spec §5.9.5）
+    # Restore the built-in SNMP service (spec §5.9.5)
     $restorePath = Join-Path $STATE_DIR 'ms-snmp-restore.json'
     if (Test-Path $restorePath) {
         try {
@@ -87,17 +94,18 @@ if ($Uninstall) {
                     if ($r.ms_snmp.original_status -eq 'Running') {
                         Start-Service -Name SNMP -ErrorAction SilentlyContinue
                     }
-                    Log "Windows 內建 SNMP Service 已還原為 $orig"
+                    Log "built-in Windows SNMP Service restored to $orig"
                 }
             }
-        } catch { Log "還原內建 SNMP 失敗：$_" }
+        } catch { Log "failed to restore the built-in SNMP service: $_" }
     }
 
     if ($Purge -eq '1') {
-        # 先關掉檔案記錄，否則接下來每一行 Log 都會把 logs\ 重新建出來。
-        Log "資料目錄清除中（PURGE=1）：$DATA_DIR"
+        # Turn off file logging first, or every Log line below recreates logs\.
+        Log "removing the data directory (PURGE=1): $DATA_DIR"
         $script:LogToFile = $false
-        # 服務剛停止，DPAPI blob 或記錄檔可能仍被短暫持有；重試而不是悄悄略過。
+        # The service has just stopped, so a DPAPI blob or the log file may still
+        # be held briefly. Retry rather than skipping quietly.
         $purged = $false
         foreach ($attempt in 1..5) {
             Remove-Item $DATA_DIR -Recurse -Force -ErrorAction SilentlyContinue
@@ -105,32 +113,35 @@ if ($Uninstall) {
             Start-Sleep -Milliseconds 400
         }
         if ($purged) {
-            Log "資料目錄已完整清除（PURGE=1）"
+            Log "data directory completely removed (PURGE=1)"
         } else {
-            # 不可謊報成功：留下的殘骸會讓下次安裝沿用舊狀態。
+            # Do not claim success falsely: anything left behind is inherited by
+            # the next installation.
             $left = @(Get-ChildItem $DATA_DIR -Recurse -Force -ErrorAction SilentlyContinue).Count
-            Log "WARN 資料目錄清除未完成，仍有 $left 個項目：$DATA_DIR"
+            Log "WARN data directory not fully removed; $left items remain: $DATA_DIR"
         }
     } else {
-        # spec §5.7：預設保留是刻意的。客戶常以「移除再重裝」排除問題，
-        # 若索引被清除，LibreNMS 會整組重新 discovery，舊 RRD 全數變孤兒。
-        Log "資料目錄已保留：$DATA_DIR"
+        # spec §5.7: keeping it by default is deliberate. Customers commonly
+        # uninstall and reinstall to troubleshoot, and clearing the index map
+        # makes LibreNMS rediscover everything, orphaning the existing RRDs.
+        Log "data directory kept: $DATA_DIR"
     }
-    Log "=== 解除安裝完成 ==="
+    Log "=== uninstall complete ==="
     exit 0
 }
 
-# ---------------- 安裝 / 升級 ----------------
-# 本腳本位於安裝目錄內，直接由自身位置推導——不必由 MSI 傳入，
-# 也就避開 [INSTALLFOLDER] 尾端反斜線跳脫引號的陷阱。
+# ---------------- Install / upgrade ----------------
+# This script lives inside the installation directory, so the path is derived
+# from its own location rather than passed in by the MSI — which avoids the trap
+# where [INSTALLFOLDER]'s trailing backslash escapes the closing quote.
 $InstallDir = Split-Path -Parent $PSCommandPath
-Log "=== 設定開始 InstallDir=$InstallDir ==="
+Log "=== configuration starting, InstallDir=$InstallDir ==="
 $exe = Join-Path $InstallDir $EXE_NAME
-if (-not (Test-Path $exe)) { Log "FAIL 找不到 $exe"; exit 1 }
+if (-not (Test-Path $exe)) { Log "FAIL $exe not found"; exit 1 }
 
 Stop-AgentService
 
-# --- 讀取內建 SNMP 設定（spec §5.9）---
+# --- Read the built-in SNMP configuration (spec §5.9) ---
 $msCfg = [ordered]@{
     service_exists = $false; status = $null; start_type = $null
     communities = @{}; permitted_managers = @()
@@ -142,7 +153,7 @@ if ($svc) {
     $msCfg.service_exists = $true
     $msCfg.status = "$($svc.Status)"
     $msCfg.start_type = "$($svc.StartType)"
-    Log "偵測到內建 SNMP Service：$($svc.Status) / $($svc.StartType)"
+    Log "built-in SNMP Service detected: $($svc.Status) / $($svc.StartType)"
 }
 if (Test-Path $MSSNMP_PARAMS) {
     $vc = Join-Path $MSSNMP_PARAMS 'ValidCommunities'
@@ -177,32 +188,34 @@ if (Test-Path $MSSNMP_PARAMS) {
     }
 }
 
-# --- 決定 community（spec §5.9.4 安全規則優先於忠實移轉）---
+# --- Decide the community (spec §5.9.4: security rules outrank faithful migration) ---
 $comm = $Community
 if (-not $comm) {
     foreach ($name in $msCfg.communities.Keys) {
         $access = $msCfg.communities[$name]
-        if ($access -eq 4) { if (-not $comm) { $comm = $name }; Log "匯入唯讀 community" }
+        if ($access -eq 4) { if (-not $comm) { $comm = $name }; Log "imported a read-only community" }
         elseif ($access -in @(8,16)) {
             if (-not $comm) { $comm = $name }
-            Log "[!] community 原為可寫（access=$access），已降級為唯讀"
-        } else { Log "community access=$access（NONE/NOTIFY），不匯入" }
+            Log "[!] community was writable (access=$access); downgraded to read-only"
+        } else { Log "community access=$access (NONE/NOTIFY); not imported" }
     }
 }
 if (-not $comm) {
-    # 走到這裡代表：沒有傳入 COMMUNITY，內建 SNMP 也沒有可移轉的唯讀 community。
-    # agent 沒有 community 會拒絕服務，接著健康檢查逾時、MSI 以 1603 回滾——
-    # 那個錯誤碼完全看不出原因。在這裡就講清楚。
-    Log "FAIL 無法決定 community：未指定 COMMUNITY，且內建 SNMP 沒有可移轉的唯讀 community。"
-    Log "     請以 msiexec /i jt-snmpd.msi /qn COMMUNITY=<你的 community> ... 重新安裝，"
-    Log "     或以圖形介面安裝並在設定畫面填入。"
+    # Reaching here means no COMMUNITY was supplied and the built-in service has
+    # no read-only community to migrate. Without one the agent refuses to serve,
+    # the health check then times out and the MSI rolls back with 1603 — an error
+    # code that says nothing about the cause. Say it here instead.
+    Log "FAIL cannot determine a community: COMMUNITY was not supplied and the"
+    Log "     built-in SNMP service has no read-only community to migrate."
+    Log "     Reinstall with msiexec /i jt-snmpd.msi /qn COMMUNITY=<your community> ..."
+    Log "     or install through the UI and fill it in on the settings page."
     exit 1
 }
 if ($comm -in @('public','private')) {
-    Log "[!] community 為公認預設值，強烈建議改用 SNMPv3"
+    Log "[!] this is a well-known default community; SNMPv3 is strongly recommended"
 }
 
-# --- 決定管理網段 ---
+# --- Decide the management networks ---
 $nets = @()
 if ($ManagementNetworks) {
     $nets = $ManagementNetworks -split '[,;\s]+' | Where-Object { $_ }
@@ -214,25 +227,26 @@ if ($ManagementNetworks) {
                 $ip = ([System.Net.Dns]::GetHostAddresses($m) |
                        Where-Object AddressFamily -eq 'InterNetwork' |
                        Select-Object -First 1).IPAddressToString
-                if ($ip) { $nets += $ip; Log "PermittedManagers '$m' 解析為 $ip" }
-            } catch { Log "[!] PermittedManagers '$m' 無法解析，未納入 ACL" }
+                if ($ip) { $nets += $ip; Log "PermittedManagers '$m' resolved to $ip" }
+            } catch { Log "[!] PermittedManagers '$m' could not be resolved; not added to the ACL" }
         }
     }
 }
 if ($nets.Count -eq 0) {
-    # spec §3.3 / §5.9.4 ①：絕不移轉為 Any/Any
-    Log "FAIL 未提供管理網段且無法從既有設定取得。預設 deny，不允許 Any/Any。"
+    # spec §3.3 and §5.9.4 (1): never migrate to Any/Any
+    Log "FAIL no management networks were supplied and none could be taken from the existing configuration. Deny by default; Any/Any is not allowed."
     exit 1
 }
-Log "管理網段：$($nets -join ', ')"
+Log "management networks: $($nets -join ', ')"
 
-# --- 資料目錄與 ACL（spec §3.7）---
+# --- Data directory and ACL (spec §3.7) ---
 foreach ($d in @($DATA_DIR, $STATE_DIR, $LOG_DIR, $SECRETS_DIR)) {
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force $d | Out-Null }
 }
 try {
-    # C:\ProgramData 的預設 ACL 允許 Users 建立子資料夾，攻擊者可搶先建立
-    # 目錄並保留寫入權。不能只 create-if-not-exists，必須重設 ACL。
+    # The default ACL on C:\ProgramData lets Users create subdirectories, so an
+    # attacker can create ours first and keep write access to it. Creating it
+    # only when absent is not enough; the ACL has to be reset.
     $acl = New-Object System.Security.AccessControl.DirectorySecurity
     $acl.SetAccessRuleProtection($true, $false)
     foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
@@ -242,26 +256,29 @@ try {
     }
     $acl.SetOwner((New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'))
     Set-Acl -Path $DATA_DIR -AclObject $acl
-    Log "資料目錄 ACL 已設為 SYSTEM/Administrators only"
-} catch { Log "[!] ACL 設定失敗：$_" }
+    Log "data directory ACL set to SYSTEM and Administrators only"
+} catch { Log "[!] failed to set the ACL: $_" }
 
-# --- 寫 config 與還原資訊 ---
+# --- Write the config and the restore record ---
 $cfg = [ordered]@{
     schema_version = 1; community = $comm; allowed_networks = @($nets)
     port = 161; enable_arp_table = $false; installed_at = (Get-Date).ToString('s')
     installed_by = 'msi'
 }
-# 不寫 BOM：Windows PowerShell 5.1 的 -Encoding UTF8 會加 BOM，
-# 而多數 JSON 解析器（含 Python 的 json.load）會因此失敗。
-# agent 端已改用 utf-8-sig 容忍兩種形式，這裡仍寫乾淨的版本。
+# No BOM: Windows PowerShell 5.1's -Encoding UTF8 adds one, and most JSON
+# parsers — Python's json.load included — fail on it. The agent now reads with
+# utf-8-sig and tolerates either form, but this still writes the clean version.
 [IO.File]::WriteAllText((Join-Path $DATA_DIR 'config.json'),
     ($cfg | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
 
-# 升級時**不可**用當下狀態覆寫還原記錄：此刻的內建 SNMP 已經被上一次安裝
-# 停用了，重讀只會得到 Disabled/Stopped。寫回去之後解除安裝那段的
-# `if ($orig -ne 'Disabled')` 判斷就永遠不成立——安裝→升級→移除之後，
-# 內建 SNMP 再也回不來。要記的是「**我們第一次動手之前**的樣子」，
-# 因此既有記錄一律優先，只有第一次安裝才寫入。
+# On upgrade the restore record must **not** be overwritten with the current
+# state: the built-in service was already disabled by the previous install, so
+# re-reading it only yields Disabled/Stopped. Writing that back makes the
+# uninstall guard `if ($orig -ne 'Disabled')` permanently false, and after
+# install -> upgrade -> uninstall the built-in service never comes back.
+#
+# What has to be recorded is how things looked **before we first touched them**,
+# so an existing record always wins and only the first install writes one.
 $RESTORE_FILE = Join-Path $STATE_DIR 'ms-snmp-restore.json'
 $msSnmpBlock = $null
 if (Test-Path $RESTORE_FILE) {
@@ -274,10 +291,10 @@ if (Test-Path $RESTORE_FILE) {
                 original_status     = $prev.ms_snmp.original_status
                 disabled_by_us      = [bool]$prev.ms_snmp.disabled_by_us
             }
-            Log ("沿用既有還原記錄：內建 SNMP 原為 " +
+            Log ("reusing the existing restore record: built-in SNMP was " +
                  "$($msSnmpBlock.original_start_type) / $($msSnmpBlock.original_status)")
         }
-    } catch { Log "WARN 既有還原記錄無法解析，將以當下狀態重建：$_" }
+    } catch { Log "WARN the existing restore record could not be parsed; rebuilding from the current state: $_" }
 }
 if (-not $msSnmpBlock) {
     $msSnmpBlock = [ordered]@{
@@ -305,52 +322,55 @@ $restore = [ordered]@{
 }
 $restore | ConvertTo-Json -Depth 6 | Set-Content $RESTORE_FILE -Encoding UTF8
 
-# --- 停用內建 SNMP（停用，不移除；spec §5.9.5）---
+# --- Disable the built-in SNMP service (disabled, not removed; spec §5.9.5) ---
 if ($msCfg.service_exists -and $KeepMsSnmp -ne '1') {
     Stop-Service -Name SNMP -Force -ErrorAction SilentlyContinue
     Set-Service -Name SNMP -StartupType Disabled -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
-    # 驗證而非假設：群組原則或第三方管控可能擋下這兩個動作。若沒真的停掉，
-    # 內建 SNMP 仍佔著 UDP/161，我們會綁定失敗——與其讓後面的健康檢查
-    # 出現一個看不出原因的逾時，不如在這裡就講清楚是誰佔著。
+    # Verify rather than assume: Group Policy or third-party management can block
+    # either action. If it did not actually stop, the built-in service still holds
+    # UDP/161 and our bind fails — better to say who holds the port here than to
+    # let it surface as an unexplained health-check timeout later.
     $after = Get-Service -Name SNMP -ErrorAction SilentlyContinue
     if ($after -and ($after.Status -ne 'Stopped' -or $after.StartType -ne 'Disabled')) {
-        Log ("FAIL 內建 SNMP Service 停用失敗，目前為 " +
+        Log ("FAIL could not disable the built-in SNMP Service; it is currently " +
              "$($after.Status) / $($after.StartType)。" +
-             "可能受群組原則管控；請手動停用後重試，或以 KEEPMSSNMP=1 並改用其他連接埠安裝。")
+             "It may be under Group Policy control. Disable it manually and retry, or install with KEEPMSSNMP=1 on a different port.")
         exit 1
     }
-    Log "內建 SNMP Service 已停用（原為 $($msCfg.start_type) / $($msCfg.status)）"
+    Log "built-in SNMP Service disabled (was $($msCfg.start_type) / $($msCfg.status))"
 }
 
-# --- 註冊服務 ---
+# --- Register the service ---
 & $exe --startup auto install 2>&1 | Out-Null
 if (-not (Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue)) {
-    Log "FAIL 服務註冊失敗"; exit 1
+    Log "FAIL service registration failed"; exit 1
 }
-& sc.exe description $SERVICE_NAME '以標準 MIB 提供 Windows 主機監控資料的 SNMP Agent' | Out-Null
-# 失效自動復原三段式；failureflag 1 讓非零結束碼也觸發（spec §6.2）
+& sc.exe description $SERVICE_NAME 'SNMP agent serving Windows host monitoring data over standard MIBs' | Out-Null
+# Three-stage automatic recovery; failureflag 1 makes a non-zero exit code
+# trigger it too (spec §6.2)
 & sc.exe failure $SERVICE_NAME reset= 86400 actions= restart/60000/restart/60000/restart/300000 | Out-Null
 & sc.exe failureflag $SERVICE_NAME 1 | Out-Null
-# 特權縮減（spec §3.6）
+# Privilege reduction (spec §3.6)
 & sc.exe privs $SERVICE_NAME SeChangeNotifyPrivilege/SeSystemProfilePrivilege/SeIncreaseQuotaPrivilege | Out-Null
 $s = Get-CimInstance Win32_Service -Filter "Name='$SERVICE_NAME'"
-Log "服務已註冊：$($s.StartName) / $($s.StartMode)"
-if ($s.PathName -notmatch '^"') { Log "[!] ImagePath 未加引號：$($s.PathName)" }
+Log "service registered: $($s.StartName) / $($s.StartMode)"
+if ($s.PathName -notmatch '^"') { Log "[!] ImagePath is not quoted: $($s.PathName)" }
 
-# --- 防火牆（spec §3.3，強制、預設 deny）---
+# --- Firewall (spec §3.3: mandatory, deny by default) ---
 Remove-NetFirewallRule -DisplayName "$FW_RULE*" -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName $FW_RULE -Direction Inbound -Protocol UDP `
     -LocalPort 161 -RemoteAddress $nets -Action Allow -Profile Any `
     -Description 'jt-snmpd inbound SNMP' | Out-Null
-# 停用內建 SNMP 會連帶停用它的 ICMP 規則，而 LibreNMS 靠 ping 判定存活（實測）
+# Disabling the built-in service also disables its ICMP rule, and LibreNMS uses
+# ping to decide whether a device is up (measured)
 Remove-NetFirewallRule -DisplayName "$FW_RULE_ICMP*" -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName $FW_RULE_ICMP -Direction Inbound -Protocol ICMPv4 `
     -IcmpType 8 -RemoteAddress $nets -Action Allow -Profile Any `
     -Description 'jt-snmpd ICMP echo for NMS availability' | Out-Null
-Log "防火牆規則已建立（UDP/161 + ICMPv4，來源限 $($nets -join ', ')）"
+Log "firewall rules created (UDP/161 and ICMPv4, sources limited to $($nets -join ', '))"
 
-# --- 啟動並做 loopback 健康檢查（spec §5.7 第 7 步）---
+# --- Start the service and run the loopback health check (spec §5.7 step 7) ---
 function Test-SnmpLoopback {
     param($CommunityName)
     $c2 = [Text.Encoding]::ASCII.GetBytes($CommunityName)
@@ -381,11 +401,12 @@ while ((Get-Date) -lt $deadline) {
     if (Test-SnmpLoopback -CommunityName $comm) { $healthy = $true; break }
 }
 if (-not $healthy) {
-    # MSI 預設只確認「服務啟動成功」，但服務啟動成功不等於能回應 SNMP
-    # （spec §6.5 的「假活著」）。健康檢查失敗即讓 MSI 交易倒回。
-    Log "FAIL 服務已啟動但 30 秒內未回應 loopback SNMP 查詢"
+    # By default an MSI only confirms the service started, and a service that
+    # started is not the same as one that answers SNMP (the "alive but dead" case
+    # in spec §6.5). A failed health check rolls the whole MSI transaction back.
+    Log "FAIL the service started but did not answer a loopback SNMP query within 30 seconds"
     exit 1
 }
-Log "服務已啟動並通過 loopback 自我測試"
-Log "=== 設定完成 ==="
+Log "service started and passed the loopback self-test"
+Log "=== configuration complete ==="
 exit 0
