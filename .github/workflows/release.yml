@@ -1,12 +1,15 @@
-# 打上 v* 標籤即發版：在 Windows 執行器上建置 MSI，跑自我測試，
-# 建立 GitHub Release 並附上安裝檔。
+# Pushing a v* tag ships a release: build the MSI on a Windows runner, run the
+# self-tests, create the GitHub Release and attach the installer.
 #
-# 用 GITHUB_TOKEN 而非個人存取權杖：它由 Actions 自動提供，
-# 權限僅限本 repo 且隨工作結束失效，不需要任何人手動保管憑證。
+# GITHUB_TOKEN rather than a personal access token: Actions provides it
+# automatically, it is scoped to this repository alone, and it expires with the
+# job — nobody has to hold a long-lived credential.
 #
-# **這裡建出來的 MSI 未經 Authenticode 簽章**（SignPath Foundation 申請中）。
-# 在 WDAC 環境部署前必須先簽章。簽章到位後，簽章步驟會加在 build 與
-# release 之間，屆時 Release 附的就是已簽章的版本。
+# **The MSI built here is not Authenticode signed**, and there is no plan to
+# obtain a certificate. Integrity is established by the SHA-256 published
+# alongside each asset instead. docs/code-signing.md covers what an unsigned
+# installer looks like at install time and how to deal with it, including the
+# WDAC hash-rule and sign-it-yourself routes.
 name: release
 
 on:
@@ -15,11 +18,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '要發版的標籤（例如 v0.9.0）'
+        description: 'Tag to release (for example v0.9.0)'
         required: true
 
 permissions:
-  contents: write      # 建立 Release 與上傳附件所需
+  contents: write      # required to create the Release and upload assets
 
 jobs:
   build-msi:
@@ -31,16 +34,17 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 安裝相依
+      - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           pip install pysnmp pywin32 pyinstaller pytest
 
-      - name: 執行測試
-        # 失敗時把 pytest 的摘要以 ::error:: 送出，讓它變成工作流程註記。
-        # GitHub 的執行日誌需要認證才讀得到，註記則是公開的——
-        # 沒有這一步，遠端偵錯就只剩下「exit code 1」這個資訊。
+      - name: Run tests
+        # On failure, emit pytest's summary lines as ::error:: so they become
+        # workflow annotations. GitHub's run logs need authentication to read;
+        # annotations are public. Without this, remote diagnosis is limited to
+        # "exit code 1".
         shell: pwsh
         run: |
           $out = python -m pytest tests/ -q --tb=line 2>&1 | Out-String
@@ -56,24 +60,26 @@ jobs:
             exit 1
           }
 
-      - name: 確認標籤與 version.py 一致
-        # 版本只能有一個來源。標籤與 version.py 不一致時，
-        # 使用者下載到的檔名與 agent 回報的 jtAgentVersion 會對不起來，
-        # 而那個 OID 的用途正是「升級數百台後一次 walk 得知哪台沒升成功」。
+      - name: Verify the tag matches version.py
+        # The version has exactly one source. If the tag and version.py
+        # disagree, the file name the user downloads no longer matches the
+        # jtAgentVersion the agent reports — and that OID exists precisely to
+        # answer "we upgraded several hundred machines, which ones did not
+        # take?" in a single walk.
         shell: pwsh
         run: |
           $tag = if ($env:GITHUB_REF -like 'refs/tags/*') {
                    $env:GITHUB_REF -replace '^refs/tags/v?',''
                  } else { '${{ inputs.tag }}' -replace '^v','' }
           $ver = (Select-String -Path deploy/version.py -Pattern '^VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-          Write-Host "標籤=$tag  version.py=$ver"
+          Write-Host "tag=$tag  version.py=$ver"
           if ($tag -ne $ver) {
-            Write-Host "::error::標籤 v$tag 與 deploy/version.py 的 $ver 不一致"
+            Write-Host "::error::tag v$tag does not match $ver in deploy/version.py"
             exit 1
           }
           "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: 建置執行檔（含 --selftest 閘門）
+      - name: Build the executable (with the --selftest gate)
         shell: pwsh
         run: |
           $py = (Get-Command python).Source
@@ -88,29 +94,32 @@ jobs:
             exit 1
           }
 
-      - name: 安裝 WiX 5 與擴充
-        # `dotnet tool install wix` 只裝了 wix.exe 本身。專案用到的擴充要另外
-        # 加，否則建置以 WIX0144「extension could not be found」失敗。
+      - name: Install WiX 5 and its extensions
+        # `dotnet tool install wix` installs wix.exe alone. The extensions this
+        # project uses have to be added separately, or the build fails with
+        # WIX0144 "extension could not be found".
         shell: pwsh
         run: |
           dotnet tool install --global wix --version 5.*
           $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
-          # 釘住版本：不指定時會解析到最新的（7.x），而那與 WiX v5 不相容，
-          # 建置會以 WIX6101「Could not find expected package root folder wixext5」失敗。
+          # Pin the version: left unspecified this resolves to the newest (7.x),
+          # which is incompatible with WiX v5 and fails the build with WIX6101
+          # "Could not find expected package root folder wixext5".
           wix extension add -g WixToolset.Util.wixext/5.0.2
           wix extension add -g WixToolset.UI.wixext/5.0.2
           wix extension list -g
 
-      - name: 建置 MSI
+      - name: Build the MSI
         shell: pwsh
         run: |
           $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
           $out = .\packaging\build-msi.ps1 2>&1 | Out-String
           Write-Host $out
           if ($LASTEXITCODE -ne 0) {
-            # WiX 的錯誤是 WIXnnnn 形式；建置腳本自己的失敗是 [FAIL]。
-            # 兩者都要送成註記——GitHub 的執行日誌需要認證才讀得到，
-            # 只有註記是公開的，而「exit code 1」不構成診斷。
+            # WiX errors take the form WIXnnnn; the build script's own failures
+            # are [FAIL]. Both have to become annotations — GitHub's run logs
+            # need authentication to read, only annotations are public, and
+            # "exit code 1" is not a diagnosis.
             foreach ($l in ($out -split "`n")) {
               $t = $l.Trim()
               if ($t -match 'WIX\d{3,4}|\[FAIL\]|\[!\]|error |Exception') {
@@ -121,7 +130,7 @@ jobs:
             exit 1
           }
 
-      - name: 產生 SHA-256
+      - name: Generate SHA-256
         shell: pwsh
         run: |
           $msi = Get-ChildItem dist\jt-snmpd-*-x64.msi | Select-Object -First 1
@@ -130,31 +139,55 @@ jobs:
           Write-Host "SHA256 $h"
           "MSI_PATH=$($msi.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: 從 CHANGELOG 取出本版說明
+      - name: Compose the release notes
+        # English first, Traditional Chinese second: this project ships
+        # worldwide, and a release page that opens in Chinese is unreadable to
+        # most of the people who land on it. Every line here is a complete
+        # sentence on one line — GitHub renders Markdown, so a hard break in
+        # the middle of a sentence shows up as a break in the rendered page.
         shell: pwsh
         run: |
+          $repo = "${{ github.repository }}"
+          $pages = "https://jasoncheng7115.github.io/jt-snmpd/"
+          $msi = "jt-snmpd-$env:VERSION-x64.msi"
           $body = @()
-          $body += "以標準 MIB 提供 Windows 主機監控資料的唯讀 SNMP Agent。"
+          $body += "A read-only SNMP agent that serves Windows host metrics to LibreNMS through standard MIBs."
           $body += ""
-          $body += "## 安裝"
-          $body += ''
-          $body += '```'
-          $body += "msiexec /i jt-snmpd-$env:VERSION-x64.msi /qn ``"
+          $body += "**[Documentation and screenshots]($pages)**"
+          $body += ""
+          $body += "## Install"
+          $body += ""
+          $body += "Download ``$msi`` from the Assets below, verify it against ``$msi.sha256``, then either double-click it for the settings dialog, or install from the command line:"
+          $body += ""
+          $body += '```powershell'
+          $body += "# Command line / unattended - also the form to use for GPO software deployment"
+          $body += "msiexec /i $msi /qn ``"
           $body += "  MANAGEMENTNETWORKS=10.0.0.0/24 ``"
-          $body += "  COMMUNITY=<你的 community>"
+          $body += "  COMMUNITY=your-community"
           $body += '```'
           $body += ""
-          $body += "安裝程式會偵測內建 SNMP Service、沿用其設定，然後停用它（停用，不移除）；"
-          $body += "解除安裝時自動還原。"
+          $body += "The installer is fully self-contained and downloads nothing. It detects the built-in SNMP Service, carries over its community, sysContact and sysLocation, then disables it (disabled, not removed) and restores it on uninstall."
           $body += ""
-          $body += "> **本安裝檔未經 Authenticode 簽章**（SignPath Foundation 申請中）。"
-          $body += "> 在 WDAC 環境部署前必須先完成簽章。"
+          $body += "> **This installer is not Authenticode signed**, so SmartScreen will warn on a double-click and the UAC prompt will show an unknown publisher. Verify the SHA-256 above instead, and see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) for WDAC/AppLocker environments."
           $body += ""
-          $body += "完整變更見 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)"
-          $body += "／[CHANGELOG_zh-TW.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG_zh-TW.md)。"
+          $body += "Full changes: [CHANGELOG.md](https://github.com/$repo/blob/main/CHANGELOG.md)"
+          $body += ""
+          $body += "---"
+          $body += ""
+          $body += "## 繁體中文"
+          $body += ""
+          $body += "以標準 MIB 將 Windows 主機的監控資料提供給 LibreNMS 的唯讀 SNMP Agent。**[說明文件與畫面]($pages)**"
+          $body += ""
+          $body += "請由下方 Assets 下載 ``$msi``，以 ``$msi.sha256`` 驗證雜湊，接著可直接點兩下開啟設定對話框，或以命令列安裝（上方指令同時也是 GPO 軟體派送所使用的形式）。"
+          $body += ""
+          $body += "安裝檔完全自包含，安裝過程不上網下載任何東西。安裝程式會偵測內建 SNMP Service，沿用它的 community、sysContact 與 sysLocation，然後將它停用（停用，不移除），並在解除安裝時自動還原。"
+          $body += ""
+          $body += "> **本安裝檔未經 Authenticode 簽章**，因此點兩下安裝時 SmartScreen 會出現警告，UAC 提示的發行者會顯示為「不明」。請改以上方的 SHA-256 驗證；WDAC / AppLocker 環境請見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html)。"
+          $body += ""
+          $body += "完整變更請見 [CHANGELOG_zh-TW.md](https://github.com/$repo/blob/main/CHANGELOG_zh-TW.md)。"
           $body -join "`n" | Out-File RELEASE_NOTES.md -Encoding utf8
 
-      - name: 建立 Release 並上傳
+      - name: Create the Release and upload assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

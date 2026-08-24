@@ -26,9 +26,9 @@ installation nor transactional rollback. They are not in the same category.
 
 - **Fully self-contained.** The installer downloads nothing; everything, including
   any third-party binary, is inside the MSI.
-- **Must be signed.** Without an Authenticode signature the package cannot be
-  deployed in a WDAC environment at all, and government tenders reject it at
-  security review.
+- **Signing is the deployer's to arrange.** An unsigned file cannot be allowed
+  by publisher rule under WDAC, so those sites need a hash rule or their own
+  certificate — see `docs/code-signing.md`.
 - **Release Gate green before it ships.** See `TEST_PLAN.md` §10.
 
 ## Status
@@ -45,7 +45,9 @@ been edited: the build succeeded, the version number advanced, and the fix was
 simply not in the MSI. The fingerprints are how you answer "which version of the
 script is inside the package the customer is holding".
 
-**Authenticode signing is not yet in place** (SignPath Foundation application
-pending). Signing must happen before any WDAC deployment.
+**This installer is not Authenticode signed**, and no certificate is planned.
+Integrity comes from the accompanying `.sha256` instead. For WDAC and AppLocker
+environments, see
+https://jasoncheng7115.github.io/jt-snmpd/code-signing.html
 
 The installer itself does not go into git; it is attached to the GitHub Release.

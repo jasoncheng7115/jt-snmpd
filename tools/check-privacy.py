@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""推上公開 repo 之前的個資／機密掃描。
+"""推上公開 repo 之前的個資 / 機密掃描。
 
 **為什麼需要這支程式**
 
@@ -60,13 +60,13 @@ RULES: list[tuple[str, str, re.Pattern, str]] = [
     (HIGH, "password", re.compile(
         r"""(?ix)\b(?:password|passwd|pwd|secret)\s*[=:]\s*["']?[^\s"'{}$<>]{4,}"""),
      "明文密碼"),
-    # 只抓「命令列／設定檔裡的實際值」，不抓程式碼中的變數指派。
+    # 只抓「命令列 / 設定檔裡的實際值」，不抓程式碼中的變數指派。
     # `community = v2c.apiMessage.get_community(msg)` 與 `COMMUNITY = "bench"`
     # 都不是機密，前者是取值、後者是測試常數——第一版把兩者都報成 HIGH，
     # 那種雜訊會讓人開始無視掃描結果，比不掃還糟。
     (HIGH, "community", re.compile(
         r"""(?x)
-        \bCOMMUNITY=                     # 命令列／MSI 屬性形式，無空白
+        \bCOMMUNITY=                     # 命令列 / MSI 屬性形式，無空白
         # 佔位字不算洩漏。比對不分大小寫——第一版只擋大寫 YOUR，
         # 於是文件裡的 `your-community` 被報成 HIGH。
         (?![<$%{]|(?i:public|your|change|example|placeholder|xxx)\b)
@@ -293,7 +293,7 @@ def update_manifest(files: list[Path]) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="推上公開 repo 前的個資／機密掃描")
+    ap = argparse.ArgumentParser(description="推上公開 repo 前的個資 / 機密掃描")
     ap.add_argument("--update-images", action="store_true",
                     help="重新產生圖片審閱清單（只在實際看過每張圖之後才用）")
     args = ap.parse_args()
@@ -327,7 +327,7 @@ def main() -> int:
         print()
 
     if bin_hits:
-        print("── 圖片／二進位檔")
+        print("── 圖片 / 二進位檔")
         for sev, name, rel, digest, why in bin_hits:
             n_high += 1
             print(f"   [{sev:4}] {name:18} {rel}")
@@ -341,7 +341,7 @@ def main() -> int:
         print("修正後重跑；確認無誤的項目可加入 tools/privacy-allowlist.txt（要寫理由）。")
         return 1
     if n_med or n_low:
-        print("\n沒有 HIGH，但仍請逐項確認 MED／LOW 是否為文件用範例。")
+        print("\n沒有 HIGH，但仍請逐項確認 MED / LOW 是否為文件用範例。")
     else:
         print("\n未發現問題。")
     return 0

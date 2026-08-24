@@ -120,7 +120,7 @@ def test_default_uninstall_keeps_data_dir():
     """spec §5.7：預設保留是刻意的。
 
     客戶常以「移除再重裝」排除問題；索引被清掉會讓 LibreNMS 重新 discovery，
-    舊 RRD 全數變孤兒。
+    舊 RRD 全數失去對應。
     """
     i = SRC.find("if ($Purge -eq '1')")
     j = SRC.find("Log \"=== 解除安裝完成 ===\"", i)

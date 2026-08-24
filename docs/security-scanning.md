@@ -1,49 +1,62 @@
-# 資安檢測工具鏈與報告
+---
+layout: default
+title: Security Scanning
+description: Security scanning toolchain and the report a review will accept
+---
 
-> 對應規格：`spec.md` §3.9（資安 CI Harness，每次 release 必跑）
-> 用途：政府／醫院標案的資安審查需要**可提交的報告**，不是口頭保證。
+[← All documentation](https://jasoncheng7115.github.io/jt-snmpd/) ·
+**English** | [繁體中文](https://jasoncheng7115.github.io/jt-snmpd/security-scanning_zh-TW.html)
 
-## 為什麼 ZAP 不適用
+# Security scanning toolchain and reports
 
-OWASP ZAP 是 **web 應用程式**的動態掃描器（DAST）——它爬 HTTP 端點、注入
-payload、看回應。jt-snmpd **沒有 HTTP 介面**，攻擊面是 UDP/161 上的 BER 編碼
-封包。ZAP 對它一無所用。
+| Item | Value |
+|---|---|
+| Specification | `spec.md` §3.9 (security CI harness, mandatory on every release) |
+| Purpose | Security reviews for government and hospital tenders need **a report that can be submitted**, not a verbal assurance |
 
-正確的組合是三層：**原始碼靜態分析（SAST）＋ 相依弱點掃描（SCA）＋
-協定層模糊測試（DAST，但要 SNMP 專用的）**。
+## Why ZAP does not apply
+
+OWASP ZAP is a dynamic scanner (DAST) for **web applications** — it crawls HTTP
+endpoints, injects payloads and inspects the responses. jt-snmpd **has no HTTP
+interface**; its attack surface is BER-encoded packets on UDP/161. ZAP has
+nothing to work with.
+
+The right combination is three layers: **static analysis of the source (SAST) +
+dependency vulnerability scanning (SCA) + protocol-level fuzzing (DAST, but the
+SNMP-specific kind)**.
 
 ---
 
-## 1. SAST — 原始碼靜態分析
+## 1. SAST — static source analysis
 
-| 工具 | 用途 | 為什麼需要 |
+| Tool | Purpose | Why it is needed |
 |---|---|---|
-| **Bandit** | Python 安全反模式 | 抓 `eval`、`subprocess(shell=True)`、寫死密碼、弱雜湊、不安全的 tempfile、`assert` 用於驗證 |
-| **Semgrep** | 規則式 SAST（含 `p/security-audit`、`p/secrets`） | 比 Bandit 更深的資料流；可自訂規則抓本專案特有問題 |
-| **Ruff**（`S` 規則集） | flake8-bandit 移植，速度極快 | 適合每次 commit 就跑；與 Bandit 規則重疊但更快 |
-| **mypy** | 靜態型別檢查 | 型別錯誤在 ctypes 邊界特別危險——傳錯型別會讀寫錯誤記憶體 |
-| **CodeQL** | GitHub 的資料流分析 | 跨函式追蹤「未認證輸入 → 危險操作」，最接近人工審查 |
+| **Bandit** | Python security anti-patterns | Catches `eval`, `subprocess(shell=True)`, hardcoded passwords, weak hashes, unsafe tempfiles, `assert` used for validation |
+| **Semgrep** | Rule-based SAST (`p/security-audit`, `p/secrets`) | Deeper data flow than Bandit, and custom rules can target this project's specific hazards |
+| **Ruff** (`S` rules) | A very fast flake8-bandit port | Fast enough to run on every commit; overlaps Bandit's rules but far quicker |
+| **mypy** | Static type checking | Type errors are especially dangerous at the ctypes boundary — the wrong type reads or writes the wrong memory |
+| **CodeQL** | GitHub's data-flow analysis | Traces "unauthenticated input → dangerous operation" across functions; the closest thing to a human review |
 
-### 本專案特別要檢查的模式
+### Patterns specific to this project
 
-一般規則集抓不到的，需自訂 Semgrep 規則：
+These need custom Semgrep rules; the standard rule sets do not catch them:
 
 ```yaml
-# 所有 ctypes 外部函式必須宣告 argtypes/restype（CLAUDE.md 鐵則 11）
-# 缺少宣告會讓 64 位回傳值被截斷 —— 實測造成 C: 磁碟顯示 0 GB
+# Every ctypes foreign function must declare argtypes/restype (CLAUDE.md rule 11)
+# Without them a 64-bit return value is truncated -- measured: drive C: showing 0 GB
 - id: ctypes-missing-argtypes
   pattern: $LIB.$FUNC(...)
   pattern-not-inside: |
       $LIB.$FUNC.argtypes = ...
       ...
 
-# OCTET STRING 必須經 octet() 包裝（CLAUDE.md 鐵則 13）
-# 裸用 rfc1902.OctetString(str) 遇非 ASCII 會拋 PyAsn1UnicodeEncodeError
+# OCTET STRINGs must go through octet() (CLAUDE.md rule 13)
+# A bare rfc1902.OctetString(str) raises PyAsn1UnicodeEncodeError on non-ASCII
 - id: bare-octetstring
   pattern: rfc1902.OctetString($X)
   pattern-not: rfc1902.OctetString($X.encode(...))
 
-# 內部計時不得用 wall clock（CLAUDE.md 鐵則 2）
+# Internal timing must never use the wall clock (CLAUDE.md rule 2)
 - id: wall-clock-timing
   patterns:
     - pattern-either:
@@ -53,114 +66,129 @@ payload、看回應。jt-snmpd **沒有 HTTP 介面**，攻擊面是 UDP/161 上
 
 ---
 
-## 2. SCA — 相依弱點掃描與 SBOM
+## 2. SCA — dependency scanning and SBOM
 
-| 工具 | 用途 |
+| Tool | Purpose |
 |---|---|
-| **pip-audit** | 對照 PyPI Advisory DB 與 OSV，掃 Python 相依的 CVE |
-| **OSV-Scanner** | Google 的跨生態系掃描器，涵蓋面比 pip-audit 廣 |
-| **CycloneDX-python** | 產生 **SBOM**（spec §3.9 明列要求）|
-| **Trivy** | 也能掃檔案系統與 SBOM，一併驗 secrets |
+| **pip-audit** | Python dependency CVEs against the PyPI Advisory DB and OSV |
+| **OSV-Scanner** | Google's cross-ecosystem scanner; wider coverage than pip-audit |
+| **CycloneDX-python** | Produces the **SBOM** that spec §3.9 explicitly requires |
+| **Trivy** | Also scans the filesystem and the SBOM, and checks for secrets in passing |
 
-jt-snmpd 的相依極少（`pysnmp` → `pyasn1`，加打包期的 `pywin32`、`pyinstaller`），
-這是刻意的——**相依愈少，SCA 報告愈乾淨，審查愈好過**。
+jt-snmpd has very few dependencies (`pysnmp` → `pyasn1`, plus `pywin32` and
+`pyinstaller` at packaging time). That is deliberate: **fewer dependencies means
+a cleaner SCA report and an easier review.**
 
 ---
 
-## 3. Secret 掃描
+## 3. Secret scanning
 
-| 工具 | 用途 |
+| Tool | Purpose |
 |---|---|
-| **gitleaks** | 掃整個 git 歷史，不只當前工作區 |
-| **detect-secrets** | 可建立 baseline，避免誤報疲勞 |
+| **gitleaks** | Scans the whole git history, not only the working tree |
+| **detect-secrets** | Supports a baseline, which keeps false-positive fatigue down |
 
-CLAUDE.md 鐵則 7：金鑰明文不得出現在 config / log / Event Log / MSI 屬性。
-Secret 掃描是這條的自動化守門。
+CLAUDE.md rule 7: keys must never appear in clear text in the configuration, the
+logs, the Event Log or MSI properties. Secret scanning is the automated
+enforcement of that rule.
 
 ---
 
-## 4. DAST — 協定層模糊測試（取代 ZAP 的角色）
+## 4. DAST — protocol-level fuzzing (what replaces ZAP here)
 
-spec §3.9 明列兩項：
+spec §3.9 names two:
 
-| 項目 | 工具 | 通過條件 |
+| Item | Tool | Pass condition |
 |---|---|---|
-| 24 小時 fuzzing | **boofuzz**（對 UDP/161 送畸形 BER） | 零 crash、零 hang、RSS 不成長 |
-| PROTOS c06-snmpv1 | Oulu 大學的 SNMP 語料庫 | 同上 |
+| 24-hour fuzzing | **boofuzz**, sending malformed BER to UDP/161 | Zero crashes, zero hangs, no RSS growth |
+| PROTOS c06-snmpv1 | The University of Oulu SNMP corpus | As above |
 
-補充項目（本文件新增）：
+Added by this document:
 
-| 項目 | 方法 |
+| Item | Method |
 |---|---|
-| 前置解析閘門有效性 | 白名單外來源必須零回應；`tests/test_preauth_gate.py` 27 例對抗式測試 |
-| 未認證封包風暴 | CPU 不超標、RSS 不成長、正常 manager 仍在 SLA 內 |
-| 回應大小 | 所有回應 < 1400 bytes，無 IP 分片 |
-| VACM 逃逸 | `librenms-minimal` 下 walk `.1.3.6`，被排除的 subtree 完全取不到（GET 與 GETNEXT 皆測）|
+| Pre-parse gate effectiveness | Sources outside the allow-list must get zero responses; `tests/test_preauth_gate.py` has 27 adversarial cases |
+| Unauthenticated packet flood | CPU stays within budget, RSS does not grow, a legitimate manager stays inside its SLA |
+| Response size | Every response under 1400 bytes, with no IP fragmentation |
+| VACM escape | Under `librenms-minimal`, walking `.1.3.6` must reach nothing in an excluded subtree (tested for both GET and GETNEXT) |
 
 ---
 
-## 5. Windows 平台專屬檢查
+## 5. Windows-specific checks
 
-這些是 SAST 工具看不到、但資安稽核一定會問的：
+These are invisible to SAST tools and are certain to come up in a security
+audit:
 
-| 項目 | 工具／方法 | 為什麼 |
+| Item | Tool or method | Why |
 |---|---|---|
-| **Authenticode 簽章** | `signtool verify /pa /v`、Sysinternals `sigcheck` | 無簽章在 WDAC 環境無法部署，標案會退件 |
-| **unquoted service path** | `sc qc jt-snmpd` 檢查 binPath 有引號 | 最常被稽核抓到的 finding。預設安裝路徑本身含空白 |
-| **服務帳號與特權** | `sc qprivs jt-snmpd` | 驗證特權縮減生效（spec §3.6）|
-| **檔案／目錄 ACL** | Sysinternals `accesschk -d` | `C:\ProgramData` 預設允許 Users 建子目錄，攻擊者可搶先建立 |
-| **弱 ACL 提權路徑** | **PowerUp** / **PrivescCheck** | 專門掃 Windows 服務提權路徑，會同時檢查上面三項 |
-| **DLL 劫持** | 確認 one-folder（非 one-file）；`Process Monitor` 觀察載入路徑 | one-file 會解壓到 `%TEMP%` 執行 |
-| **Defender／EDR 誤判** | 在啟用 Defender + HVCI 的機器上實裝並觀察隔離 | PyInstaller 產物有誤判史 |
-| **記憶體完整性相容** | 啟用 HVCI 後重開機並確認服務仍運作 | 客戶端點普遍啟用 |
+| **Authenticode signature** | `signtool verify /pa /v`, Sysinternals `sigcheck` | This project does not sign; the check is for verifying the result after you sign it yourself — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
+| **Unquoted service path** | `sc qc jt-snmpd`, confirming binPath is quoted | The single most commonly raised audit finding. The default install path contains a space |
+| **Service account and privileges** | `sc qprivs jt-snmpd` | Confirms the privilege stripping took effect (spec §3.6) |
+| **File and directory ACLs** | Sysinternals `accesschk -d` | `C:\ProgramData` lets Users create subdirectories by default, so an attacker can get there first |
+| **Weak-ACL escalation paths** | **PowerUp** / **PrivescCheck** | Purpose-built for Windows service escalation paths; covers the three items above as well |
+| **DLL hijacking** | Confirm one-folder rather than one-file; watch load paths in Process Monitor | one-file extracts to `%TEMP%` and runs from there |
+| **Defender / EDR false positives** | Install on a machine with Defender and HVCI enabled, and watch for quarantine | PyInstaller output has a history of false positives |
+| **Memory integrity compatibility** | Enable HVCI, reboot, confirm the service still runs | Customer endpoints commonly have it on |
 
 ---
 
-## 6. 建議的 CI 組合
+## 6. Suggested CI arrangement
 
 ```
-每次 commit（快）
-  ruff check --select S       # 安全規則
+Every commit (fast)
+  ruff check --select S       # security rules
   mypy deploy/
   pytest tests/ -q
 
-每次 PR（中）
+Every PR (medium)
   bandit -r deploy/ -f json -o reports/bandit.json
   semgrep --config p/security-audit --config p/secrets --json -o reports/semgrep.json
   pip-audit --format json -o reports/pip-audit.json
   gitleaks detect --report-format json --report-path reports/gitleaks.json
   cyclonedx-py env -o reports/sbom.json
 
-每次 release（慢，spec §3.9 硬性要求）
-  上述全部 +
-  boofuzz 24 小時對 UDP/161
+Every release (slow; required by spec §3.9)
+  all of the above, plus
+  boofuzz for 24 hours against UDP/161
   PROTOS c06-snmpv1
-  Windows 平台檢查（signtool / accesschk / PrivescCheck）
-  §5.8 安裝測試矩陣
-  §6.10 30 天穩定性（major 版本）
+  Windows platform checks (signtool / accesschk / PrivescCheck)
+  the §5.8 installation test matrix
+  §6.10 30-day stability (major releases)
 ```
 
-## 7. 報告產出
+## 7. Report output
 
-所有工具都能輸出 JSON／SARIF。建議收斂成一份可提交的摘要：
+Every tool here can emit JSON or SARIF. Collapse them into one submittable
+summary:
 
 ```
 reports/
-├── sbom.json                 CycloneDX SBOM（相依清單，審查必附）
+├── sbom.json                 CycloneDX SBOM (dependency list; reviews require it)
 ├── bandit.json               SAST
-├── semgrep.json              SAST（含自訂規則）
-├── pip-audit.json            相依 CVE
-├── gitleaks.json             secret 掃描
-├── fuzzing-summary.txt       boofuzz 24h 結果
-├── windows-checks.txt        簽章／ACL／特權／unquoted path
-└── SECURITY-REPORT.md        以上的人類可讀摘要，附通過／未通過判定
+├── semgrep.json              SAST, including the custom rules
+├── pip-audit.json            Dependency CVEs
+├── gitleaks.json             Secret scan
+├── fuzzing-summary.txt       boofuzz 24-hour result
+├── windows-checks.txt        Signature / ACLs / privileges / unquoted path
+└── SECURITY-REPORT.md        A human-readable summary of the above, with a pass or fail verdict
 ```
 
-**判定原則**：SAST 的 High/Critical 必須為零或有書面例外說明；
-相依 CVE 的 High 以上必須為零；fuzzing 必須零 crash。
-未達標即不得出貨（`TEST_PLAN.md` §10 Release Gate）。
+**The verdict rule**: SAST High and Critical findings must be zero or carry a
+written exception; dependency CVEs at High or above must be zero; fuzzing must
+produce zero crashes. Anything short of that does not ship (`TEST_PLAN.md` §10,
+Release Gate).
 
-## 8. 目前狀態
+## 8. Current state
 
-尚未建立 CI。下一步是把上述「每次 commit」與「每次 PR」層級的工具
-接進本地腳本，先產出第一份基線報告，再決定哪些項目要進 CI。
+CI is not yet in place. The next step is to wire the "every commit" and "every
+PR" tiers into a local script, produce a first baseline report, and then decide
+which items belong in CI.
+
+---
+
+## Related documentation
+
+- [Documentation home](https://jasoncheng7115.github.io/jt-snmpd/)
+- [Security assessment](https://jasoncheng7115.github.io/jt-snmpd/attack-surface.html)
+- [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html)
+- [Release checklist](https://jasoncheng7115.github.io/jt-snmpd/release-checklist.html)

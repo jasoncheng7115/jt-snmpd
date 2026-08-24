@@ -9,6 +9,46 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
+## [未發行]
+
+### 新增
+
+- **雙語說明文件。** 每一份公開文件現在都有英文（`docs/<名稱>.md`）與
+  繁體中文（`docs/<名稱>_zh-TW.md`）兩版，每頁最上方有語言切換與回到說明文件
+  首頁的連結，最下方有相關文件清單。在此之前，英文版 README 與英文版網站指向的
+  文件只有中文，對大多數讀者而言等於是斷路。
+- **`docs/code-signing_zh-TW.md`**（以及英文版），說明未簽章的安裝檔在安裝時
+  實際會遇到什麼——SmartScreen 提示、UAC 對話框中顯示為「不明」的發行者、
+  GPO 派送會看到什麼（什麼都不會看到）、WDAC 與 AppLocker 的行為——
+  以及各自的處理方式：核對公布的 SHA-256、清除 Mark of the Web、
+  加入 WDAC 雜湊規則，以及自行以憑證簽章。
+- **專案網站的安裝段加上下載連結與 GPO 說明。** 原本頁面上有一道 `msiexec`
+  指令，卻沒有任何地方可以取得 MSI，也沒有說明同一道指令就是群組原則
+  軟體派送所使用的形式。
+
+### 變更
+
+- **確定不申請程式碼簽章憑證。** 原本各處寫著「SignPath Foundation 申請中」，
+  現在一律明確寫出安裝檔未簽章、這是長期狀態，以及該去哪裡看處理方式。
+  沒有期限的「即將支援」比明確的「不做」更糟：它會讓部署者去等一個不會來的東西。
+- **發行說明改為英文為主、中文輔助**，且每一行都是完整句子而非硬換行的片段——
+  GitHub 會把發行說明當 Markdown 算繪，句中的換行就成了頁面上的換行。
+- **「攻擊面分析」更名為「安全性評估」**，這才是這份文件的內容：
+  實測的暴露面、緩解措施，以及未緩解項目的誠實清單。
+- **量測資訊從引言區塊改為表格。** 引言區塊中的連續行在算繪時會併成同一段，
+  三筆獨立資訊因此擠成一行，完全無法閱讀。
+- `.github/workflows/release.yml` 轉為英文，接續 `deploy/` 與 `packaging/`
+  已完成的註解與識別字轉換。
+
+### 修正
+
+- **非台灣用語**，依微軟正體中文用語更正：filter driver 應為
+  篩選器驅動程式而非過濾驅動、tunnel 為通道、instance 為執行個體。
+  詞與詞之間的全形斜線一律改為前後加半形空格的半形斜線，
+  這才是台灣技術文件的寫法。
+
+---
+
 ## [0.9.2] - 2026-08-24
 
 ### 新增
@@ -91,13 +131,13 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   SMART 命令）就不輸出該鍵，LibreNMS 顯示空白，而不是一個捏造的 `(OK)`。
 
 - **`jtDiskHealthTable`** 置於私有 OID 子樹——每顆磁碟一個狀態值
-  （ok／warning／critical／unknown），供需要直接告警的使用者取用。
-  要注意的是，LibreNMS **裝置概觀頁**上的綠／紅燈必須在 LibreNMS 伺服器端
+  （ok / warning / critical / unknown），供需要直接告警的使用者取用。
+  要注意的是，LibreNMS **裝置概觀頁**上的綠 / 紅燈必須在 LibreNMS 伺服器端
   新增探索定義才做得到，而本專案刻意不要求修改伺服器。
 
 - **公開前的個資檢查工具**——`tools/check-privacy.py` 掃描的正是 git 會推上去
   的那些檔案，檢查金鑰、密碼、community 字串、MAC 位址、位址與序號；
-  `docs/release-checklist.md` 記錄完整流程。圖片改用「人工審閱 + 雜湊」而非
+  `docs/release-checklist_zh-TW.md` 記錄完整流程。圖片改用「人工審閱 + 雜湊」而非
   比對規則，因為正規表示式讀不到像素：第一批 README 截圖帶出了四組 MAC 位址
   與六個鄰居裝置名稱，那等於一張內網拓撲圖。
 
@@ -121,14 +161,14 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   渲染一張「Max Temp(C)」面板，因此少了這個鍵，每一套安裝都會看到一張破圖。
   Windows 的儲存 API 給的是門檻值（warning、critical），不是「這輩子最高溫」，
   拿門檻值去填那條線是標錯標籤；因此 jt-snmpd 改記錄**自己實際觀測到**的最高溫，
-  跨重新啟動持久化，且只在最高溫真的上升時才寫檔——快照每五秒重建一次，
+  跨重新啟動保存，且只在最高溫真的上升時才寫檔——快照每五秒重建一次，
   每次都寫會是一天一萬七千次不必要的磁碟寫入。
 
 - **對照截圖**置於 `docs/images/`，取自正式 LibreNMS，英文與台灣繁體中文各一套，
   皆為淺色主題：感測器、SMART、連接埠、記憶體，每組都以同一個頁面對照
   「使用內建 SNMP Service 的 Windows 10 主機」與「使用 jt-snmpd 的主機」。
 
-- **ACPI 熱區溫度**——不需核心驅動的系統／主機板溫度，以
+- **ACPI 熱區溫度**——不需核心驅動的系統 / 主機板溫度，以
   `advapi32!WmiOpenBlock` + `WmiQueryAllDataW`（WMI 資料區塊 API，不是 WMI COM，
   也不開子行程）讀取。實體機實測 25°C，臨界跳脫點 107°C；虛擬機回
   `ERROR_WMI_GUID_NOT_FOUND`，該感測器直接不出現。
@@ -217,9 +257,9 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 - **`hrFSTable`、`hrPartitionTable` 與 `ipRouteTable`**——在製作與內建 SNMP Service
   的對照表時發現這三張表我們真的沒有。檔案系統與分割來自 `GetVolumeInformationW`，
-  路由來自 `GetIpForwardTable2`。它們都沒有「軟體清單／連線表」那類資訊揭露顧慮，
+  路由來自 `GetIpForwardTable2`。它們都沒有「軟體清單 / 連線表」那類資訊揭露顧慮，
   故預設輸出
-- **對照文件**（`docs/comparison-vs-builtin-snmp.md`）逐表量測 jt-snmpd 與
+- **對照文件**（`docs/comparison-vs-builtin-snmp_zh-TW.md`）逐表量測 jt-snmpd 與
   仍使用內建 SNMP Service 的 Windows 10 主機，並為每一處「我們回報得更少」
   給出理由
 
@@ -231,7 +271,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   loopback 健康檢查失敗時整個交易會倒回
 
 - **README** 英文與台灣繁體中文雙檔，格式參照 jt-ipam
-- **資安檢測工具鏈**寫入 `docs/security-scanning.md`，並產出第一份基線：
+- **資安檢測工具鏈**寫入 `docs/security-scanning_zh-TW.md`，並產出第一份基線：
   Bandit HIGH=0、pip-audit 掃過 59 個相依無弱點、CycloneDX SBOM 已產出。
   ZAP 不適用——它是 web DAST，而本 agent 沒有 HTTP 介面；正確組合是
   SAST + SCA/SBOM + 協定層 fuzzing，加上 Windows 專屬檢查（Authenticode、
@@ -254,7 +294,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 - **以 `GetPerformanceInfo` 補齊記憶體資訊**：除了 Physical 與 Virtual Memory，
   新增 **Cached Memory**、**Swap Space**（commit limit 中屬於分頁檔的部分，
-  與 commit charge 是不同概念，見 spec §2.2）以及核心分頁／非分頁集區。
+  與 commit charge 是不同概念，見 spec §2.2）以及核心分頁 / 非分頁集區。
   LibreNMS 上的記憶體池由 2 個增為 4 個
 - **`hrStorageDescr` 讀取真實磁碟區標籤與序號**（`GetVolumeInformationW`），
   取代原本硬編碼的預留字串。非 ASCII 標籤（例如中文磁碟區名稱）以 UTF-8 編碼，
@@ -308,8 +348,8 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **wire 預編碼**：快照建立時預先產生 BER 位元組，回應組裝退化為位元組串接
 - **IF-MIB**（ifTable + ifXTable，含 64-bit counters）、**HOST-RESOURCES**
   （hrStorage / hrProcessor / hrDevice）、**UCD-DISKIO**
-- **介面過濾**：只輸出實體網路卡，排除 WFP 過濾驅動、VPN 虛擬卡、隧道、loopback
-- **ifIndex 持久化**：以 NET_LUID 為主鍵，避免重開機後 LibreNMS 重建 port 與孤兒 RRD
+- **介面篩選**：只輸出實體網路卡，排除 WFP 篩選器驅動程式、VPN 虛擬卡、通道、loopback
+- **ifIndex 保存**：以 NET_LUID 為主鍵，避免重開機後 LibreNMS 重建 port 與無主的 RRD
 - **Windows 服務**：PyInstaller one-folder 打包成 `jt-snmpd.exe`，
   以自身為服務主程式，開機自啟、LocalSystem、目標機零 Python 依賴
 - **`--selftest` 建置閘門**：建置後實際初始化 SNMP engine 並建立快照，

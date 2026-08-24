@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Bilingual documentation.** Every published document now exists in both
+  English (`docs/<name>.md`) and Traditional Chinese (`docs/<name>_zh-TW.md`),
+  with a language switch and a link back to the documentation home at the top of
+  each page, and a related-documents list at the bottom. Until now the English
+  README and the English project site linked to documents that only existed in
+  Chinese, which for most readers is a dead end.
+- **`docs/code-signing.md`** (and the Chinese version), covering what an
+  unsigned installer actually looks like at install time — the SmartScreen
+  prompt, the unknown publisher in the UAC dialog, what GPO deployment sees
+  (nothing), and what WDAC and AppLocker do — together with the ways to handle
+  it: verifying the published SHA-256, clearing the Mark of the Web, adding a
+  WDAC hash rule, and signing with your own certificate.
+- **Download links and a GPO note in the install section** of the project site.
+  The page showed an `msiexec` command with nowhere to get the MSI from, and did
+  not say that the same command line is what Group Policy software deployment
+  uses.
+
+### Changed
+
+- **No code-signing certificate will be sought.** Everywhere that previously said
+  a SignPath Foundation application was pending now states plainly that the
+  installer is unsigned, that this is the permanent state, and where to read
+  about handling it. An indefinite "coming soon" is worse than a clear no: it
+  leads deployers to wait for something that is not coming.
+- **Release notes are English first, Chinese second**, and every line is a whole
+  sentence rather than a hard-wrapped fragment — GitHub renders the notes as
+  Markdown, so a break mid-sentence became a break in the rendered page.
+- **"Attack surface analysis" renamed to "Security assessment"**, which is what
+  the document is: measured exposure, the mitigations, and an honest list of what
+  is not mitigated.
+- **Measurement metadata moved from blockquotes into tables.** Consecutive lines
+  in a blockquote are joined into one paragraph when rendered, so three separate
+  facts ran together into an unreadable line.
+- `.github/workflows/release.yml` converted to English, finishing the conversion
+  of comments and identifiers begun in `deploy/` and `packaging/`.
+
+### Fixed
+
+- **Terminology that is not Taiwanese usage**, corrected against Microsoft's
+  Traditional Chinese terminology: filter driver is 篩選器驅動程式 rather than
+  過濾驅動, tunnel is 通道, instance is 執行個體. Full-width slashes between
+  words were replaced with a spaced half-width slash, which is what Taiwanese
+  technical writing uses.
+
+---
+
 ## [0.9.2] - 2026-08-24
 
 ### Added
