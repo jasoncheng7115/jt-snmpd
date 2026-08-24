@@ -1,36 +1,39 @@
-"""前置解析閘門（spec §3.2）— 位於 pysnmp 之前的第一道防線。
+"""Pre-parse gate (spec §3.2) — the first line of defence, ahead of pysnmp.
 
-**為什麼這是最高優先的資安項目**
+**Why this is the highest-priority security item**
 
-agent 以 LocalSystem 常駐，任何 RCE 直接等同 SYSTEM。而 UDP/161 上
-**每一個位元組都會先經過純 Python 的 BER decoder，才輪到認證**。
-攻擊者不需要任何 community 或 v3 帳號，就能讓 LocalSystem 程序解析任意封包。
+The agent runs continuously as LocalSystem, so any remote code execution is
+immediately SYSTEM. And on UDP/161 **every byte reaches a pure-Python BER
+decoder before authentication happens at all**. An attacker needs no community
+string and no v3 account to make a LocalSystem process parse arbitrary input.
 
-已知攻擊面：
-  - 深度巢狀 SEQUENCE → pyasn1 遞迴 → RecursionError，最壞情況是
-    asyncio 事件迴圈上的未捕捉例外
-  - 超長 BER length 欄位 → 記憶體配置放大
-  - 含數千個 sub-identifier 的 OID → CPU 放大
-  - SNMPv3 的 engineID discovery 是未認證的，可藉 usmStatsUnknownUserNames
-    的 report PDU 列舉有效帳號
+Known attack surface:
+  - Deeply nested SEQUENCEs → pyasn1 recursion → RecursionError, in the worst
+    case as an uncaught exception on the asyncio event loop
+  - Oversized BER length fields → amplified memory allocation
+  - OIDs with thousands of sub-identifiers → amplified CPU
+  - SNMPv3 engineID discovery is unauthenticated, and the
+    usmStatsUnknownUserNames report PDU can be used to enumerate valid accounts
 
-**順序是關鍵。** spec §3.2 指出原計畫把 ACL 放在
-`snmp.v2c.communities[].source`，代表 ACL 在**解析之後**才生效——順序錯誤。
-本模組的每一道檢查都在 pysnmp 拿到位元組之前執行：
+**The order matters.** spec §3.2 notes that the original plan put the ACL in
+`snmp.v2c.communities[].source`, which applies it *after* parsing — backwards.
+Every check here runs before pysnmp sees a single byte:
 
     socket recv
       ↓
-    ① 來源 IP 白名單（不在名單直接 drop，零解析）
+    1. source IP allow-list (not listed → dropped, nothing parsed)
       ↓
-    ② 封包大小上限（> 4096 直接丟；正常請求 < 300 bytes）
+    2. packet size cap (> 4096 dropped; a normal request is under 300 bytes)
       ↓
-    ③ 每來源 token bucket 速率限制
+    3. per-source token bucket
       ↓
-    ④ 外層 TLV 粗略合法性（第一個 byte 必須 0x30；宣告長度需與實際相符）
+    4. rough outer TLV sanity (first byte must be 0x30; declared length must
+       match what actually arrived)
       ↓
-    交給 pysnmp
+    hand off to pysnmp
 
-③ 必須在 USM 密碼學處理**之前**——v3 讓 DoS 更便宜，因為每個封包都要做 HMAC。
+Step 3 has to come before USM cryptography: v3 makes denial of service cheaper,
+because every packet costs an HMAC.
 """
 
 from __future__ import annotations
@@ -39,15 +42,16 @@ import ipaddress
 import time
 from dataclasses import dataclass, field
 
-# spec §3.2：正常請求 < 300 bytes，4096 已經非常寬鬆
+# spec §3.2: a normal request is under 300 bytes, so 4096 is already generous
 MAX_PACKET_BYTES = 4096
-# 每來源每秒允許的封包數（token bucket）
+# Packets per second allowed from a single source (token bucket)
 DEFAULT_RATE_PPS = 50
 DEFAULT_BURST = 100
 
 
 class DropReason:
-    """丟棄原因。每一種都對應一個 jtAgent*Drops 計數器與一個 Event ID。"""
+    """Why a packet was dropped. Each maps to a jtAgent*Drops counter and an
+    Event ID."""
     ACL = "acl"                  # Event 2001
     OVERSIZE = "oversize"        # Event 2002
     RATE_LIMIT = "rate_limit"    # Event 2003
@@ -62,10 +66,12 @@ class _Bucket:
 
 @dataclass
 class PreAuthGate:
-    """pysnmp 之前的閘門。約 100 行，自行撰寫（spec §3.2）。
+    """The gate in front of pysnmp. Around a hundred lines, written here rather
+    than pulled in (spec §3.2).
 
-    allowed_networks 為空代表**不做 IP 過濾**——這只應該在明確設定下發生。
-    spec §3.3 要求安裝時必須輸入管理網段，預設 deny，不允許 Any/Any。
+    An empty `allowed_networks` means "not configured", and is treated as deny —
+    see `_ip_allowed`. spec §3.3 requires the installer to ask for the management
+    networks; the default is deny, and Any/Any is never acceptable.
     """
 
     allowed_networks: tuple = ()
@@ -82,9 +88,9 @@ class PreAuthGate:
     # ---------------------------------------------------------------- helpers
     @staticmethod
     def parse_networks(specs) -> tuple:
-        """把 ['192.168.1.0/24', '10.0.0.5'] 解析成 ip_network 物件。
+        """Turn ['192.0.2.0/24', '198.51.100.5'] into ip_network objects.
 
-        單一 IP 不帶遮罩時視為 /32（或 IPv6 的 /128）。
+        A bare address with no prefix is treated as /32 (or /128 for IPv6).
         """
         out = []
         for spec in specs or ():
@@ -100,13 +106,15 @@ class PreAuthGate:
         except ValueError:
             return False
 
-        # loopback 永遠放行。spec §6.5 的 loopback 自我測試是唯一能偵測
-        # 「服務 Running 但事件迴圈卡死」的機制，安裝程式的健康檢查
-        # （spec §5.7 第 7 步）也靠它。若被 ACL 擋住，每個站台的安裝
-        # 都會在最後一步失敗——實測踩過。
+        # Loopback is always allowed. The loopback self-test in spec §6.5 is the
+        # only thing that detects "service reports Running but the event loop is
+        # wedged", and the installer's health check (spec §5.7 step 7) relies on
+        # it too. With loopback behind the ACL, every site's installation fails
+        # at the final step — which is exactly what happened once.
         #
-        # 安全性：本機行程本來就在這台機器上，且 community/USM 認證照常適用；
-        # 放行 loopback 不會擴大外部攻擊面。
+        # Security: a local process is already on this machine, and the community
+        # string or USM credentials still apply. Allowing loopback does not widen
+        # the external attack surface.
         if addr.is_loopback:
             return True
 
@@ -121,13 +129,15 @@ class PreAuthGate:
             # than silently over-sharing.
             return False
         for net in self.allowed_networks:
-            # IPv4 位址不可能落在 IPv6 網段，version 不同直接跳過
+            # An IPv4 address cannot fall inside an IPv6 network, so a version
+            # mismatch is skipped outright
             if addr.version == net.version and addr in net:
                 return True
         return False
 
     def _rate_ok(self, src_ip: str, now: float) -> bool:
-        """Token bucket。每來源獨立，避免單一來源耗盡全域配額。"""
+        """Token bucket, one per source, so a single source cannot exhaust a
+        shared allowance."""
         b = self._buckets.get(src_ip)
         if b is None:
             self._buckets[src_ip] = _Bucket(tokens=self.burst - 1, last=now)
@@ -143,12 +153,14 @@ class PreAuthGate:
 
     @staticmethod
     def _tlv_sane(data: bytes) -> bool:
-        """外層 TLV 粗略合法性檢查。
+        """Rough sanity check on the outer TLV.
 
-        不做完整解析——那正是我們要避免的。只驗三件事：
-          1. 第一個 byte 必須是 0x30（SEQUENCE）
-          2. BER 長度欄位本身要能讀完
-          3. 宣告的長度要與實際 payload 相符（允許尾端有多餘位元組時視為畸形）
+        Deliberately not a full parse — parsing is the thing being avoided.
+        Three checks only:
+          1. the first byte must be 0x30 (SEQUENCE)
+          2. the BER length field must itself be readable
+          3. the declared length must match the payload exactly (trailing bytes
+             count as malformed)
         """
         if len(data) < 2 or data[0] != 0x30:
             return False
@@ -158,18 +170,19 @@ class PreAuthGate:
         else:
             n = first & 0x7F
             if n == 0 or n > 4 or len(data) < 2 + n:
-                return False          # 不定長度或過長的長度欄位一律拒絕
+                return False          # indefinite or over-long length: rejected
             declared = int.from_bytes(data[2:2 + n], "big")
             header = 2 + n
-        # 宣告長度必須正好等於剩餘位元組
+        # The declared length must be exactly the remaining bytes
         return declared == len(data) - header
 
     # ------------------------------------------------------------------- main
     def check(self, data: bytes, src_ip: str, now: float | None = None):
-        """回傳 (allowed: bool, reason: str | None)。
+        """Return (allowed: bool, reason: str | None).
 
-        呼叫順序即防禦順序，不可調換：IP 比對最便宜且零解析，速率限制必須
-        在任何密碼學處理之前。
+        The call order *is* the defence order and must not be rearranged: the
+        address comparison is the cheapest and parses nothing, and rate limiting
+        has to precede any cryptography.
         """
         now = time.monotonic() if now is None else now
 
@@ -193,10 +206,12 @@ class PreAuthGate:
         return True, None
 
     def prune(self, now: float | None = None, idle_seconds: float = 300.0) -> int:
-        """清掉閒置的 token bucket，避免被大量偽造來源 IP 撐爆記憶體。
+        """Drop idle token buckets so spoofed source addresses cannot exhaust
+        memory.
 
-        這本身就是一個攻擊面：不清理的話，攻擊者用隨機來源 IP 洗一輪
-        就能讓 dict 無限成長。回傳清掉的數量。
+        This is an attack surface in its own right: without pruning, a flood from
+        random source addresses grows the dict without bound. Returns how many
+        were removed.
         """
         now = time.monotonic() if now is None else now
         stale = [ip for ip, b in self._buckets.items() if now - b.last > idle_seconds]
