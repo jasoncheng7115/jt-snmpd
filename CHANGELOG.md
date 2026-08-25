@@ -9,9 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.9.8] - 2026-08-25
 
 ### Added
+
+- **Removing jt-snmpd raises one false "device rebooted" alert in LibreNMS**,
+  and the removal guide now says to expect it and to silence the rule first
+  when removing from many machines at once. Measured rather than assumed: the
+  built-in service reports `sysUpTime` as 19 seconds where jt-snmpd reports 179
+  days, because RFC 3418 counts from the last re-initialisation of the network
+  management portion. LibreNMS discards `hrSystemUptime` on Windows and the
+  built-in service serves no `snmpEngineTime`, so 19 seconds is the only figure
+  it has. Any restart of the built-in service does this, including one caused
+  by Windows Update.
+
+- **Enabling a discovery module globally does not reach a device that has its
+  own setting.** LibreNMS resolves command line, then device, then OS, then
+  global, and the first one set wins; the Modules toggle writes a per-device
+  value as soon as it is touched. For a fleet,
+  `os.windows.discovery_modules.applications` is the more precise switch.
 
 - **A build-and-sign document** (`docs/build-and-sign.md`), covering the route
   that WDAC and AppLocker environments actually need: build the MSI from the
@@ -59,7 +75,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   volume labels are a real failure mode rather than a nicety: pysnmp raises
   `PyAsn1UnicodeEncodeError` on them, and the whole snapshot fails to build.
 
+- **Bilingual documentation.** Every published document now exists in both
+  English (`docs/<name>.md`) and Traditional Chinese (`docs/<name>_zh-TW.md`),
+  with a language switch and a link back to the documentation home at the top of
+  each page, and a related-documents list at the bottom. Until now the English
+  README and the English project site linked to documents that only existed in
+  Chinese, which for most readers is a dead end.
+- **`docs/code-signing.md`** (and the Chinese version), covering what an
+  unsigned installer actually looks like at install time — the SmartScreen
+  prompt, the unknown publisher in the UAC dialog, what GPO deployment sees
+  (nothing), and what WDAC and AppLocker do — together with the ways to handle
+  it: verifying the published SHA-256, clearing the Mark of the Web, adding a
+  WDAC hash rule, and signing with your own certificate.
+- **Download links and a GPO note in the install section** of the project site.
+  The page showed an `msiexec` command with nowhere to get the MSI from, and did
+  not say that the same command line is what Group Policy software deployment
+  uses.
+
 ### Changed
+
+- **Windows Installer now stops the agent service itself**, through a
+  `ServiceControl` element, instead of that happening only inside the
+  configuration custom action. Creating, starting and deleting the service stay
+  with `msi-configure.ps1`, which has to write `config.json` before the agent
+  may start.
+
+  This was added to remove the **"Files in use"** page from graphical upgrades
+  and **it does not**. Read out of the built package, `InstallValidate` is at
+  sequence 1400 and `StopServices` at 1900, so Restart Manager has already
+  looked for files in use 500 positions earlier. Driven through the wizard on
+  real hardware with the service running, the page still appeared naming
+  jt-snmpd. Silent installs and GPO deployment were never affected, which is
+  why forty lifecycle checks, all of them `/qn`, could never have caught it.
+  The defect stays open with the failed approach recorded so it is not tried
+  twice.
+
+- **The comparison against the built-in service was retaken on one machine.**
+  Every figure used to pair two different hosts and needed a paragraph
+  explaining why the numbers differed. The same Dell Latitude E5270 now appears
+  in both halves, captured under each agent in turn: memory reads 15.68 GiB on
+  both sides and only the coverage differs. The OID totals were remeasured the
+  same way — 7,582 for the built-in service against 767 — and both documents
+  now say that those counts move with the machine. The figures are in the light
+  theme, each half is a separate card, and the ports figure is cropped at the
+  MAC column to drop the discovered-neighbour list.
 
 - **The README's install section was still the pre-MSI one.** It led with
   `install.ps1` and a ZIP archive that releases no longer ship, and the status
@@ -81,51 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   structured entirely around the internal specification's section numbering.
 - **The `msiexec` line is one line.** It is short enough that the caret
   continuations were noise.
-- **The Proxmox breadcrumb is gone from the SMART screenshot.** It was an
-  unrelated application LibreNMS had discovered on the control host, and next to
-  a SMART comparison it read as part of the comparison.
 
-### Fixed
-
-- **The code-signing document named the wrong install directory.** It said
-  `C:\Program Files\jt-snmpd\`; the MSI installs to `C:\Program Files\JT SNMP
-  Agent\`, so the WDAC scan path and the Defender exclusion path were both
-  wrong.
-
-- **`prepare-public-repo.py` kept only `README.md` from `dist/` and `build/`**,
-  so the Traditional Chinese READMEs in both had never been published.
-- **More terminology**: privilege stripping is 縮減 rather than 剝除, blocked is
-  受阻, process is 處理程序, installer is 安裝檔, thermal zone is 溫度區 (with an
-  explanation of what one is, since the literal translation explains nothing),
-  and Mark of the Web is 網頁標記. Absolute phrasing (絕不, 永不) has been
-  replaced with plain description, and the em dash is gone from Chinese text.
-
-### Added
-
-- **Bilingual documentation.** Every published document now exists in both
-  English (`docs/<name>.md`) and Traditional Chinese (`docs/<name>_zh-TW.md`),
-  with a language switch and a link back to the documentation home at the top of
-  each page, and a related-documents list at the bottom. Until now the English
-  README and the English project site linked to documents that only existed in
-  Chinese, which for most readers is a dead end.
-- **`docs/code-signing.md`** (and the Chinese version), covering what an
-  unsigned installer actually looks like at install time — the SmartScreen
-  prompt, the unknown publisher in the UAC dialog, what GPO deployment sees
-  (nothing), and what WDAC and AppLocker do — together with the ways to handle
-  it: verifying the published SHA-256, clearing the Mark of the Web, adding a
-  WDAC hash rule, and signing with your own certificate.
-- **Download links and a GPO note in the install section** of the project site.
-  The page showed an `msiexec` command with nowhere to get the MSI from, and did
-  not say that the same command line is what Group Policy software deployment
-  uses.
-
-### Changed
-
-- **No code-signing certificate will be sought.** Everywhere that previously said
-  a SignPath Foundation application was pending now states plainly that the
-  installer is unsigned, that this is the permanent state, and where to read
-  about handling it. An indefinite "coming soon" is worse than a clear no: it
-  leads deployers to wait for something that is not coming.
 - **Release notes are English first, Chinese second**, and every line is a whole
   sentence rather than a hard-wrapped fragment — GitHub renders the notes as
   Markdown, so a break mid-sentence became a break in the rendered page.
@@ -139,6 +154,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   of comments and identifiers begun in `deploy/` and `packaging/`.
 
 ### Fixed
+
+- **The development lab's SNMP community string is no longer published.** It
+  appeared in seven files — the agent source, a fixture, a PowerShell usage
+  line, both changelogs, an snmpget example and a test assertion — each with a
+  reason to name it, and the combined effect was to publish a credential in
+  order to document not publishing it. Every occurrence now describes it
+  instead. The privacy scanner could not have caught this: its community rule
+  matched `COMMUNITY=` and nothing else, so six of the seven forms were out of
+  scope. It now also matches known secrets literally, from an untracked file,
+  and says so out loud when that file is absent rather than printing a clean
+  result it did not earn.
+
+- **Wording that is not Taiwanese usage** is now checked by
+  `tools/check-terminology.py` in CI rather than by whoever happens to read the
+  finished page. Eighteen terms had been corrected by hand before this existed.
+
+- **The code-signing document named the wrong install directory.** It said
+  `C:\Program Files\jt-snmpd\`; the MSI installs to `C:\Program Files\JT SNMP
+  Agent\`, so the WDAC scan path and the Defender exclusion path were both
+  wrong.
+
+- **`prepare-public-repo.py` kept only `README.md` from `dist/` and `build/`**,
+  so the Traditional Chinese READMEs in both had never been published.
+- **More terminology**: privilege stripping is 縮減 rather than 剝除, blocked is
+  受阻, process is 處理程序, installer is 安裝檔, thermal zone is 溫度區 (with an
+  explanation of what one is, since the literal translation explains nothing),
+  and Mark of the Web is 網頁標記. Absolute phrasing (絕不, 永不) has been
+  replaced with plain description, and the em dash is gone from Chinese text.
 
 - **Terminology that is not Taiwanese usage**, corrected against Microsoft's
   Traditional Chinese terminology: filter driver is 篩選器驅動程式 rather than

@@ -61,7 +61,7 @@ wix extension list -g
 # CLI
 git clone https://github.com/jasoncheng7115/jt-snmpd.git
 cd jt-snmpd
-git checkout v0.9.7
+git checkout v0.9.8
 ```
 
 不要去改 `deploy/version.py`。執行檔、MSI 的 `ProductVersion`、檔名、
@@ -167,12 +167,12 @@ $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
 ```
 
 版本號從 `deploy\version.py` 讀，不需要傳參數。
-產出是 `dist\jt-snmpd-0.9.7-x64.msi` 與它的 `.sha256`，
-另外在 `dist\releases\0.9.7\` 留一份，旁邊放 `BUILDINFO.txt`：
+產出是 `dist\jt-snmpd-0.9.8-x64.msi` 與它的 `.sha256`，
+另外在 `dist\releases\0.9.8\` 留一份，旁邊放 `BUILDINFO.txt`：
 
 ```
 product   jt-snmpd
-version   0.9.7
+version   0.9.8
 built     <這次建置的日期時間>
 builder   <機器名稱> / <帳號>
 commit    <所建標籤的短 commit>
@@ -199,7 +199,7 @@ agent     <deploy\jt_agent.py 的 SHA-256 前 16 碼>
 # CLI
 signtool sign /n "貴單位名稱" /fd SHA256 `
   /tr http://timestamp.digicert.com /td SHA256 `
-  .\dist\jt-snmpd-0.9.7-x64.msi
+  .\dist\jt-snmpd-0.9.8-x64.msi
 ```
 
 簽章會改寫檔案，所以第 5 節產生的 `.sha256` 已經不再對應它。
@@ -207,7 +207,7 @@ signtool sign /n "貴單位名稱" /fd SHA256 `
 
 ```powershell
 # CLI
-$msi = ".\dist\jt-snmpd-0.9.7-x64.msi"
+$msi = ".\dist\jt-snmpd-0.9.8-x64.msi"
 "$((Get-FileHash $msi -Algorithm SHA256).Hash.ToLower())  $(Split-Path $msi -Leaf)" |
   Set-Content "$msi.sha256" -Encoding ascii
 ```
@@ -218,7 +218,7 @@ $msi = ".\dist\jt-snmpd-0.9.7-x64.msi"
 
 ```powershell
 # CLI
-signtool verify /pa /v .\dist\jt-snmpd-0.9.7-x64.msi
+signtool verify /pa /v .\dist\jt-snmpd-0.9.8-x64.msi
 Get-AuthenticodeSignature .\build\jt-snmpd\jt-snmpd.exe | Format-List Status, SignerCertificate
 ```
 

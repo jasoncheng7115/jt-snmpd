@@ -12,7 +12,7 @@ description: Security assessment - what installing jt-snmpd adds to a Windows ho
 | 量測項目 | 內容 |
 |---|---|
 | 量測日期 | 2026-08-24 |
-| 版本 | jt-snmpd 0.9.7 |
+| 版本 | jt-snmpd 0.9.8 |
 | 受測主機 | Dell Latitude E5270 / Windows 10 22H2 |
 | 量測端 | LibreNMS 26.8.1 |
 

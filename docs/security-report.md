@@ -19,8 +19,8 @@ not "how many" but "why is each one acceptable".
 | | |
 |---|---|
 | Date | 2026-08-25 |
-| Version | jt-snmpd 0.9.7 |
-| Scope | `deploy/`, `tools/`, `packaging/` — 11 files, 4,014 lines |
+| Version | jt-snmpd 0.9.8 |
+| Scope | `deploy/`, `tools/`, `packaging/` — 13 files, 4,279 lines |
 
 ---
 
@@ -28,11 +28,11 @@ not "how many" but "why is each one acceptable".
 
 | Check | Tool | Result |
 |---|---|---|
-| Static analysis (SAST) | Bandit 1.9.4 | **HIGH 0**, MEDIUM 3, LOW 8 — all accounted for below |
+| Static analysis (SAST) | Bandit 1.9.4 | **HIGH 0**, MEDIUM 3, LOW 11 — all accounted for below |
 | Dependency vulnerabilities (SCA) | pip-audit 2.10.1 | **0 across 62 packages** |
 | Personal data and secrets | `tools/check-privacy.py` | **HIGH 0** — runs on every push |
-| Test suite | pytest | 816 passed, 1 skipped — runs on every push |
-| Installer artefact checks | Windows Installer tables | 4 checks — run on every push |
+| Test suite | pytest | 831 passed, 1 skipped — runs on every push |
+| Installer artefact checks | Windows Installer tables | 5 checks — run on every push |
 
 **The runtime dependency surface is two packages.** `pysnmp 7.1.29`, which
 requires `pyasn1 0.6.4`, which requires nothing. Everything else in the 62 is
@@ -43,7 +43,7 @@ the fewer dependencies, the shorter this section stays.
 
 ## Static analysis: every finding
 
-Bandit reports no HIGH findings. The eleven below are MEDIUM and LOW, and each
+Bandit reports no HIGH findings. The fourteen below are MEDIUM and LOW, and each
 one is either a false positive or a documented decision.
 
 ### B104 — "possible binding to all interfaces" (MEDIUM ×3)
@@ -69,13 +69,15 @@ containing `pass`, and `health_pass` is a SMART result, not a credential.
 Both are narrow, both catch a specific expected failure, and both carry a comment
 saying why.
 
-### B404 / B603 — subprocess use (LOW ×3)
+### B404 / B603 / B607 — subprocess use (LOW ×7)
 
-`tools/check-privacy.py` and `tools/prepare-public-repo.py` call `git`.
-**Accepted.** Both pass a fixed argument vector with no shell and no
-user-supplied input, and neither ships to a customer machine: they are
-repository tooling. The agent itself starts no subprocess at all, which is a
-project rule.
+`tools/check-privacy.py`, `tools/prepare-public-repo.py` and
+`tools/check-terminology.py` call `git` to list the tracked files.
+**Accepted.** All three pass a fixed argument vector with no shell and no
+user-supplied input, and none of them ships to a customer machine: they are
+repository tooling. B607 is the same call flagged again for naming `git`
+rather than an absolute path. The agent itself starts no subprocess at all,
+which is a project rule.
 
 ---
 
