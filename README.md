@@ -105,9 +105,11 @@ both with the thresholds the firmware itself declares.
 
 #### Disk SMART
 
-SMART reaches LibreNMS entirely over SNMP, through `NET-SNMP-EXTEND-MIB` — no
-LibreNMS agent and no `smartctl` on the monitored host. Attributes that were not
-measured stay `null` rather than being reported as zero.
+SMART reaches LibreNMS entirely over SNMP, through `NET-SNMP-EXTEND-MIB`. On
+other platforms that application is fed by a helper script on the host that
+shells out to smartmontools; jt-snmpd reads the SMART attributes itself through
+`IOCTL_STORAGE_QUERY_PROPERTY`, so nothing else is installed. Attributes that
+were not measured stay `null` rather than being reported as zero.
 
 > **SMART needs one setting in LibreNMS.** The discovery module that finds it is
 > off by default, so until it is enabled jt-snmpd serves the data and nothing

@@ -202,11 +202,12 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   </h1>
   <p class="lead">
     <span class="zh">jt-snmpd 是一個 <b>唯讀</b> 的 Windows SNMP agent，以標準 MIB 把主機監控資料餵給 LibreNMS，
-      而且不必修改 LibreNMS。磁碟 SMART、ACPI 溫度區、硬體 inventory 全程走 SNMP，被監控端除了 jt-snmpd 本身之外，不必再裝 LibreNMS agent，也不必裝 smartctl。</span>
+      而且不必修改 LibreNMS。磁碟 SMART、ACPI 溫度區、硬體 inventory 全程走 SNMP，
+      被監控端裝的就只有 jt-snmpd 一個，不必再放 LibreNMS agent、輔助腳本或任何額外工具。</span>
     <span class="en">jt-snmpd is a <b>read-only</b> SNMP agent for Windows that serves host monitoring data
       over standard MIBs — and needs no changes on the LibreNMS side. Disk SMART, ACPI thermal zones and
-      hardware inventory all travel over SNMP, so beyond jt-snmpd itself the monitored host needs
-      neither the LibreNMS agent nor smartctl.</span>
+      hardware inventory all travel over SNMP, so jt-snmpd is the only thing installed on the
+      monitored host: no LibreNMS agent, no helper scripts, no extra tooling.</span>
   </p>
   <div class="badges">
     <span class="badge">GPL-3.0-or-later</span>
@@ -356,8 +357,9 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
         <td><span class="zh">從 SMBIOS 解析機箱、主機板、CPU、DIMM、磁碟</span>
             <span class="en">Chassis, mainboard, CPU, DIMM and disks parsed from SMBIOS</span></td></tr>
       <tr><td><span class="zh">應用程式 › SMART</span><span class="en">Apps › SMART</span></td><td class="num no">0</td><td class="num yes">6</td>
-        <td><span class="zh">走 NET-SNMP-EXTEND-MIB，完全 SNMP，不需 smartctl</span>
-            <span class="en">Over NET-SNMP-EXTEND-MIB — pure SNMP, no smartctl</span></td></tr>
+        <td><span class="zh">走 NET-SNMP-EXTEND-MIB，完全 SNMP，agent 自己以 IOCTL 讀 SMART</span>
+            <span class="en">Over NET-SNMP-EXTEND-MIB — pure SNMP, the agent reads SMART itself
+              through IOCTL</span></td></tr>
       <tr><td><span class="zh">健康情況 › 感測器</span><span class="en">Health › Sensors</span></td><td class="num no">0</td><td class="num yes">2</td>
         <td><span class="zh">磁碟溫度，以及 ACPI 溫度區（主機板韌體自己定義的量測點，通常對應 CPU 周邊或機殼），兩者都帶韌體宣告的門檻值</span>
             <span class="en">Disk temperature, plus ACPI thermal zones (measurement points the mainboard firmware defines itself, usually near the CPU or across the chassis), both with the thresholds the firmware declares</span></td></tr>

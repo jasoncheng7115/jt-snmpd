@@ -215,9 +215,10 @@ take them — the kind of gap where neither side is wrong and nothing reports an
 error is the hardest to find.
 
 Counter-style SMART metrics therefore go through **NET-SNMP-EXTEND-MIB**, which
-is the route LibreNMS actually reads SMART from, and it is entirely over SNMP:
-beyond jt-snmpd itself the monitored host needs neither the LibreNMS agent nor
-smartctl.
+is the route LibreNMS actually reads SMART from, and it is entirely over SNMP.
+On other platforms that route is fed by a helper script on the host that shells
+out to smartmontools; here the agent reads the attributes itself through
+`IOCTL_STORAGE_QUERY_PROPERTY`, so jt-snmpd is the only thing installed.
 
 One upstream LibreNMS defect is worth recording while we are here:
 `entity-sensor.inc.php:47` maps `hertz` to the class `freq`, but the valid class
