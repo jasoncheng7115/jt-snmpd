@@ -251,7 +251,7 @@ Latitude E5270 (DESKTOP-9PNNQ34)        Serial ****
 
 | Aspect | Built-in SNMP | jt-snmpd |
 |---|---|---|
-| Support status | Deprecated by Microsoft | Maintained |
+| Development status | Deprecated by Microsoft, no longer in active development | Maintained |
 | SNMP version | v1 / v2c / v3 | v2c (v3 in development) |
 | Writes | SET supported | **Read-only** |
 | Traps | Supported | Not supported (out of scope for v1.0) |
@@ -264,6 +264,14 @@ Latitude E5270 (DESKTOP-9PNNQ34)        Serial ****
 | Restarting the agent | Reads to LibreNMS as a reboot (see below) | No effect on reported uptime |
 | Self-health monitoring | None | A private OID subtree |
 | Deployment | A Windows capability (DISM / Add-WindowsCapability) | MSI (GPO / Intune / SCCM) |
+
+> **Deprecated is not the same as unsupported.** By Microsoft's own
+> definition, deprecation means a feature is no longer in active development
+> and might be removed in a future release; a deprecated component still
+> ships, **is supported for production deployments**, and continues to
+> receive security and quality updates for the product lifecycle. Replacing
+> it is therefore planning, not an emergency. The reason to replace it is how
+> little it reports, which is the rest of this document, not a support cliff.
 
 The `ifIndex` row deserves particular attention. Replacing a driver, removing
 and reinserting an adapter, or rebuilding a vSwitch can all make Windows

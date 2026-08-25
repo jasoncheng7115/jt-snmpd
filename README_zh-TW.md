@@ -9,7 +9,7 @@
 ![No outbound](https://img.shields.io/badge/%E5%B0%8D%E5%A4%96%E9%80%A3%E7%B7%9A-%E7%84%A1-success)
 
 > 為 Windows 撰寫的**唯讀** SNMP Agent，以標準 MIB 提供主機監控資料。
-> 用來取代已被 Microsoft 標記為停止支援的內建 SNMP Service，
+> 用來取代已被 Microsoft 標記為**棄用**的內建 SNMP Service，
 > 並在不修改 LibreNMS 的前提下餵給 LibreNMS。
 >
 > 作者 Jason Cheng (Jason Tools) · 授權 GPL-3.0-or-later · English: [README.md](README.md)
@@ -20,7 +20,8 @@
 
 ## 為什麼要有 jt-snmpd？
 
-Microsoft 已停止支援內建的 SNMP Service，而 Net-SNMP 也沒有現行的官方 Windows
+Microsoft 已將內建的 SNMP Service 標記為棄用，不再積極開發，未來版本可能移除；
+而 Net-SNMP 也沒有現行的官方 Windows
 建置。結果是 Windows 主機要嘛沒被監控，要嘛只能改用「主動推送到時序資料庫」的
 agent，但當 NMS 講的是 SNMP 時，那並不能解決問題。
 
