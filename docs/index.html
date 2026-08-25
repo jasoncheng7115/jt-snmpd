@@ -589,6 +589,25 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
     <span class="en">The polling side, <code>poller_modules.applications</code>, is on by default,
       so once discovery has run the data keeps updating.</span>
   </p>
+  <p class="note">
+    <span class="zh"><b>全域打開之後，有一種裝置不會跟著生效。</b>LibreNMS 的判定順序是
+      命令列的 <code>-m</code>、裝置層、OS 層、全域，<b>先設到的先贏</b>
+      （<code>LibreNMS/Polling/ModuleStatus.php</code>）。裝置頁齒輪選單裡的
+      <b>Modules</b> 開關只要動過就會留下一筆裝置層設定，<b>關掉留下的那個「否」會一直壓過全域的「是」</b>，
+      而且從全域設定頁上看不出來。整批 Windows 主機要一次打開，
+      <code>lnms config:set os.windows.discovery_modules.applications true</code>
+      比全域更準：只影響 Windows 裝置，不會讓交換器與防火牆每輪探索多跑一次註定落空的
+      walk。</span>
+    <span class="en"><b>One kind of device will not follow a global switch.</b> LibreNMS resolves
+      the setting in the order command line, per device, per OS, global, and <b>the first one that is
+      set wins</b> (<code>LibreNMS/Polling/ModuleStatus.php</code>). The <b>Modules</b> toggle in a
+      device's gear menu writes a per-device setting the moment it is touched, so <b>a device that was
+      once switched off keeps a "no" that outranks the global "yes"</b> — and nothing on the global
+      settings page shows it. To enable a fleet of Windows hosts at once,
+      <code>lnms config:set os.windows.discovery_modules.applications true</code> is the more precise
+      option: it applies to Windows devices only, and spares every switch and firewall an extra
+      discovery walk that was always going to come back empty.</span>
+  </p>
 </div></section>
 
 <section id="docs"><div class="wrap">

@@ -116,6 +116,14 @@ measured stay `null` rather than being reported as zero.
 > command line the equivalent is `lnms config:set discovery_modules.applications true`.
 > (The `Proxmox` entry on the built-in host is an unrelated false positive from an
 > earlier discovery — the built-in service provides no SMART data.)
+>
+> **A global switch does not reach a device that has its own setting.** LibreNMS
+> resolves this in the order command line, per device, per OS, global, and the
+> first one that is set wins. The Modules toggle in a device's gear menu writes a
+> per-device setting as soon as it is touched, so a host that was once switched
+> off keeps a "no" that outranks the global "yes". For a fleet of Windows hosts,
+> `lnms config:set os.windows.discovery_modules.applications true` is more precise
+> than the global setting.
 
 ![SMART comparison](docs/images/smart-en.png)
 
