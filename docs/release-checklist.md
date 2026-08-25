@@ -51,6 +51,14 @@ python3 tools/check-privacy.py
 push (tracked, plus untracked files that are not ignored), not the whole working
 directory.
 
+**Run it in the development repository, not only in the public one.** The real
+credentials live in `tools/.privacy-secrets`, which is untracked and never
+synced to the public repository, and the scanner matches that list literally.
+The public repository has no such file, so running the scan there prints
+`known secrets: NONE` to say that this check is not running at all — read that
+line, because it looks very much like having found nothing and means something
+entirely different.
+
 | Level | Meaning | Handling |
 |---|---|---|
 | `HIGH` | Private keys, passwords, community strings, MAC addresses, API credentials, unreviewed images | **Must be fixed.** Do not push |

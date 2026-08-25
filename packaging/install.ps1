@@ -21,7 +21,7 @@
 
     Usage:
       .\install.ps1 -ManagementNetworks 192.168.1.0/24
-      .\install.ps1 -ManagementNetworks 10.0.0.0/8 -Community mon2 -Force
+      .\install.ps1 -ManagementNetworks 10.0.0.0/8 -Community <your-community> -Force
       .\install.ps1 -Uninstall [-Purge]
 #>
 [CmdletBinding()]

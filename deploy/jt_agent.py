@@ -47,8 +47,8 @@ STATE_FILE = os.path.join(STATE_DIR, "state", "index-map.json")
 # installer and editable afterwards (edit, then restart the service).
 #
 # `community` and `allowed_networks` are deliberately empty rather than carrying
-# sensible-looking values. An earlier version shipped "mon2" and
-# "192.168.1.0/24" as defaults *and never read the config file at all*: the
+# sensible-looking values. An earlier version shipped the development lab's own
+# community and "192.168.1.0/24" as defaults *and never read the config file at all*: the
 # installer wrote the operator's answers to config.json, the agent ignored them,
 # and every install that did not happen to use those exact two values failed its
 # loopback health check with MSI error 1603. The defaults were what made the bug

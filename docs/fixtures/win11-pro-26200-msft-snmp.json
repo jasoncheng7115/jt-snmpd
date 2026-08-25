@@ -20,7 +20,7 @@
     "capability": "SNMP.Client~~~~0.0.1.0 = Installed"
   },
   "registry_parameters": {
-    "ValidCommunities": {"mon2": 4},
+    "ValidCommunities": {"<redacted>": 4},
     "ValidCommunities_meaning": {"4": "READ ONLY"},
     "PermittedManagers": {"1": "localhost", "2": "192.0.2.10"},
     "RFC1156Agent": {"sysContact": "Jason", "sysLocation": "mylove", "sysServices": 79},
@@ -47,7 +47,7 @@
     "snmpver": "v2c"
   },
   "migration_test_cases_covered": {
-    "community_read_only_4": "mon2 → 直接匯入 (§5.9.3)",
+    "community_read_only_4": "<redacted> → 直接匯入 (§5.9.3)",
     "permitted_managers_with_hostname": "localhost → 需解析為 IP，或列警告 (§5.9.3)",
     "sys_services_mismatch": "79 ≠ 76 → 須在報告中列出 (§5.9.3)",
     "extension_agents_present": "W3SVC → 列出並警告其 OID 將不再可用 (§5.9.3)",

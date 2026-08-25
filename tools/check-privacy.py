@@ -48,6 +48,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ALLOWLIST = ROOT / "tools" / "privacy-allowlist.txt"
+
+# Real credentials, one per line, git-ignored and never synced to the public
+# repository. The pattern rules below can only describe what a secret looks
+# like; this file says what the secrets *are*, which is the only way to catch
+# one written in a form nobody anticipated.
+#
+# It exists because the rule above matched `COMMUNITY=` and nothing else, so the
+# lab's real community string sat in seven published files -- a Python dict, a
+# JSON fixture, a PowerShell usage line, two changelogs, a snmpget example and a
+# test assertion -- for as long as the repository has been public. Six of those
+# forms the pattern was never going to match.
+SECRETS = ROOT / "tools" / ".privacy-secrets"
 IMAGE_MANIFEST = ROOT / "docs" / "images" / "REVIEWED.md"
 
 BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico",
@@ -207,7 +219,16 @@ def tracked_files() -> list[Path]:
     return sorted((ROOT / f) for f in files if (ROOT / f).is_file())
 
 
-def scan_text(path: Path, allow: list[re.Pattern]) -> list[tuple]:
+def load_secrets() -> list[str]:
+    """The literal secret values, if the untracked file is present."""
+    if not SECRETS.exists():
+        return []
+    return [ln.strip() for ln in SECRETS.read_text(encoding="utf-8").splitlines()
+            if ln.strip() and not ln.startswith("#")]
+
+
+def scan_text(path: Path, allow: list[re.Pattern],
+              secrets: tuple[str, ...] = ()) -> list[tuple]:
     """Scan one text file. Returns [(severity, rule, line, excerpt, why)]."""
     try:
         text = path.read_text(encoding="utf-8")
@@ -236,6 +257,17 @@ def scan_text(path: Path, allow: list[re.Pattern]) -> list[tuple]:
             if any(a.search(context) or a.search(hit) for a in allow):
                 continue
             findings.append((sev, name, line_no, hit, context[:110], why))
+
+    # Known secrets, matched literally. No allowlist applies: an allowlist entry
+    # that silences a real credential is not a decision anyone should be able to
+    # make by editing a text file.
+    for secret in secrets:
+        for m in re.finditer(re.escape(secret), text):
+            line_no = text.count("\n", 0, m.start()) + 1
+            context = lines[line_no - 1].strip() if line_no <= len(lines) else secret
+            findings.append((HIGH, "known-secret", line_no, "<redacted>",
+                             context[:110].replace(secret, "<redacted>"),
+                             "a real credential from tools/.privacy-secrets"))
     return findings
 
 
@@ -334,16 +366,24 @@ def main() -> int:
         return 0
 
     allow = load_allowlist()
+    secrets = tuple(load_secrets())
     text_hits: dict[str, list] = {}
     for f in files:
         if f.suffix.lower() in BINARY_SUFFIXES:
             continue
-        hits = scan_text(f, allow)
+        hits = scan_text(f, allow, secrets)
         if hits:
             text_hits[str(f.relative_to(ROOT))] = hits
     bin_hits = check_binaries(files)
 
-    print(f"scope: {len(files)} files (the ones git would actually push)\n")
+    print(f"scope: {len(files)} files (the ones git would actually push)")
+    # Say this out loud either way. A scanner that quietly skips its strongest
+    # check reads exactly like a scanner that found nothing.
+    if secrets:
+        print(f"known secrets: {len(secrets)} loaded from tools/.privacy-secrets\n")
+    else:
+        print("known secrets: NONE — tools/.privacy-secrets is missing, so real\n"
+              "               credentials are not being checked for at all\n")
 
     n_high = n_med = n_low = 0
     for rel, hits in sorted(text_hits.items()):
