@@ -112,6 +112,40 @@ Start-Service SNMP
 那台機器會沒有監控，而沒有監控是看得到的。反過來把它打開，
 可能是把一個現場刻意關掉的服務又開回去。
 
+### 預期 LibreNMS 會出現一則假的「裝置重啟」告警
+
+把 UDP 161 交還給內建服務之後，下一次輪詢通常會產生一則假的重啟告警。
+機器並沒有重開，是兩個 agent 的 `sysUpTime` 來自不同的時鐘。
+
+同一台機器、同一天、前後幾分鐘實測：
+
+| OID | Windows 內建 SNMP Service | jt-snmpd |
+|---|---|---|
+| `sysUpTime.0` | **19 秒** | 179 天 |
+| `hrSystemUptime.0` | 179 天 | 179 天 |
+| `snmpEngineTime.0` | 不提供 | 179 天 |
+
+內建服務是照 RFC 3418 的字面實作的：`sysUpTime` 指的是
+**網路管理部分**上一次重新初始化以來的時間，也就是 SNMP 服務啟動以來的時間。
+jt-snmpd 回報的則是機器的開機時間，來源是 `GetTickCount64`。
+
+LibreNMS 取 `sysUpTime`、`snmpEngineTime`、`hrSystemUptime` 三者的最大值，
+但 `windows.yaml` 設了 `bad_hrSystemUptime: true`，所以 hrSystemUptime 被丟掉，
+而內建服務又不提供 snmpEngineTime。於是它手上只剩 19 秒這個數字，
+比先前記錄的 uptime 低，LibreNMS 就判定這台重開機了。
+
+這不需要修。告警會自己恢復，服務起來一陣子之後的輪詢就正常了。但有兩件事要注意：
+
+- **如果要一次從很多台移除 jt-snmpd，先把那條規則靜音**，
+  否則每一台都會回報一次它並沒有發生的重啟。
+- 內建 SNMP 服務**任何一次重新啟動**都會這樣，不只是解除安裝的時候，
+  Windows Update 重啟它一樣會。這是內建服務本身的性質，
+  也是 jt-snmpd 改為回報機器開機時間、並額外提供 `snmpEngineTime`
+  當作第二個穩定來源的理由之一。
+
+升級不會有這個狀況：jt-snmpd 一直在回答，服務重啟不會讓它的 `sysUpTime` 歸零。
+
+
 ## 6. 刪除檔案
 
 ```powershell

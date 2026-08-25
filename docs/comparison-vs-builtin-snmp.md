@@ -116,7 +116,7 @@ F5), Kernel Debug, Loopback, and Teredo / IP-HTTPS / 6to4.
 **This is a design decision, not an omission.** Set `interface_filter.mode` to
 `all` when the complete list is what you want.
 
-## Total OIDs: 6,457 against 575
+## Total OIDs: 7,582 against 767
 
 The gap is concentrated in a handful of tables. Each is accounted for below.
 
@@ -260,6 +260,8 @@ Latitude E5270 (DESKTOP-9PNNQ34)        Serial ****
 | Response size control | None | Capped at 1400 bytes, never fragmented |
 | Interface filtering | None; everything is published | Physical adapters only |
 | ifIndex stability | Windows' native index, **not guaranteed stable across reboots** | Kept against the NET_LUID |
+| `sysUpTime` | Time since the **SNMP service** started | Time since the **machine** booted |
+| Restarting the agent | Reads to LibreNMS as a reboot (see below) | No effect on reported uptime |
 | Self-health monitoring | None | A private OID subtree |
 | Deployment | A Windows capability (DISM / Add-WindowsCapability) | MSI (GPO / Intune / SCCM) |
 
@@ -270,6 +272,35 @@ port is marked deleted and a new one is created, and the historical RRDs are lef
 with nothing pointing at them. jt-snmpd keys the assignment on the NET_LUID and
 keeps it: an interface gets an ifIndex the first time it is seen and never
 changes afterwards.
+
+### Restarting the built-in service reads as a reboot
+
+Measured on one machine, minutes apart, under each agent in turn:
+
+| OID | Built-in SNMP Service | jt-snmpd |
+|---|---|---|
+| `sysUpTime.0` | **19 seconds** | 179 days |
+| `hrSystemUptime.0` | 179 days | 179 days |
+| `snmpEngineTime.0` | not served | 179 days |
+
+The built-in service follows RFC 3418 literally: `sysUpTime` counts from the
+last re-initialisation of the network management portion, which is the SNMP
+service itself. jt-snmpd reports the host's uptime, from `GetTickCount64`.
+
+LibreNMS takes the largest of `sysUpTime`, `snmpEngineTime` and
+`hrSystemUptime`, but `windows.yaml` sets `bad_hrSystemUptime: true` and the
+built-in service serves no `snmpEngineTime`. So for the built-in service that
+maximum is 19 seconds, it is lower than the uptime recorded at the previous
+poll, and LibreNMS raises **Device rebooted** for a machine that has been up for
+half a year. Any restart of the SNMP service does it — a Windows Update, a
+service recovery, an uninstall.
+
+jt-snmpd avoids this twice over: its `sysUpTime` does not restart when the
+service does, and `snmpEngineTime` gives LibreNMS a second stable source. That
+matters beyond false alerts, because `sysUpTime` is a TimeTicks counter and
+wraps at 497 days by definition of the type; `snmpEngineTime` is in seconds and
+does not.
+
 
 ## Migration behaviour
 
