@@ -105,7 +105,7 @@ diskIODevice = PhysicalDrive0            ← UCD-DISKIO
 > 網域控制站上實測，未經調整的內建服務回報的就是 **76**，與本 agent 相同。
 > 要分辨請看 `sysDescr`，或私有子樹底下的 `jtAgentVersion` —— 內建服務生不出那個。
 
-### 編碼鐵則（從實測 bug 得出）
+### 編碼規則（從實測 bug 得出）
 
 **SNMP OCTET STRING 是位元組串，不是文字。** pyasn1 預設以 latin-1 編碼 `str`，
 遇到非 ASCII 直接丟 `PyAsn1UnicodeEncodeError`。正體中文 Windows 的網路卡別名就是
