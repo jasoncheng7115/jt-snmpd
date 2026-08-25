@@ -1,12 +1,16 @@
-"""解析式 BER 大小計算 vs 真實編碼器的對照測試。
+"""Calculated BER sizes checked against the real encoder.
 
-為什麼需要這個測試：§4.4 的 1400 bytes 截斷靠 snapshot 預存的 varbind 大小
-來決定何時停止。那些大小是解析式算出來的（實際編碼太貴，見 §4.2 的快照
-500 ms 預算），且刻意對齊 pyasn1 的實際行為而非 DER 最短編碼。
+**Why this exists**
 
-pyasn1 一旦改變編碼方式，大小預測就會無聲漂掉，回應可能超過 1400 bytes
-而被防火牆分片丟棄，症狀是「LibreNMS 間歇性抓不到資料」，極難查。
-所以這個對照必須進 CI。
+The 1400-byte truncation decides when to stop from the varbind sizes stored in
+the snapshot. Those sizes are calculated rather than encoded, because encoding
+for real costs 93% of the snapshot build and would break the 500 ms budget, and
+they deliberately match what pyasn1 emits rather than DER's shortest form.
+
+If pyasn1 ever changes how it encodes, the predictions drift silently, responses
+exceed 1400 bytes, and the firewall drops the fragments. The symptom is
+"LibreNMS intermittently gets no data", which is close to undiagnosable from that
+end. So this comparison belongs in CI.
 """
 
 import random
@@ -30,12 +34,12 @@ OIDS = [
     (1, 3, 6, 1, 4, 1, 311, 1, 1, 3, 1, 1),
     (1, 3, 6, 1, 2, 1, 2, 2, 1, 10, 2147483647),
     (1, 3, 6, 1, 4, 1, 99999, 1, 1, 1, 20, 5000),
-    tuple([1, 3, 6, 1, 4, 1, 99999] + [128] * 10),  # 逼出 base-128 多位元組 sub-id
+    tuple([1, 3, 6, 1, 4, 1, 99999] + [128] * 10),  # forces multi-byte base-128 sub-identifiers
     (0, 0),
     (2, 999, 1),
 ]
 
-# 邊界值：每個都是二補數/前導位元組規則會轉折的地方
+# Boundaries: each one is where two's complement or the leading-byte rule turns over
 INT32 = [0, 1, 127, 128, 255, 256, 32767, 32768, 65535, 2147483647,
          -1, -127, -128, -129, -255, -256, -32768, -32769, -2147483648]
 UINT32 = [0, 1, 127, 128, 255, 256, 65535, 65536, 2147483647, 2147483648, 4294967295]
@@ -64,7 +68,7 @@ def test_analytic_size_matches_encoder(oid, val):
 
 
 def test_analytic_size_matches_encoder_randomized():
-    """隨機掃一遍，補上邊界表沒列到的組合。"""
+    """A random sweep, to cover combinations the boundary table does not list."""
     rnd = random.Random(20260823)
     mismatches = []
     for _ in range(4000):
@@ -80,4 +84,4 @@ def test_analytic_size_matches_encoder_randomized():
         got, want = precompute_sizes([oid], [val])[0], _real_size(oid, val)
         if got != want:
             mismatches.append((oid, type(val).__name__, val, got, want))
-    assert not mismatches, f"{len(mismatches)} 組不符，前 5 組：{mismatches[:5]}"
+    assert not mismatches, f"{len(mismatches)} mismatches, first 5: {mismatches[:5]}"

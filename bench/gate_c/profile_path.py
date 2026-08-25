@@ -1,8 +1,9 @@
-"""同處理程序 profile：把「解碼請求 → controller → 組裝回應 → 編碼」整條請求路徑
-用 cProfile 剖析，找出 §4.2 的 80 µs/varbind 預算花在哪。
+"""In-process profile of the whole request path: decode, controller, assemble,
+encode. cProfile shows where the 80 µs per varbind budget actually goes.
 
-不經過 socket / asyncio，直接呼叫我們自訂的 command responder 邏輯，
-因此量到的是「處理成本」本身，排除網路與事件迴圈排程的雜訊。
+It bypasses sockets and asyncio and calls the command responder logic directly,
+so what is measured is the processing cost itself, without the noise of the
+network or event loop scheduling.
 """
 
 from __future__ import annotations
@@ -26,13 +27,14 @@ N = 50000
 ITERS = 20000
 snap = build_synthetic_snapshot(N)
 
-# 預先算好 wire bytes（snapshot 建立時的一次性成本，不計入請求路徑）
+# Wire bytes computed up front: a one-off cost at snapshot build time, not part
+# of the request path
 from bench.gate_c.wire import precompute_wire  # noqa: E402
 
 WIRE = precompute_wire(snap.oids, snap.values)
 OIDS = snap.oids
 
-# 預先做好一個 GETBULK 請求封包（模擬 client 送來的位元組）
+# One prepared GETBULK request packet, standing in for the bytes a client sends
 _req = v2c.GetBulkRequestPDU()
 v2c.apiBulkPDU.set_defaults(_req)
 v2c.apiBulkPDU.set_non_repeaters(_req, 0)
@@ -50,8 +52,8 @@ MSG_SPEC = v2c.Message()
 
 
 def handle_full_wire(raw: bytes) -> bytes:
-    """完整請求路徑（wire 預編碼版本）。"""
-    # ① 解碼請求
+    """The full request path, pre-encoded wire version."""
+    # 1. decode the request
     msg, _ = ber_dec.decode(raw, asn1Spec=MSG_SPEC)
     pdu = v2c.apiMessage.get_pdu(msg)
     community = v2c.apiMessage.get_community(msg)
@@ -59,7 +61,7 @@ def handle_full_wire(raw: bytes) -> bytes:
     maxrep = min(int(v2c.apiBulkPDU.get_max_repetitions(pdu)), 25)
     start = tuple(v2c.apiBulkPDU.get_varbinds(pdu)[0][0])
 
-    # ② controller：一次 bisect + 切片（含 1400 bytes 預算）
+    # 2. controller: one bisect and a slice, inside the 1400-byte budget
     i = bisect_right(OIDS, start)
     budget = 1400 - 120
     used = 0
@@ -73,7 +75,7 @@ def handle_full_wire(raw: bytes) -> bytes:
         parts.append(w)
         i += 1
 
-    # ③ 組裝回應 + 編碼（純位元組串接）
+    # 3. assemble and encode the response, which is byte concatenation
     vbl = tlv(TAG_SEQUENCE, b"".join(parts))
     rpdu = tlv(0xA2, tlv(TAG_INTEGER, enc_int_content(int(reqid)))
                + tlv(TAG_INTEGER, enc_int_content(0))
@@ -83,7 +85,7 @@ def handle_full_wire(raw: bytes) -> bytes:
 
 
 def handle_full_pysnmp(raw: bytes) -> bytes:
-    """完整請求路徑（pysnmp 物件模型版本），作為對照。"""
+    """The same path through pysnmp's object model, for comparison."""
     msg, _ = ber_dec.decode(raw, asn1Spec=MSG_SPEC)
     pdu = v2c.apiMessage.get_pdu(msg)
     community = v2c.apiMessage.get_community(msg)
@@ -116,21 +118,21 @@ def _time(fn) -> float:
 
 
 def main() -> None:
-    # 正確性：兩條路徑必須解出相同 varbind
+    # Correctness: both paths have to resolve the same varbinds
     a = handle_full_wire(REQ_BYTES)
     b = handle_full_pysnmp(REQ_BYTES)
     ma, _ = ber_dec.decode(a, asn1Spec=v2c.Message())
     mb, _ = ber_dec.decode(b, asn1Spec=v2c.Message())
     va = [tuple(n) for n, _ in v2c.apiPDU.get_varbinds(v2c.apiMessage.get_pdu(ma))]
     vb = [tuple(n) for n, _ in v2c.apiPDU.get_varbinds(v2c.apiMessage.get_pdu(mb))]
-    assert va == vb, "兩條路徑結果不一致"
-    print(f"正確性：wire 與 pysnmp 兩條路徑解出相同 {len(va)} 筆 varbind ✓\n")
+    assert va == vb, "the two paths disagree"
+    print(f"correctness: both paths resolve the same {len(va)} varbinds\n")
 
-    for name, fn in (("wire 預編碼", handle_full_wire), ("pysnmp 物件模型", handle_full_pysnmp)):
+    for name, fn in (("wire pre-encoded", handle_full_wire), ("pysnmp objects", handle_full_pysnmp)):
         d = _time(fn)
-        print(f"{name:<16} {d*1e6:8.1f} µs/封包   {d*1e6/25:7.2f} µs/varbind")
+        print(f"{name:<18} {d*1e6:8.1f} µs/packet   {d*1e6/25:7.2f} µs/varbind")
 
-    print("\n=== cProfile：wire 路徑熱點（前 12）===")
+    print("\n=== cProfile: hot spots on the wire path (top 12) ===")
     pr = cProfile.Profile()
     pr.enable()
     for _ in range(ITERS):

@@ -257,6 +257,32 @@ def test_dialog_titles_match_the_rest_of_the_wizard():
             "reads as a different program")
 
 
+def test_the_lifecycle_script_looks_for_the_right_product_name():
+    """The lifecycle test finds the product by its display name, which is the
+    wxs's Package Name.
+
+    They drifted apart once: the rename to jt-snmpd left the script matching
+    "JT SNMP Agent", so every check that depends on finding the product would
+    have reported it absent, on a machine where it was installed correctly.
+    """
+    lifecycle = (ROOT / "tests" / "lifecycle.ps1").read_text(encoding="utf-8-sig")
+    pkg = TREE.find(f"{{{NS['w']}}}Package")
+    assert pkg is not None, "the wxs has no Package element"
+    name = pkg.get("Name")
+    assert name, "the Package element has no Name"
+    assert f'DisplayName -eq "{name}"' in lifecycle or f'DisplayName -like "*{name}*"' in lifecycle, (
+        f"lifecycle.ps1 does not look for DisplayName {name!r}, which is the "
+        "product name in the wxs; it would find nothing on a correct install")
+
+
+def test_the_lifecycle_script_does_not_pin_a_version():
+    """A hardcoded MSI name tests whatever was built when it was written."""
+    lifecycle = (ROOT / "tests" / "lifecycle.ps1").read_text(encoding="utf-8-sig")
+    assert not re.search(r"jt-snmpd-\d+\.\d+\.\d+-x64\.msi", lifecycle), (
+        "lifecycle.ps1 names a specific MSI version, so it stops testing the "
+        "current build the moment the version changes")
+
+
 # ------------------------------------------------------------- wizard presentation
 def test_wizard_supplies_its_own_artwork_and_licence():
     """WiX substitutes placeholders for any of these that is left unset.

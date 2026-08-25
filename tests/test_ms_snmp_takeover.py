@@ -1,26 +1,33 @@
-"""接管與歸還 Windows 內建 SNMP Service。
+"""Taking over the built-in Windows SNMP Service, and giving it back.
 
-**這個 bug 怎麼被發現的**
+**How this was found**
 
-使用者問「安裝/更新程式會偵測到 windows 內建有啟 snmp 的話，將它停止並設為停用
-對吧」。答案是對的，但去核對程式碼時發現**升級路徑會把還原記錄毀掉**：
+The question was simply "the installer detects the built-in SNMP service and
+disables it, right?". It does. Checking the code to be sure turned up something
+else: **the upgrade path destroyed the restore record**.
 
-`msi-configure.ps1` 每次執行都重讀當下的內建 SNMP 狀態，然後無條件覆寫
-`state\\ms-snmp-restore.json`。第一次安裝時讀到的是真實原狀（例如 Automatic /
-Running），沒問題；但**升級時內建 SNMP 早就被上一次安裝停用了**，重讀只會得到
-`Disabled / Stopped`，然後把這個值寫回還原記錄。
+`msi-configure.ps1` re-read the built-in service's current state on every run and
+overwrote `state\\ms-snmp-restore.json` unconditionally. On a first install that
+reads the true original state, say Automatic and Running, and all is well. **On
+an upgrade the built-in service has already been disabled by the previous
+install**, so the re-read returns Disabled and Stopped, and that is what gets
+written back as the thing to restore.
 
-解除安裝那段的判斷是：
+The uninstall side tests:
 
     if ($orig -and $orig -ne 'Disabled') { Set-Service -Name SNMP -StartupType $orig }
 
-`$orig` 已經變成 `Disabled` → 條件不成立 → **內建 SNMP 再也回不來**。
+`$orig` is now `Disabled`, the condition is false, and **the built-in service
+never comes back**.
 
-所以「安裝 → 移除」會正確還原，「安裝 → 升級 → 移除」不會。差別只在中間多了
-一次升級，而升級正是這個產品的常態操作。第一次的生命週期測試沒抓到，因為它
-在移除階段只檢查了我們自己的服務、目錄與防火牆規則，沒有檢查歸還了什麼。
+So install-then-remove restores correctly and install-then-upgrade-then-remove
+does not. The only difference is an upgrade in the middle, which is the ordinary
+operation for this product. The first lifecycle test missed it because its
+removal stage checked our own service, directories and firewall rules, and never
+checked what had been handed back.
 
-要記的是「**我們第一次動手之前**的樣子」，因此既有記錄一律優先。
+What has to be recorded is the state **before we first touched it**, so an
+existing record always wins.
 """
 
 from __future__ import annotations
@@ -33,84 +40,90 @@ PKG = Path(__file__).resolve().parent.parent / "packaging"
 SRC = (PKG / "msi-configure.ps1").read_text(encoding="utf-8-sig")
 
 
-# --- 偵測與停用 -------------------------------------------------------------
+# --- detection and disabling ------------------------------------------------
 
 def test_detects_builtin_snmp_and_records_original_state():
-    assert "Get-Service -Name SNMP" in SRC, "未偵測內建 SNMP Service"
+    assert "Get-Service -Name SNMP" in SRC, "the built-in SNMP service is never detected"
     for field in ("original_start_type", "original_status", "service_existed"):
-        assert field in SRC, f"還原記錄缺少 {field}"
+        assert field in SRC, f"the restore record has no {field}"
 
 
 def test_disables_rather_than_removes():
-    """停用，不移除。移除是不可逆的，而我們只是借用 UDP/161。"""
+    """Disabled, not removed. Removal is irreversible, and all we want is UDP/161."""
     assert "Set-Service -Name SNMP -StartupType Disabled" in SRC
     assert "Stop-Service -Name SNMP -Force" in SRC
     assert not re.search(r"Remove-WindowsCapability|Uninstall-WindowsFeature|"
                          r"sc\.exe delete SNMP\b", SRC), (
-        "不得移除內建 SNMP，停用即可，且必須可還原")
+        "the built-in service must be disabled rather than removed, and restorable")
 
 
 def test_disable_result_is_verified():
-    """群組原則或第三方管控可能擋下停用。沒真的停掉，內建 SNMP 仍佔著 UDP/161，
-    我們會綁定失敗，那時只會看到一個查不出原因的健康檢查逾時。"""
+    """Group policy or third-party management can block the disable. If it does
+    not actually stop, the built-in service still holds UDP/161, our bind fails,
+    and all anyone sees is a health check timing out for no stated reason."""
     i = SRC.find("if ($msCfg.service_exists -and $KeepMsSnmp -ne '1')")
-    assert i != -1, "找不到停用區塊"
+    assert i != -1, "the disable block is gone"
     block = SRC[i:i + 1400]
-    assert "$after = Get-Service -Name SNMP" in block, "停用後未驗證實際狀態"
-    assert "exit 1" in block, "停用失敗必須讓安裝失敗，而不是繼續往下走"
+    assert "$after = Get-Service -Name SNMP" in block, "the state is not verified after disabling"
+    assert "exit 1" in block, "a failed disable has to fail the install rather than continue"
 
 
 def test_keepmssnmp_escape_hatch_exists():
-    """有些環境的內建 SNMP 掛著 ExtensionAgents 不能停。要留退路，
-    但退路必須是明示的（傳屬性），不能是預設行為。"""
+    """In some environments the built-in service carries ExtensionAgents and
+    cannot be stopped. There has to be a way out, but an explicit one: a property
+    the operator passes, never the default."""
     assert "$KeepMsSnmp -ne '1'" in SRC
     wxs = (PKG / "wix" / "jt-snmpd.wxs").read_text(encoding="utf-8-sig")
-    assert "KEEPMSSNMP" in wxs, "wxs 未定義 KEEPMSSNMP 屬性，該退路實際上不存在"
+    assert "KEEPMSSNMP" in wxs, "the wxs defines no KEEPMSSNMP property, so the way out does not exist"
 
 
-# --- 升級不得毀掉還原記錄（本檔的核心）-------------------------------------
+# --- an upgrade must not destroy the restore record (the point of this file) -
 
 def test_existing_restore_record_takes_precedence():
-    """核心斷言：既有記錄優先，只有第一次安裝才寫入當下狀態。"""
-    assert "$RESTORE_FILE" in SRC, "還原記錄路徑應集中為變數，避免兩處不一致"
+    """The central assertion: an existing record wins, and only a first install
+    writes the current state."""
+    assert "$RESTORE_FILE" in SRC, "the path should be one variable, so two places cannot disagree"
     assert "if (Test-Path $RESTORE_FILE)" in SRC, (
-        "未檢查既有還原記錄，升級會用已停用的狀態覆寫掉真正的原狀")
+        "the existing record is not checked, so an upgrade overwrites the true "
+        "original state with the disabled one")
     i = SRC.find("if (Test-Path $RESTORE_FILE)")
     j = SRC.find("$restore = [ordered]@{", i)
     assert j != -1
     block = SRC[i:j]
-    assert "ConvertFrom-Json" in block, "既有記錄必須被解析後沿用"
+    assert "ConvertFrom-Json" in block, "an existing record has to be parsed and reused"
     assert "if (-not $msSnmpBlock)" in block, (
-        "沒有既有記錄時才可以用當下狀態建立")
+        "the current state may only be used when there is no existing record")
 
 
 def test_restore_block_is_not_rebuilt_unconditionally():
-    """反向斷言：$restore 裡不可再直接讀 $msCfg 的狀態欄位。"""
+    """The converse: $restore must not read $msCfg's state fields directly."""
     i = SRC.find("$restore = [ordered]@{")
     j = SRC.find("}\n", SRC.find("not_imported", i))
     block = SRC[i:j]
     assert "$msCfg.start_type" not in block, (
-        "$restore 直接取用當下狀態 = 升級時會覆寫掉真正的原狀")
+        "$restore takes the current state directly, which is what overwrote the "
+        "true original on upgrade")
     assert "ms_snmp = $msSnmpBlock" in block
 
 
 def test_uninstall_restores_original_start_type():
     assert "Set-Service -Name SNMP -StartupType $orig" in SRC
     assert "$r.ms_snmp.disabled_by_us" in SRC, (
-        "只還原我們動過的機器，KEEPMSSNMP 安裝的不該被我們改回去")
+        "only restore machines we changed; a KEEPMSSNMP install is not ours to undo")
     assert "original_status -eq 'Running'" in SRC, (
-        "原本在執行中的才需要重新啟動")
+        "only start it again if it was running before")
 
 
 def test_restore_is_skipped_when_original_was_already_disabled():
-    """原本就是 Disabled 的機器，移除後不該被我們「好心」啟用。"""
+    """A machine that was already Disabled must not be helpfully enabled on removal."""
     assert "$orig -ne 'Disabled'" in SRC
 
 
-# --- 用真實 JSON 驗證還原判斷的語意 ----------------------------------------
+# --- exercise the restore decision against real JSON ------------------------
 
 def _would_restore(record: dict) -> bool:
-    """複製解除安裝端的判斷條件，讓語意可以被獨立驗證。"""
+    """A copy of the uninstall side's condition, so the meaning can be checked
+    on its own."""
     ms = record.get("ms_snmp", {})
     if not (ms.get("disabled_by_us") and ms.get("service_existed")):
         return False
@@ -125,8 +138,8 @@ def test_first_install_record_restores():
 
 
 def test_record_polluted_by_upgrade_does_not_restore():
-    """這就是 bug 的形狀：升級把 Automatic 覆寫成 Disabled 之後，
-    還原判斷直接失效。留著這個測試是為了記住它長什麼樣子。"""
+    """The shape of the bug: once an upgrade overwrote Automatic with Disabled,
+    the restore condition could never be true. This test keeps the shape of it."""
     assert not _would_restore({"ms_snmp": {
         "service_existed": True, "original_start_type": "Disabled",
         "original_status": "Stopped", "disabled_by_us": True}})
@@ -145,18 +158,18 @@ def test_keepmssnmp_install_restores_nothing():
 
 
 def test_restore_record_shape_is_json_serialisable():
-    """PowerShell 端寫的欄位名與這裡的判斷必須對得起來。"""
+    """The field names PowerShell writes have to match what is tested here."""
     sample = {"schema_version": 1, "ms_snmp": {
         "service_existed": True, "original_start_type": "Automatic",
         "original_status": "Running", "disabled_by_us": True}}
     assert json.loads(json.dumps(sample)) == sample
     for k in sample["ms_snmp"]:
-        assert k in SRC, f"PowerShell 端未寫出欄位 {k}"
+        assert k in SRC, f"the PowerShell side never writes {k}"
 
 
-# --- 安全規則優先於忠實移轉----------------------------------
+# --- the security rules outrank faithful migration --------------------------
 
 def test_writable_communities_are_downgraded_not_copied():
     assert "ValidCommunities" in SRC
     assert "trap_destinations" in SRC and "not_imported" in SRC, (
-        "trap 與 ExtensionAgents 必須列出但不匯入")
+        "traps and ExtensionAgents are listed but never imported")
