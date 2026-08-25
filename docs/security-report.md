@@ -19,7 +19,7 @@ not "how many" but "why is each one acceptable".
 | | |
 |---|---|
 | Date | 2026-08-25 |
-| Version | jt-snmpd 0.9.6 |
+| Version | jt-snmpd 0.9.7 |
 | Scope | `deploy/`, `tools/`, `packaging/` — 11 files, 4,014 lines |
 
 ---

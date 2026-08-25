@@ -123,13 +123,21 @@ def test_default_uninstall_keeps_data_dir():
     舊 RRD 全數失去對應。
     """
     i = SRC.find("if ($Purge -eq '1')")
-    j = SRC.find("Log \"=== 解除安裝完成 ===\"", i)
+    assert i != -1, "the purge branch is gone"
+    # Anchor on the end of the uninstall block. This used to look for a Chinese
+    # log line that had since been translated, so find() returned -1, the slice
+    # ran to the end of the file, and the assertion below was checking the whole
+    # script rather than the else branch. It passed for the wrong reason.
+    j = SRC.find('Log "=== uninstall complete ==="', i)
+    assert j != -1, "the uninstall-complete marker moved; this test is looking at the wrong region"
     tail = SRC[i:j]
     else_i = tail.find("} else {")
     assert else_i != -1
     else_block = tail[else_i:]
-    assert "Remove-Item $DATA_DIR" not in else_block, (
-        "預設解除安裝不可刪除資料目錄")
+    # $DATA_DIR_OLD starts with $DATA_DIR, so a plain substring test matches the
+    # migration's own cleanup and reports a deletion that is not there.
+    assert not re.search(r"Remove-Item \$DATA_DIR(?!_)", else_block), (
+        "a default uninstall must not delete the data directory")
     assert "data directory kept" in else_block
 
 

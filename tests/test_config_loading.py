@@ -192,8 +192,13 @@ def test_installer_writes_json_without_a_bom():
     """兩端都修：agent 容忍 BOM，安裝程式仍寫乾淨的檔。"""
     installer = (DEPLOY.parent / "packaging" / "msi-configure.ps1").read_text(
         encoding="utf-8-sig")
-    i = installer.index("config.json")
-    block = installer[max(0, i - 400):i + 200]
+    # Anchor on the write itself, not on the first mention of the file name.
+    # Looking for the name found an earlier reference in the migration block and
+    # inspected the wrong region entirely.
+    i = installer.index("[IO.File]::WriteAllText")
+    block = installer[i:i + 400]
+    assert "config.json" in block, \
+        "the anchored block is not the config.json write"
     assert "UTF8Encoding $false" in block, \
         "config.json 應以不含 BOM 的 UTF-8 寫入（Set-Content -Encoding UTF8 會加 BOM）"
 

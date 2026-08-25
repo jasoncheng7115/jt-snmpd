@@ -165,6 +165,43 @@ mutation: restoring the previous value turns it red.
 
 ---
 
+## [0.9.7] - 2026-08-25
+
+### Fixed
+
+- **The data directory migration could never run.** 0.9.6 moved the data
+  directory to match the rename and guarded the move on the destination not
+  existing. That condition is never true: this script writes its own log inside
+  the destination, so the first `Log` call creates it before the check is
+  reached. Every upgrade skipped the migration, left the old directory behind,
+  and started the agent with an empty state directory — losing the ifIndex map,
+  which is the failure the migration existed to prevent.
+
+  Found by running a real upgrade over RDP rather than by reading the code. The
+  log said it plainly: `[!] C:\ProgramData\JT-SNMP still exists alongside
+  C:\ProgramData\jt-snmpd`, followed by a fresh `index-map.json` with today's
+  date.
+
+  The migration now decides **per item** rather than per directory, which also
+  makes it idempotent: a half-finished migration completes on the next run
+  instead of being skipped for looking done. An item already present at the
+  destination is never overwritten, because on a reinstall that is live data.
+  Earlier logs are kept under `logs\pre-0.9.6\` rather than discarded, and the
+  old directory is removed only once nothing worth keeping is left in it. If any
+  item cannot be carried across the installation stops, because half a state
+  directory is worse than a failed install that rolls back.
+
+- **Two tests were checking the wrong part of the file, and passing for it.**
+  `test_default_uninstall_keeps_data_dir` anchored on a Chinese log line that had
+  been translated to English, so `find` returned -1, the slice ran to the end of
+  the script, and it was asserting over the whole file. It also matched
+  `$DATA_DIR` as a substring of `$DATA_DIR_OLD`.
+  `test_installer_writes_json_without_a_bom` located the write by the first
+  mention of `config.json`, which the new migration block now precedes. Both are
+  anchored on the thing they actually test and fail loudly if the anchor moves.
+
+---
+
 ## [Unreleased]
 
 ### Added
