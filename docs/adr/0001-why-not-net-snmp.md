@@ -1,58 +1,97 @@
-# ADR-0001：為何不重建 Net-SNMP for Windows，改以 Python 自建
+---
+layout: default
+title: ADR-0001 Why Not Net-SNMP
+description: Why the agent was written from scratch in Python rather than rebuilding Net-SNMP
+---
 
-> 狀態：已決策（Accepted）
-> 日期：2026-08-24
+[← All documentation](https://jasoncheng7115.github.io/jt-snmpd/) ·
+**English** | [繁體中文](https://jasoncheng7115.github.io/jt-snmpd/adr/0001-why-not-net-snmp_zh-TW.html)
 
-## 背景
+# ADR-0001: why this was written in Python rather than rebuilding Net-SNMP for Windows
 
-原計畫前提是「Net-SNMP 缺乏現代官方 Windows binary」。這是事實，但不等於不能重建，
-Net-SNMP 的 win32 mibgroup 已有相當完整的 HOST-RESOURCES / IF-MIB 實作。因此
-本閘門要求以書面比較後再定案，避免日後重複討論。
+| | |
+|---|---|
+| Status | Accepted |
+| Date | 2026-08-24 |
 
-## 選項比較
+## Context
 
-| 方案 | 初期成本 | 長期維護 | 擴充 JT 私有 MIB | 團隊技能匹配 | 自包含部署 |
+The original plan rested on "there is no modern official Net-SNMP binary for
+Windows". That is true, and it does not mean one could not be built: Net-SNMP's
+win32 mibgroup already implements a good deal of HOST-RESOURCES and IF-MIB. So
+the decision was written down and compared rather than assumed, to save having
+the argument again later.
+
+## The options
+
+| Option | Up-front cost | Long-term maintenance | Extending with private MIBs | Fit with existing skills | Self-contained deployment |
 |---|---|---|---|---|---|
-| **A. 從零以 Python 實作（採用）** | 高 | 中 | 容易 | 高 | 容易（PyInstaller）|
-| B. vcpkg + MSVC 重建 Net-SNMP + 補 mibgroup | 中 | 高（要跟上游）| 需寫 C | 低 | 需處理 C runtime |
-| C. Telegraf / windows_exporter | 極低 | 低 | — | — | — |
+| **A. Written from scratch in Python (chosen)** | High | Medium | Easy | High | Easy, through PyInstaller |
+| B. Rebuild Net-SNMP with vcpkg and MSVC, filling in the mibgroup | Medium | High, tracking upstream | Requires C | Low | The C runtime has to be handled |
+| C. Telegraf or windows_exporter | Very low | Low | — | — | — |
 
-## 決策：選 A（Python 自建）
+## Decision: A
 
-### 為何不選 C（Telegraf / windows_exporter）
+### Why not C, Telegraf or windows_exporter
 
-**LibreNMS 消費的是 SNMP，不是 Prometheus / InfluxDB。** Telegraf 輸出 line protocol、
-windows_exporter 輸出 Prometheus metrics，都不是 SNMP，LibreNMS 無法直接以標準 SNMP
-poller 納管。且客戶環境普遍要求「不得有主動對外連線的代理程式」，而這兩者的典型部署
-都是 agent 主動推送或被 Prometheus 拉取，與 LibreNMS 的 SNMP 拉取模型不符。
+**LibreNMS consumes SNMP, not Prometheus or InfluxDB.** Telegraf emits line
+protocol and windows_exporter emits Prometheus metrics; neither is SNMP, and
+LibreNMS cannot poll either with its standard SNMP poller.
 
-### 為何不選 B（重建 Net-SNMP）
+There is a second reason. Customer environments generally require that no agent
+makes outbound connections of its own, and the usual deployment of both tools is
+either the agent pushing or Prometheus scraping. Neither matches the model
+LibreNMS uses, which is a poller pulling over SNMP.
 
-1. **長期維護成本高**：需持續跟上游 Net-SNMP 版本，且 win32 mibgroup 的建置鏈
-   （vcpkg + MSVC）在 CI 上脆弱。
-2. **擴充 JT 私有 MIB 需寫 C**：自我健康 OID、與 LibreNMS 的相容性微調，
-   全部要改 C 程式碼並重新編譯，迭代慢。
-3. **團隊技能不匹配**：既有 jt-* 專案（jt-doc-tools）皆為 Python，重建 Net-SNMP
-   需 C / autotools / win32 建置專長。
-4. **自包含部署較難**：C binary 需處理 MSVC runtime 相依；Python + PyInstaller
-   one-folder 天生自包含，此點已於閘門 D 以實機驗證。
+### Why not B, rebuilding Net-SNMP
 
-### 為何選 A（Python 自建），且已有實證
+1. **Maintenance.** It means tracking upstream Net-SNMP releases indefinitely,
+   and the win32 mibgroup's build chain — vcpkg plus MSVC — is fragile in CI.
+2. **Extending it means writing C.** The self-health OIDs and the small
+   adjustments needed for LibreNMS compatibility would all be C changes and a
+   recompile, which makes every iteration slow.
+3. **It does not match the skills available.** The other jt-* projects are
+   Python. Rebuilding Net-SNMP calls for C, autotools and win32 build expertise.
+4. **Self-contained deployment is harder.** A C binary brings MSVC runtime
+   dependencies with it, where PyInstaller's one-folder output is self-contained
+   by construction. That was verified on hardware at gate D.
 
-初期成本雖高，但：
+### Why A, and what already demonstrates it
 
-- **snapshot + bisect 架構讓 SNMP 協定正確性成為結構保證**（閘門 C 驗證，20 例測試通過），
-  不需人工維護 GETNEXT ordering / 無重複 OID / endOfMibView。
-- **擴充私有 MIB 只是往排序陣列加項目**，無需編譯。
-- **與既有 jt-* 專案技能一致**（Python）。
-- **PyInstaller one-folder 自包含**，符合客戶「不上網、零外部相依」要求（閘門 D 驗證）。
-- **Phase 0.5 已用真機證明可行**：Python 自建 agent 已部署到 Win11、正式 LibreNMS
-  透過它成功偵測 OS 並取得 ports / storage / processor / diskio（見 deploy/README.md）。
+The up-front cost is real, and against it:
 
-## 後果
+- **The snapshot + bisect architecture turns protocol correctness into a
+  structural guarantee.** GETNEXT ordering, the absence of duplicate OIDs and a
+  correct endOfMibView all follow from the array being sorted, so none of them is
+  maintained by hand. Verified at gate C, with 20 tests passing.
+- **Extending the private MIB is adding entries to a sorted array**, with nothing
+  to compile.
+- **It matches the skills the other jt-* projects are built on.**
+- **PyInstaller one-folder is self-contained**, which is what the customer
+  requirement of no downloads and no external dependencies actually needs.
+  Verified at gate D.
+- **It was demonstrated on real hardware before being committed to.** The Python
+  agent was deployed to a Windows 11 machine and the production LibreNMS detected
+  the OS through it and collected ports, storage, processors and disk I/O.
 
-- 承擔純 Python BER 的效能挑戰（已知，對策見閘門 C：wire 預編碼 + 專用解析器）。
-- 需自行維護與 LibreNMS 的相容性，且以修 agent 為優先，而非改 LibreNMS。
-- 換得：迭代快、自包含、技能匹配、正確性由架構保證。
+## Consequences
 
-這份 ADR 的目的不是重新開會，而是讓未來的自己與外部審閱者不必重問。
+- The performance of BER in pure Python is our problem now. It was known going
+  in, and the answer is in gate C: pre-encoded wire bytes, and a purpose-built
+  parser to follow.
+- Compatibility with LibreNMS is ours to maintain, and the rule is to fix the
+  agent rather than change LibreNMS.
+- In exchange: fast iteration, a self-contained artefact, a match with the skills
+  available, and correctness that comes from the architecture rather than from
+  vigilance.
+
+This record exists so that neither a future version of us nor an outside reviewer
+has to hold the discussion again.
+
+---
+
+## Related documentation
+
+- [Documentation home](https://jasoncheng7115.github.io/jt-snmpd/)
+- [Compared with the built-in SNMP Service](https://jasoncheng7115.github.io/jt-snmpd/comparison-vs-builtin-snmp.html)
+- [Security assessment](https://jasoncheng7115.github.io/jt-snmpd/attack-surface.html)

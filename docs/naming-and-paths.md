@@ -1,101 +1,133 @@
-# 命名與路徑定案
+---
+layout: default
+title: Naming and Paths
+description: Naming and paths, and the encoding rules that came out of real bugs
+---
 
+[← All documentation](https://jasoncheng7115.github.io/jt-snmpd/) ·
+**English** | [繁體中文](https://jasoncheng7115.github.io/jt-snmpd/naming-and-paths_zh-TW.html)
 
-## 命名
+# Naming and paths
 
-**一個名字，到處都一樣：`jt-snmpd`。**
+## Naming
 
-原本的做法是分成兩種寫法：技術識別用 `jt-snmpd`，人看的顯示名稱用
-「JT SNMP Agent」，資料目錄又是第三種寫法 `JT-SNMP`。這在 Windows 上是常見慣例
-（顯示「Windows Defender 防火牆」而服務名是 `mpssvc`），但實際造成的是誤會：
-使用者在 GitHub 上找到的是 jt-snmpd，在「應用程式與功能」看到的卻是另一個名字，
-而磁碟上還有第三種。0.9.6 起全部統一。
+**One name, everywhere: `jt-snmpd`.**
 
-| 項目 | 名稱 | 理由 |
+It used to be split three ways: `jt-snmpd` as the technical identifier, "JT SNMP
+Agent" as the human-readable display name, and `JT-SNMP` for the data directory.
+Separating a display name from an identifier is ordinary Windows convention —
+the firewall shows as "Windows Defender Firewall" while its service is `mpssvc` —
+but here it produced confusion rather than clarity: you find jt-snmpd on GitHub,
+meet a different name in Apps & Features, and find a third spelling on disk.
+Since 0.9.6 they all agree.
+
+| Item | Name | Reason |
 |---|---|---|
-| 專案 / repo | **jt-snmpd** | `d` 結尾符合 daemon 慣例（對照 `snmpd`/`sshd`），一看即知是常駐服務 |
-| Windows 服務名稱 | **jt-snmpd** | `sc query jt-snmpd` 直覺 |
-| 服務顯示名稱 | **jt-snmpd** | 與服務名稱一致，services.msc 裡不會出現第二個名字 |
-| 產品名稱（MSI、應用程式與功能）| **jt-snmpd** | 使用者在 GitHub 找到什麼，在控制台就看到什麼 |
-| 安裝精靈標題 | **jt-snmpd Setup** | |
-| 服務描述 | 以標準 MIB 提供 Windows 主機監控資料的 SNMP Agent | |
-| 主執行檔 | **jt-snmpd.exe** | 服務主程式 |
-| 管理 CLI | **jt-snmpdctl.exe** | 與服務主程式分離，避免混淆（對照 systemctl）|
-| 安裝目錄名 | **jt-snmpd** | 順帶消除路徑中的空白，也就消除了 unquoted service path 這一整類問題 |
-| 資料目錄名 | **jt-snmpd** | 0.9.5 以前是 `JT-SNMP`；升級時由安裝程式搬移，見下 |
-| 防火牆規則 | **jt-snmpd (UDP 161)**、**jt-snmpd (ICMPv4)** | |
-| GPO 原則路徑 | `HKLM\SOFTWARE\Policies\JasonTools\JTSNMPD` | 登錄機碼保持不變，改它會讓既有的 GPO 失效 |
+| Project and repository | **jt-snmpd** | The trailing `d` follows daemon convention, as in `snmpd` and `sshd`: it reads as a resident service |
+| Windows service name | **jt-snmpd** | `sc query jt-snmpd` is the obvious thing to type |
+| Service display name | **jt-snmpd** | Matches the service name, so services.msc shows one name rather than two |
+| Product name (MSI, Apps & Features) | **jt-snmpd** | What you find on GitHub is what appears in the control panel |
+| Installer title | **jt-snmpd Setup** | |
+| Service description | A read-only SNMP agent serving Windows host metrics through standard MIBs | |
+| Executable | **jt-snmpd.exe** | The service itself |
+| Management CLI | **jt-snmpdctl.exe** | Separate from the service binary, so the two cannot be confused, as with systemctl |
+| Install directory | **jt-snmpd** | Which also takes the space out of the path, and with it a whole class of unquoted-service-path findings |
+| Data directory | **jt-snmpd** | `JT-SNMP` before 0.9.5; the installer moves it, see below |
+| Firewall rules | **jt-snmpd (UDP 161)**, **jt-snmpd (ICMPv4)** | |
+| Group policy key | `HKLM\SOFTWARE\Policies\JasonTools\JTSNMPD` | The registry key is deliberately unchanged: renaming it would break every existing GPO |
 
-### 從 0.9.5 以前升級
+### Upgrading from 0.9.5 or earlier
 
-安裝程式會把 `%ProgramData%\JT-SNMP` **搬移**到 `%ProgramData%\jt-snmpd`。
-這一步不能省：`state\index-map.json` 裡是 ifIndex 的配發結果，弄丟它，
-LibreNMS 會刪掉每一個 port 重新探索，歷史 RRD 一起失去對應；
-`state\ms-snmp-restore.json` 則是「內建 SNMP 服務原本長什麼樣」的唯一紀錄。
-搬移失敗時會退而複製並在記錄檔中明白說出來，因為多一份目錄可以救，少一份不行。
-`tests/test_data_dir_migration.py` 守著這件事。
+The installer **moves** `%ProgramData%\JT-SNMP` to `%ProgramData%\jt-snmpd`.
+That step is not optional. `state\index-map.json` holds the ifIndex assignments,
+and losing it makes LibreNMS delete every port, rediscover, and orphan the
+historical RRDs. `state\ms-snmp-restore.json` is the only record of what the
+built-in SNMP service looked like before it was disabled.
 
-## 安裝路徑（程式與資料嚴格分離）
+If the move fails it copies instead and says so in the log, because a duplicated
+directory is recoverable and a lost one is not.
+`tests/test_data_dir_migration.py` holds this in place.
 
-以下是實機上的實際內容，不是規劃。標「（規劃）」的目前不存在。
+## Install paths, with program and data strictly separated
+
+What follows is what is actually on disk, not a plan. Entries marked *(planned)*
+do not exist yet.
 
 ```
-%ProgramFiles%\jt-snmpd\          ← 程式本體，唯讀。不放 ProgramData
+%ProgramFiles%\jt-snmpd\            <- the program, read-only. Never ProgramData
     jt-snmpd.exe
-    msi-configure.ps1                   安裝與解除安裝時由 MSI 呼叫
-    _internal\                          PyInstaller one-folder 執行環境
-    jt-snmpdctl.exe                     （規劃）管理 CLI
-    mibs\                               （規劃）MIB 檔，供 LibreNMS / snmpwalk
+    msi-configure.ps1                   called by the MSI on install and uninstall
+    _internal\                          the PyInstaller one-folder runtime
+    jt-snmpdctl.exe                     (planned) management CLI
+    mibs\                               (planned) MIB files, for LibreNMS and snmpwalk
 
-%ProgramData%\jt-snmpd\                 ← 設定與狀態，可寫
-    config.json                         安裝程式寫入，agent 在進入點讀取
-    state\index-map.json                ifIndex 保存（弄丟它，LibreNMS 會重建全部 port）
-    state\engine.json                   engineID / engineBoots
-    state\ms-snmp-restore.json          內建 SNMP 的原始啟動類型與狀態，供解除安裝還原
-    state\disk-maxtemp.json             實際觀測到的磁碟最高溫，跨重新啟動保存
-    logs\jt-snmpd.log                   輪替：5 MB × 5 份
-    logs\msi-configure.log              安裝程式自己的記錄
-    secrets\                            目錄已建立且 ACL 已收緊；SNMPv3 金鑰（規劃）
+%ProgramData%\jt-snmpd\             <- configuration and state, writable
+    config.json                         written by the installer, read by the agent at its entry point
+    state\index-map.json                the ifIndex assignments (lose it and LibreNMS rebuilds every port)
+    state\engine.json                   engineID and engineBoots
+    state\ms-snmp-restore.json          the built-in service's original start type and state
+    state\disk-maxtemp.json             the highest disk temperature actually observed, kept across restarts
+    logs\jt-snmpd.log                   rotated, 5 MB across 5 generations
+    logs\msi-configure.log              the installer's own log
+    secrets\                            created with a tightened ACL; SNMPv3 keys (planned)
 ```
 
-> 這份清單曾經寫著 `config.yaml`、`engine-state.json`、`ms-snmp-migration.json`，
-> 三個名字都與實際不符。文件裡的路徑要跟實機核對過再寫。
+> This listing once named `config.yaml`, `engine-state.json` and
+> `ms-snmp-migration.json`. All three were wrong. Paths in documentation have to
+> be checked against a running machine before they are written down.
 
-## 硬性路徑規則
+## Rules about paths
 
-1. **ImagePath 必須加引號**。實測過：`C:\程式集測試\JT SNMP 代理程式\jt_snmpd.py`
-   未加引號時被空白截斷成 `C:\程式集測試\JT`，處理程序直接死掉且無任何 log。
-   這就是資安稽核最常抓到的 *unquoted service path*。
-   預設安裝路徑 `%ProgramFiles%\jt-snmpd\` **本身就含空白**，所以這不是邊緣案例。
+1. **ImagePath must be quoted.** Measured: `C:\程式集測試\JT SNMP 代理程式\jt_snmpd.py`
+   unquoted was truncated at the first space to `C:\程式集測試\JT`, and the
+   process died with nothing in any log. This is the *unquoted service path*
+   finding that security audits raise most often.
 
-2. **ProgramData ACL 必須驗證擁有者並重設**。`C:\ProgramData` 預設 ACL 允許 Users
-   建立子資料夾，攻擊者可搶先建立 `jt-snmpd` 並保留寫入權。安裝程式不能只做
-   create-if-not-exists。目標 ACL：`SYSTEM: Full`、`Administrators: Full`、其他無。
+2. **The ProgramData ACL has to be verified and reset, not merely created.**
+   `C:\ProgramData`'s default ACL lets Users create subdirectories, so an
+   attacker can create ours first and keep write access to it.
+   Create-if-not-exists is not enough. The target ACL is `SYSTEM: Full`,
+   `Administrators: Full`, and nothing else.
 
-3. **非 ASCII 路徑必須支援**。客戶可能裝在中文路徑。已實測通過（見下）。
+3. **Non-ASCII paths have to work.** A customer may install under a path in their
+   own language. Verified below.
 
-## 已實測驗證（2026-08-24，Win11 build 26200 正體中文）
+## Verified on hardware, 2026-08-24, Windows 11 build 26200, Traditional Chinese
 
-從 `C:\程式集測試\JT SNMP 代理程式\`（**中文 + 空白**）執行 agent：
+Running the agent from `C:\程式集測試\JT SNMP 代理程式\` — non-ASCII **and** a
+space:
 
 ```
 LISTENING 0.0.0.0:16162 varbinds=131
 fs_encoding=utf-8
 sysDescr     = Hardware: AMD64 Family 25 Model 80 Stepping 0 AT/AT COMPATIBLE
                - Software: Windows Version 6.3 (Build 26200 Multiprocessor Free)
-sysServices  = 76                        ← 我方 agent（內建 MS SNMP 為 79）
-ifName       = 乙太網路                   ← 中文 UTF-8 正確
+sysServices  = 76                        <- this agent (the built-in service reports 79)
+ifName       = 乙太網路                   <- non-ASCII, correct UTF-8
 ifDescr      = Red Hat VirtIO Ethernet Adapter
-hrProcLoad   = 8                         ← 真實 CPU 取樣
-diskIODevice = PhysicalDrive0            ← UCD-DISKIO
+hrProcLoad   = 8                         <- a real CPU sample
+diskIODevice = PhysicalDrive0            <- UCD-DISKIO
 ```
 
-### 編碼鐵則（從實測 bug 得出）
+### The encoding rule, which came out of a real failure
 
-**SNMP OCTET STRING 是位元組串，不是文字。** pyasn1 預設以 latin-1 編碼 `str`，
-遇到非 ASCII 直接丟 `PyAsn1UnicodeEncodeError`。正體中文 Windows 的網路卡別名就是
-中文（「乙太網路」），所以這在台灣環境是**必踩**的，不是邊緣案例。
+**An SNMP OCTET STRING is bytes, not text.** pyasn1 encodes a `str` as latin-1 by
+default and raises `PyAsn1UnicodeEncodeError` on anything outside it. On a
+Traditional Chinese Windows installation the network adapter's alias *is*
+non-ASCII — 乙太網路 is simply what "Ethernet" is called — so in the target
+environment this is not an edge case, it is guaranteed.
 
-一律經過 `octet()` 包裝明確編成 UTF-8，禁止裸用 `rfc1902.OctetString(str)`。
-同理，所有檔案 I/O 一律明確 `encoding="utf-8"`，Windows 的 `open()` 預設是系統
-ANSI 代碼頁（正體中文為 cp950），寫入非 cp950 字元會丟 `UnicodeEncodeError`。
+Everything goes through `octet()`, which encodes to UTF-8 explicitly. A bare
+`rfc1902.OctetString(str)` is not allowed.
+
+The same applies to files: every open states `encoding="utf-8"`. Windows' `open()`
+defaults to the system ANSI code page, cp950 on a Traditional Chinese
+installation, and writing anything outside it raises `UnicodeEncodeError`.
+
+---
+
+## Related documentation
+
+- [Documentation home](https://jasoncheng7115.github.io/jt-snmpd/)
+- [Manual removal](https://jasoncheng7115.github.io/jt-snmpd/manual-removal.html)
+- [Security assessment](https://jasoncheng7115.github.io/jt-snmpd/attack-surface.html)
