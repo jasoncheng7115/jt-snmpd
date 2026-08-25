@@ -104,7 +104,7 @@ Loopback、Teredo / IP-HTTPS / 6to4。
 **這是設計決定，不是缺漏。** 需要完整清單時可將 `interface_filter.mode`
 設為 `all`。
 
-## OID 總數：6,457 vs 575
+## OID 總數：7,582 vs 767
 
 差距集中在幾張表，逐一說明。
 
@@ -231,6 +231,8 @@ Latitude E5270 (DESKTOP-9PNNQ34)        Serial ****
 | 回應大小控制 | 無 | 上限 1400 bytes，不分片 |
 | 介面篩選 | 無，全部輸出 | 只輸出實體網路卡 |
 | ifIndex 穩定性 | Windows 原生索引，**不保證跨重開機穩定** | 以 NET_LUID 保存 |
+| `sysUpTime` | **SNMP 服務**啟動以來的時間 | **機器**開機以來的時間 |
+| 重新啟動 agent | 在 LibreNMS 看起來像重開機（見下） | 不影響回報的 uptime |
 | 自我健康監控 | 無 | 私有 OID 子樹 |
 | 部署 | Windows 功能（DISM / Add-WindowsCapability）| MSI（GPO / Intune / SCCM）|
 
@@ -238,6 +240,31 @@ Latitude E5270 (DESKTOP-9PNNQ34)        Serial ****
 Windows 重新編號，而 LibreNMS 以 ifIndex 對應 port。編號一變，舊 port 被標記
 刪除、新 port 重新建立，歷史 RRD 全部失去對應。jt-snmpd 以 NET_LUID 為主鍵
 長期保存的配發，首次見到某介面時給一個 ifIndex，之後不再變更。
+
+### 內建服務只要重新啟動，看起來就像重開機
+
+同一台機器、前後幾分鐘，分別在兩個 agent 下實測：
+
+| OID | Windows 內建 SNMP Service | jt-snmpd |
+|---|---|---|
+| `sysUpTime.0` | **19 秒** | 179 天 |
+| `hrSystemUptime.0` | 179 天 | 179 天 |
+| `snmpEngineTime.0` | 不提供 | 179 天 |
+
+內建服務照 RFC 3418 的字面實作：`sysUpTime` 從網路管理部分上一次重新初始化算起，
+而那個部分就是 SNMP 服務本身。jt-snmpd 回報的則是主機的開機時間，來源是 `GetTickCount64`。
+
+LibreNMS 取 `sysUpTime`、`snmpEngineTime`、`hrSystemUptime` 的最大值，
+但 `windows.yaml` 設了 `bad_hrSystemUptime: true`，而內建服務又不提供 `snmpEngineTime`。
+於是對內建服務來說那個最大值就是 19 秒，比上一次輪詢記錄的 uptime 低，
+LibreNMS 就對一台已經開機半年的機器發出 **Device rebooted**。
+只要 SNMP 服務重新啟動就會這樣：Windows Update、服務自動復原、解除安裝，都算。
+
+jt-snmpd 在兩個層面上避開了它：服務重啟不會讓它的 `sysUpTime` 歸零，
+而 `snmpEngineTime` 又給了 LibreNMS 第二個穩定來源。
+這件事的意義不只是假告警，因為 `sysUpTime` 的型別是 TimeTicks，
+依型別定義在 497 天必然回捲；`snmpEngineTime` 的單位是秒，不會。
+
 
 ## 移轉行為
 

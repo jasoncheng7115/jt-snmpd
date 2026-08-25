@@ -118,6 +118,45 @@ installed. **Do not guess.** Leaving it disabled is the safer error: the machine
 stops being monitored, which is visible. Enabling it when it was not previously
 enabled reopens a service the site may have deliberately turned off.
 
+### Expect one false "device rebooted" alert in LibreNMS
+
+Handing UDP 161 back to the built-in service usually produces a spurious reboot
+alert on the next poll. The machine has not rebooted; the two agents answer
+`sysUpTime` from different clocks.
+
+Measured on one machine on the same day, moments apart:
+
+| OID | Built-in SNMP Service | jt-snmpd |
+|---|---|---|
+| `sysUpTime.0` | **19 seconds** | 179 days |
+| `hrSystemUptime.0` | 179 days | 179 days |
+| `snmpEngineTime.0` | not served | 179 days |
+
+The built-in service follows RFC 3418 to the letter: `sysUpTime` is the time
+since *the network management portion* was last re-initialised, meaning since
+the SNMP service started. jt-snmpd reports the machine's uptime instead, from
+`GetTickCount64`.
+
+LibreNMS takes the largest of `sysUpTime`, `snmpEngineTime` and
+`hrSystemUptime` — but `windows.yaml` sets `bad_hrSystemUptime: true`, so
+hrSystemUptime is discarded, and the built-in service serves no snmpEngineTime.
+That leaves 19 seconds as the only figure it has, it is lower than the uptime
+recorded before, and LibreNMS concludes the device rebooted.
+
+Nothing needs fixing. The alert clears itself, and the next poll after the
+service has been up a while reports normally. Two things follow from it:
+
+- **Silence the rule first if you are removing jt-snmpd from many machines at
+  once**, or every one of them reports a reboot it did not have.
+- The same thing happens on **any** restart of the built-in SNMP Service, not
+  only at uninstall — a Windows Update that restarts it will do it too. That is
+  a property of the built-in service, and one of the reasons jt-snmpd reports
+  machine uptime and serves `snmpEngineTime` as a second stable source.
+
+An upgrade does not cause this: jt-snmpd keeps answering, and its `sysUpTime`
+does not restart when the service does.
+
+
 ## 6. Remove the files
 
 ```powershell
