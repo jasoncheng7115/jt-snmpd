@@ -455,11 +455,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
     <span class="zh"><b>本安裝檔未經 Authenticode 簽章</b>，目前沒有申請憑證的計畫。點兩下安裝時
       SmartScreen 會出現警告，UAC 提示的發行者會顯示為「不明」。完整性請改以 <code>.sha256</code>
       驗證；WDAC / AppLocker 環境的處理方式（雜湊規則、自行簽章）見
-      <a href="code-signing_zh-TW.html">程式碼簽章</a>。</span>
+      <a href="code-signing_zh-TW.html">程式碼簽章</a>，
+      想從原始碼自行建置並用自己的憑證簽章見
+      <a href="build-and-sign_zh-TW.html">自行編譯打包與簽章</a>。</span>
     <span class="en"><b>This installer is not Authenticode signed</b>, and no certificate is planned.
       SmartScreen warns on a double-click and the UAC prompt shows an unknown publisher. Verify the
       <code>.sha256</code> instead; for WDAC and AppLocker environments see
-      <a href="code-signing.html">Code signing</a> for the hash-rule and sign-it-yourself routes.</span>
+      <a href="code-signing.html">Code signing</a> for the hash-rule route, and
+      <a href="build-and-sign.html">Building and signing it yourself</a> to build from source and
+      sign with your own certificate.</span>
   </p>
 
   <h3 class="way">
@@ -587,6 +591,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <p><span class="zh">安裝檔未簽章：安裝時會看到什麼，以及 WDAC / AppLocker 環境怎麼處理</span>
          <span class="en">The installer is unsigned: what you will see at install time, and how to handle
            WDAC and AppLocker environments</span></p></div>
+    <div class="card"><h3><a data-doc="build-and-sign" href="build-and-sign.html">
+      <span class="zh">自行編譯打包與簽章</span><span class="en">Building and signing it yourself</span></a></h3>
+      <p><span class="zh">從原始碼自行建置 MSI、用自己的憑證簽章，WDAC 環境改用發行者規則而非雜湊規則</span>
+         <span class="en">Build the MSI from source, sign it with your own certificate, and use publisher
+           rules instead of hash rules under WDAC</span></p></div>
     <div class="card"><h3><a data-doc="manual-removal" href="manual-removal.html">
       <span class="zh">手動移除</span><span class="en">Manual removal</span></a></h3>
       <p><span class="zh">安裝或解除安裝走不完時，安裝程式做過的每一件事該怎麼用手做完</span>
