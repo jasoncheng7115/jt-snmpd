@@ -108,9 +108,10 @@ figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 .shots figure h3::before{content:"";width:6px;height:18px;border-radius:3px;
   background:var(--accent);display:inline-block}
 
-/* The test bed. Readers were assuming the comparison was one machine before and
-   after, which it is not, so the two hosts are shown side by side with their
-   actual hardware and the difference is stated rather than left to be noticed. */
+/* The test bed. It used to be two different hosts, and every figure then needed
+   a paragraph explaining why the absolute numbers differed. It is now one
+   machine captured under each agent in turn, so the panel states the machine
+   and the procedure instead of explaining away a difference. */
 .bed{border:1px solid var(--line);border-radius:12px;background:#fff;
   padding:20px 22px;margin:0 0 32px}
 .bed-head{color:var(--dim);margin:0 0 16px;line-height:1.75}
@@ -119,15 +120,13 @@ figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 .bed-box{border:1px solid var(--line);border-radius:9px;padding:14px 16px;background:#f7f9fb}
 .bed-box h4{margin:0 0 10px;font-size:14.5px;display:flex;align-items:center;gap:8px}
 .bed-box h4::before{content:"";width:10px;height:10px;border-radius:3px;display:inline-block}
-.bed-a h4::before{background:#6c757d}
-.bed-b h4::before{background:var(--accent)}
+.bed-one h4::before{background:var(--accent)}
+.bed-how h4::before{background:#6c757d}
+.bed-steps{margin:0;padding-left:20px;font-size:13.5px;color:var(--dim);line-height:1.85}
+.bed-steps li{margin:0 0 3px}
 .bed-box dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13.5px}
 .bed-box dt{color:var(--dim)}
 .bed-box dd{margin:0;color:var(--fg)}
-/* The built-in service supplies no hardware identity, so two of its four rows
-   say so rather than being left out. Dropping the rows made the two cards
-   different heights and read as a layout fault instead of as the finding. */
-.bed-box dd.none{color:#96a0aa}
 .bed-note{margin:16px 0 0;color:var(--dim);font-size:14px;line-height:1.75}
 .bed-note b{color:var(--fg)}
 
@@ -290,58 +289,46 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   <h2><span class="zh">與內建 SNMP Service 的實測對照</span><span class="en">Measured against the built-in service</span></h2>
   <div class="bed">
     <div class="bed-head">
-      <span class="zh">兩台都跑 <b>Windows 10 22H2</b>（build 19045），由同一套 LibreNMS 監控，
-        LibreNMS 端未做任何客製。左邊那台是 <b>QEMU/KVM 虛擬機</b>，右邊那台是<b>實體筆記型電腦</b>。</span>
-      <span class="en">Both hosts run <b>Windows 10 22H2</b> (build 19045) and are polled by the same
-        LibreNMS instance, with no customisation on the LibreNMS side. The host on the left is a
-        <b>QEMU/KVM virtual machine</b>; the one on the right is a <b>physical notebook</b>.</span>
+      <span class="zh">上下兩半來自<b>同一台機器</b>，先後跑兩種 agent。
+        硬體、作業系統與監控端完全相同，唯一的變數是誰在服務 UDP 161。</span>
+      <span class="en">Both halves of every figure come from <b>one machine</b>, running each agent in
+        turn. Same hardware, same operating system, same monitoring server: the only variable is which
+        agent is answering on UDP 161.</span>
     </div>
     <div class="bed-pair">
-      <div class="bed-box bed-a">
-        <h4><span class="zh">內建 SNMP Service</span><span class="en">Built-in SNMP Service</span></h4>
+      <div class="bed-box bed-one">
+        <h4><span class="zh">受測機器</span><span class="en">The machine</span></h4>
         <dl>
-          <dt><span class="zh">機器</span><span class="en">Machine</span></dt>
-          <dd><span class="zh">QEMU/KVM 虛擬機（SeaBIOS，i440fx），宿主為 AMD Ryzen</span>
-              <span class="en">QEMU/KVM virtual machine (SeaBIOS, i440fx) on an AMD Ryzen host</span></dd>
-          <dt>CPU</dt>
-          <dd class="none"><span class="zh">8 vCPU，型號不明（只回報 “Processor”）</span>
-              <span class="en">8 vCPUs, model unknown (reported only as “Processor”)</span></dd>
-          <dt><span class="zh">記憶體</span><span class="en">Memory</span></dt><dd>10 GiB</dd>
-          <dt><span class="zh">磁碟</span><span class="en">Disk</span></dt>
-          <dd class="none"><span class="zh">虛擬磁碟 100 GB + 80 GB，型號不明（無 <code>entPhysical</code>）</span>
-              <span class="en">Virtual disks, 100 GB + 80 GB, model unknown (no <code>entPhysical</code>)</span></dd>
-        </dl>
-      </div>
-      <div class="bed-box bed-b">
-        <h4>jt-snmpd</h4>
-        <dl>
-          <dt><span class="zh">機器</span><span class="en">Machine</span></dt>
-          <dd><b>Dell Latitude E5270</b>
-              <span class="zh"> 筆記型電腦</span><span class="en"> notebook</span></dd>
+          <dt><span class="zh">機型</span><span class="en">Model</span></dt>
+          <dd><b>Dell Latitude E5270</b><span class="zh"> 筆記型電腦</span><span class="en"> notebook</span></dd>
           <dt>CPU</dt><dd>Intel Core i5-6300U @ 2.40 GHz<span class="zh">，2 核</span><span class="en">, 2 cores</span></dd>
           <dt><span class="zh">記憶體</span><span class="en">Memory</span></dt><dd>16 GB DDR4-2133</dd>
           <dt><span class="zh">磁碟</span><span class="en">Disk</span></dt><dd>Samsung PM871b M.2 256 GB</dd>
+          <dt><span class="zh">作業系統</span><span class="en">OS</span></dt><dd>Windows 10 22H2 (build 19045)</dd>
         </dl>
+      </div>
+      <div class="bed-box bed-how">
+        <h4><span class="zh">怎麼取得的</span><span class="en">How it was taken</span></h4>
+        <ol class="bed-steps">
+          <li><span class="zh">裝上 Windows 內建 SNMP 功能，設好唯讀 community，由它服務 UDP 161</span>
+              <span class="en">Install the built-in Windows SNMP feature, give it a read-only community, and let it serve UDP 161</span></li>
+          <li><span class="zh">LibreNMS 重新探索並輪詢，截下四個頁面</span>
+              <span class="en">Rediscover and poll from LibreNMS, then capture the four pages</span></li>
+          <li><span class="zh">把 161 交還給 jt-snmpd，再探索、再輪詢、再截一次</span>
+              <span class="en">Hand 161 back to jt-snmpd, rediscover, poll and capture again</span></li>
+          <li><span class="zh">移除內建 SNMP 功能，機器回到原本的樣子</span>
+              <span class="en">Remove the built-in SNMP feature, leaving the machine as it was</span></li>
+        </ol>
       </div>
     </div>
     <p class="bed-note">
-      <span class="zh"><b>兩台不是同一台機器</b>，所以記憶體總量等絕對數字本來就不同。
-        這裡要看的是 <b>LibreNMS 收到了哪些資料表</b>，不是數字一不一樣。
-        右邊那台的規格全部由 jt-snmpd 自己從 SMBIOS 解析後經 SNMP 回報；
-        左邊那台的內建服務連 <code>entPhysical</code> 都沒有，處理器也只回報 “Processor”
-        四個字，所以兩欄標成型號不明的，是它問不出來，不是我們沒填。
-        <b>是虛擬機不是原因</b>：另一台同樣是 QEMU 虛擬機、改跑 jt-snmpd 之後，
-        <code>entPhysical</code> 就有機殼、CPU、記憶體與兩顆虛擬磁碟共六筆。
-        截圖中的 MAC 位址已遮蔽。</span>
-      <span class="en"><b>These are two different machines</b>, so absolute figures such as total memory
-        naturally differ. What the comparison shows is <b>which tables LibreNMS receives</b>, not whether
-        the numbers match. Everything listed on the right was parsed out of SMBIOS by jt-snmpd itself and
-        reported over SNMP; the built-in service on the left has no <code>entPhysical</code> at all and
-        describes each processor as nothing more than “Processor”, so the two rows marked unknown are
-        unknown to it, not left blank by us. <b>Being a virtual machine is not the reason</b>: another
-        QEMU virtual machine running jt-snmpd reports six <code>entPhysical</code> rows covering its
-        chassis, CPU, memory and both virtual disks. MAC addresses in the screenshots are
-        redacted.</span>
+      <span class="zh">LibreNMS 端未做任何客製。MAC 位址在截圖之前就在頁面上改寫遮蔽；
+        連接埠那張裁掉了 MAC 欄右側的鄰居裝置清單，那是網路上其他機器的名單，
+        跟這張圖要說的事情無關。其餘內容未經修圖。</span>
+      <span class="en">Nothing was customised on the LibreNMS side. MAC addresses were rewritten in the
+        page before each capture, and the ports figure is cropped at the MAC column, which drops the
+        discovered-neighbour list: that is an inventory of other machines on the network and no part of
+        what the figure shows. Nothing else is retouched.</span>
     </p>
   </div>
 
@@ -388,16 +375,16 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <tr><td><span class="zh">連接埠</span><span class="en">Ports</span></td><td class="num mid">9</td><td class="num yes">2</td>
         <td><span class="zh"><b>刻意較少</b>：只輸出實體介面，不輸出 NDIS 篩選器驅動程式</span>
             <span class="en"><b>Deliberately fewer</b>: hardware interfaces only, no NDIS filter drivers</span></td></tr>
-      <tr><td><span class="zh">OID 總數</span><span class="en">Total OIDs</span></td><td class="num">6,507</td><td class="num">776</td>
-        <td><span class="zh"><b>刻意較少</b>：其中 3,175 個是預設關閉的資訊揭露。查過 LibreNMS 原始碼後
+      <tr><td><span class="zh">OID 總數</span><span class="en">Total OIDs</span></td><td class="num">7,582</td><td class="num">767</td>
+        <td><span class="zh"><b>刻意較少</b>：其中 3,999 個是預設關閉的資訊揭露。查過 LibreNMS 原始碼後
               可以確定，已安裝軟體、執行中處理程序、連線表這三類<b>在 LibreNMS 沒有任何取用端</b>，
               送出去也不會變成任何頁面；只有 ARP 有（<code>ArpTable</code> 模組），可用設定開啟。
               <a href="comparison-vs-builtin-snmp_zh-TW.html#預設關閉的三千個-oid裡有用的只有一項">逐項查證</a></span>
-            <span class="en"><b>Deliberately fewer</b>: 3,175 of the gap is information disclosure that is off by
+            <span class="en"><b>Deliberately fewer</b>: 3,999 of the gap is information disclosure that is off by
               default. Checked against LibreNMS's source, installed software, running processes and connection
               tables have <b>no consumer in LibreNMS at all</b> and would become no page if published; only ARP
               does (the <code>ArpTable</code> module), and it can be switched on.
-              <a href="comparison-vs-builtin-snmp.html#what-the-3175-withheld-oids-would-actually-buy-you">Item by item</a></span></td></tr>
+              <a href="comparison-vs-builtin-snmp.html#what-the-withheld-oids-would-actually-buy-you">Item by item</a></span></td></tr>
     </tbody>
   </table>
 

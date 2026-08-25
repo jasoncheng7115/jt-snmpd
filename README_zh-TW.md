@@ -77,15 +77,17 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 **包含 jt-snmpd 刻意回報「更少」的地方與原因**，見
 [`docs/comparison-vs-builtin-snmp_zh-TW.md`](docs/comparison-vs-builtin-snmp_zh-TW.md)。
 
-摘要：內建服務暴露 6,507 個 OID、jt-snmpd 為 776，但這個差距中有 3,175 個
-屬於預設關閉的資訊揭露（已安裝軟體、執行中程序、連線表、ARP），
+摘要（在受測機器上實際 walk）：內建服務暴露 7,582 個 OID、jt-snmpd 為 767，
+但這個差距中有 3,999 個屬於預設關閉的資訊揭露（已安裝軟體、執行中程序、連線表、ARP），
 而 jt-snmpd 另外提供了內建服務完全沒有的 inventory、Disk I/O、感測器、
-磁碟 SMART 與自我健康。
+磁碟 SMART 與自我健康。這些數字是在受測機器上量的，會隨機器變動：裝了多少軟體、跑著多少處理程序、開著多少連線，都直接反映在內建服務的總數上。
 
-以下兩台都是 Windows 10 22H2，由同一套 LibreNMS 監控，LibreNMS 端未做任何客製。
-跑內建服務的那台是 QEMU/KVM 虛擬機，跑 jt-snmpd 的那台是實體筆記型電腦。
-內建服務的 inventory 是空的並不是因為它是虛擬機：另一台同樣是 QEMU 虛擬機、
-改跑 jt-snmpd 之後，`entPhysical` 一樣有完整內容。
+以下每張圖的上下兩半都來自**同一台機器**：Dell Latitude E5270
+（Core i5-6300U、16 GB、Samsung PM871b），Windows 10 22H2，
+由同一套 LibreNMS 監控，LibreNMS 端未做任何客製。
+做法是先裝上 Windows 內建 SNMP 功能、由它服務 UDP 161，
+讓 LibreNMS 重新探索後截圖，再把 161 交還給 jt-snmpd，重新探索後截同樣的頁面。
+硬體、作業系統、監控端完全相同，唯一的變數是誰在回答。
 
 #### 感測器
 
@@ -110,8 +112,6 @@ jt-snmpd 是自己以 `IOCTL_STORAGE_QUERY_PROPERTY` 讀 SMART 屬性，
 > 展開「探索模組」→ 打開「應用程式」**，然後回到該裝置按「重新探索裝置」。
 > 完成後裝置的「應用程式」分頁就會出現 SMART。命令列的等效指令是
 > `lnms config:set discovery_modules.applications true`。
->（內建那台顯示的 `Proxmox` 是先前探索留下的誤判，與本對照無關，
-> 內建服務並不提供任何 SMART 資料。）
 >
 > **全域打開之後，有自己設定的裝置不會跟著生效。** LibreNMS 的判定順序是
 > 命令列、裝置層、OS 層、全域，先設到的先贏。裝置頁齒輪選單裡的 Modules
