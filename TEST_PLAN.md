@@ -316,6 +316,7 @@ agent 回報的 `ifIndex` 仍然是 1、`ifName` 仍然是 `乙太網路`，與 
 | 6.1c.9 | 「加入或移除程式」顯示圖示 | **[已驗]** `DisplayIcon` 指向已安裝的執行檔 |
 | 6.1c.10 | 無法決定 community 時給出可行動的錯誤 | **[已實作]** 安裝程式在健康檢查之前就中止；[待驗] 需無內建 SNMP 的乾淨機器 |
 | 6.1c.11 | **端對端 GUI 安裝**（真的按下 Install 並完成） | **[已驗]** 2026-08-25 在 `.154` 以 RDP 實際走完五頁精靈並完成安裝，另有六張未修圖的截圖；`/qn` 路徑則由 6.1a 的 40 項涵蓋 |
+| 6.1c.12 | 圖形升級不應跳出「使用中的檔案」對話框 | **[已知缺陷，未修]** 服務是由 `msi-configure.ps1` 停的，沒有向 WiX 宣告，所以 Windows Installer 自己偵測到 `jt-snmpd.exe` 正被占用，會要求使用者選擇重新啟動或關閉。`/qn` 不受影響（無 UI 可跳）。修法是加 `util:ServiceConfig` / `ServiceControl` 讓 WiX 自己管服務，或加 `MsiRMFilesInUse` 處理 |
 
 **仍然沒有覆蓋的**：整套生命週期自動化（`tests/lifecycle.ps1`）從頭到尾都走
 `msiexec /qn`，所以任何只在 GUI 路徑上出現的問題，自動化一律抓不到。

@@ -48,11 +48,11 @@ STATE_FILE = os.path.join(STATE_DIR, "state", "index-map.json")
 #
 # `community` and `allowed_networks` are deliberately empty rather than carrying
 # sensible-looking values. An earlier version shipped the development lab's own
-# community and "192.168.1.0/24" as defaults *and never read the config file at all*: the
-# installer wrote the operator's answers to config.json, the agent ignored them,
-# and every install that did not happen to use those exact two values failed its
-# loopback health check with MSI error 1603. The defaults were what made the bug
-# survive testing — our own lab used precisely those values.
+# community and "192.168.1.0/24" as defaults *and never read the config file at
+# all*: the installer wrote the operator's answers to config.json, the agent
+# ignored them, and every install that did not happen to use those exact two
+# values failed its loopback health check with MSI error 1603. The defaults were
+# what made the bug survive testing — our own lab used precisely those values.
 CFG = {"port": 161, "community": "", "contact": "", "location": "",
        # deny by default, never Any/Any. Empty means "not configured"
        # and is treated as deny-all (loopback excepted); to serve every source
