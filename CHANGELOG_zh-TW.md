@@ -27,7 +27,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   但操作人員最先用到的那條路徑是全壞的。
   `tests/test_msi_ui_gating.py` 現在把修法的形狀釘住，
   包含「設定頁沒填值就不能前進」與「設定腳本仍然 fail closed」。
-- **`docs/naming-and-paths.md` 寫了三個不存在的檔名**：
+- **`docs/naming-and-paths_zh-TW.md` 寫了三個不存在的檔名**：
   `config.yaml`（實際是 `config.json`）、`engine-state.json`（`engine.json`）、
   `ms-snmp-migration.json`（`ms-snmp-restore.json`）。
   現在的內容是磁碟上實際有的東西，規劃中但尚未存在的項目已標註。
@@ -568,7 +568,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **collector 健康追蹤**：所有 collector 經 `_collector()` 包裝，
   失敗時回傳 default 而非拋出，agent 不會因單一 collector 故障而垮掉
 
-- **專案定名 `jt-snmpd`**，服務名稱、執行檔名、安裝路徑一併定案（`docs/naming-and-paths.md`）
+- **專案定名 `jt-snmpd`**，服務名稱、執行檔名、安裝路徑一併定案（`docs/naming-and-paths_zh-TW.md`）
 - **snapshot + bisect 架構**：整份 MIB 為依 OID 排序的陣列，GET 用 `bisect_left`、
   GETNEXT 用 `bisect_right`，SNMP 協定正確性成為結構保證而非人工維護
 - **wire 預編碼**：快照建立時預先產生 BER 位元組，回應組裝退化為位元組串接
