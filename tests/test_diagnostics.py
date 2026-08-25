@@ -1,20 +1,24 @@
-"""可診斷性：記錄檔輪替、事件檢視器、以及「服務假活著」。
+"""Diagnosability: log rotation, the Event Log, and a service that is alive but dead.
 
-**這些測試存在的理由**
+**Why these exist**
 
-使用者問了一個很實際的問題：「萬一出問題或無法啟動服務，才好查問題」。
-當時 agent 確實有記錄檔（`%ProgramData%\\jt-snmpd\\logs\\jt-snmpd.log`），
-但在「服務起不來」這個情境下它幫不上忙，而且有兩個更嚴重的問題：
+The question was a practical one: if something goes wrong, or the service will
+not start, how does anyone find out why. The agent did have a log at
+`%ProgramData%\\jt-snmpd\\logs\\jt-snmpd.log`, but it was no help in the very case
+of the service not starting, and it had two worse problems.
 
-1. **記錄檔無上限成長。** 快照重建失敗時每 5 秒一行，一天一萬七千行。
-   數百台跑數年，監控代理程式把被監控主機的系統碟寫滿，這是最不能接受的失敗。
-2. **服務假活著。** `SvcDoRun` 啟動 agent 執行緒後就 `WaitForSingleObject(hstop,
-   INFINITE)`。agent 執行緒若在啟動階段死掉（綁定失敗、MIB 載入失敗、快照建置
-   失敗），`run_agent` 記錄完就返回，而服務**永遠停在 Running**。
-   SCM 說 Running、LibreNMS 說逾時，兩邊說法不一致是現場最難查的狀況。
-   更糟的是 `sc failure` 的三段式自動復原設定完全不會觸發，程序沒結束。
-
-設計規格已經點名過「假活著」，而它在這裡換了個地方重演。
+1. **The log grew without limit.** A failing snapshot rebuild writes a line every
+   five seconds, seventeen thousand a day. Across hundreds of machines over
+   years, the monitoring agent fills the system drive of the host it monitors,
+   which is the least acceptable failure available to it.
+2. **The service was alive but dead.** `SvcDoRun` started the agent thread and
+   then waited on `WaitForSingleObject(hstop, INFINITE)`. If the agent thread
+   died during startup -- a failed bind, a failed MIB load, a failed snapshot
+   build -- `run_agent` logged and returned, and the service stayed **Running for
+   ever**. The SCM says Running, LibreNMS says timeout, and two authorities
+   disagreeing is the hardest thing to diagnose in the field. Worse, the
+   three-stage recovery configured with `sc failure` never fires, because the
+   process never exits.
 """
 
 from __future__ import annotations
@@ -34,133 +38,143 @@ def _func(name: str) -> str:
     for node in ast.walk(TREE):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
             return ast.unparse(node)
-    pytest.fail(f"找不到 {name}")
+    pytest.fail(f"{name} not found")
 
 
-# --- 記錄檔輪替 -------------------------------------------------------------
+# --- log rotation -----------------------------------------------------------
 
 def test_log_has_a_size_cap():
-    assert "LOG_MAX_BYTES" in SRC, "記錄檔缺少大小上限，會無限成長"
+    assert "LOG_MAX_BYTES" in SRC, "the log has no size ceiling and grows without limit"
     for node in TREE.body:
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "LOG_MAX_BYTES":
-            cap = eval(ast.unparse(node.value))  # noqa: S307，來源是本 repo 的常數
-            assert 0 < cap <= 64 * 1024 * 1024, f"上限 {cap} 不合理"
+            cap = eval(ast.unparse(node.value))  # noqa: S307 - the source is a constant in this repo
+            assert 0 < cap <= 64 * 1024 * 1024, f"a ceiling of {cap} is not plausible"
             return
-    pytest.fail("LOG_MAX_BYTES 不是模組層級常數")
+    pytest.fail("LOG_MAX_BYTES is not a module-level constant")
 
 
 def test_rotation_keeps_a_bounded_number_of_generations():
     assert "LOG_KEEP" in SRC
     body = _func("_rotate_log")
-    assert "os.remove" in body, "最舊的一代必須被刪除，否則總量仍無上限"
-    assert "os.replace" in body, "輪替應使用 os.replace（同磁碟區原子改名）"
+    assert "os.remove" in body, "the oldest generation has to be deleted, or the total is still unbounded"
+    assert "os.replace" in body, "rotation should use os.replace, which renames atomically on one volume"
 
 
 def test_log_actually_calls_rotation():
-    """常數與函式都在、但沒被呼叫，是最容易發生的無聲失效。"""
+    """A constant and a function that both exist and are never called is the
+    easiest silent failure there is."""
     body = _func("log")
-    assert "_rotate_log" in body, "log() 未觸發輪替"
-    assert "LOG_MAX_BYTES" in body, "log() 未比對大小上限"
+    assert "_rotate_log" in body, "log() never triggers rotation"
+    assert "LOG_MAX_BYTES" in body, "log() never compares against the ceiling"
 
 
 def test_size_is_taken_from_the_open_handle():
-    """用 fh.tell() 而非額外 os.stat：每次寫入都 stat 是不必要的磁碟 I/O，
-    而本專案的硬性要求是不得拖慢 host。"""
+    """fh.tell() rather than a separate os.stat: stat-ing on every write is disk
+    I/O for nothing, against a hard requirement not to slow the host down."""
     body = _func("log")
-    assert "fh.tell()" in body, "應以 fh.tell() 取得大小，避免每次寫入都 stat"
+    assert "fh.tell()" in body, "use fh.tell() for the size rather than stat-ing on every write"
 
 
-# --- 事件檢視器 -------------------------------------------------------------
+# --- the Event Log ----------------------------------------------------------
 
 def test_errors_reach_the_windows_event_log():
-    """現場人員先看事件檢視器；遠端診斷數百台時 Get-WinEvent 能集中撈。"""
+    """Field staff open Event Viewer first, and diagnosing hundreds of machines
+    remotely, Get-WinEvent can collect centrally."""
     body = _func("_event_log_error")
-    assert "LogErrorMsg" in body, "錯誤未寫入事件檢視器"
-    # ast.unparse 會把引號正規化成單引號，故不比對引號本身
+    assert "LogErrorMsg" in body, "errors never reach the Event Log"
+    # ast.unparse normalises quotes to single ones, so the quotes are not matched
     assert re.search(r"globals\(\)\.get\(.servicemanager.\)", body), (
-        "servicemanager 於模組後段才 import，必須延遲取得而非模組層級參考")
+        "servicemanager is imported further down the module, so it has to be "
+        "fetched lazily rather than referenced at module level")
 
 
 def test_event_log_failure_cannot_kill_the_agent():
     body = _func("_event_log_error")
     assert "except Exception" in body and "pass" in body, (
-        "寫事件記錄失敗（權限不足、事件來源未註冊）不得讓 agent 跟著倒")
+        "failing to write to the Event Log, on permissions or an unregistered "
+        "source, must not bring the agent down with it")
 
 
 def test_log_supports_an_error_channel():
     body = _func("log")
-    assert "error: bool" in body or "error=False" in body, "log() 缺少 error 通道"
+    assert "error: bool" in body or "error=False" in body, "log() has no error channel"
     assert "_event_log_error" in body
 
 
 def test_agent_abort_is_reported_as_error():
-    """agent 異常終止是「使用者需要知道」的事件，必須進事件檢視器。"""
+    """An agent terminating unexpectedly is something the operator needs to know,
+    so it goes to the Event Log."""
     body = _func("run_agent")
     assert re.search(r"log\([^)]*terminated abnormally.*error=True", body, re.S), (
-        "run_agent 的異常終止未標記為 error")
+        "an unexpected exit from run_agent is not marked as an error")
 
 
 def test_routine_collector_failures_stay_out_of_the_event_log():
-    """反向約束：每個 collector 的小失敗若都寫事件記錄，會把事件檢視器洗掉，
-    真正重要的那筆就再也找不到。"""
+    """The converse. Writing an event for every small collector failure floods
+    the Event Log, and the one entry that mattered is then unfindable."""
     body = _func("_collector")
     assert "error=True" not in body, (
-        "collector 的例行失敗不應寫入事件檢視器，會稀釋掉真正重要的事件")
+        "routine collector failures should not reach the Event Log; they dilute "
+        "the entries that matter")
 
 
-# --- 服務假活著 -------------------------------------------------------------
+# --- alive but dead ---------------------------------------------------------
 
 def _svc_do_run() -> str:
     i = SRC.find("def SvcDoRun(self):")
-    assert i != -1, "找不到 SvcDoRun"
+    assert i != -1, "SvcDoRun not found"
     j = SRC.find("\n    _HAVE_SERVICE", i)
     return SRC[i:j if j != -1 else len(SRC)]
 
 
 def test_service_does_not_wait_on_stop_event_alone():
-    """核心斷言：只等 hstop 就是「假活著」。"""
+    """The central assertion: waiting on hstop alone is what "alive but dead" is."""
     body = _svc_do_run()
     assert "WaitForSingleObject(self.hstop, win32event.INFINITE)" not in body, (
-        "只等 hstop 會讓 agent 執行緒死亡後服務仍顯示 Running")
-    assert "WaitForMultipleObjects" in body, "必須同時等待「停止」與「agent 已死」"
+        "waiting on hstop alone leaves the service Running after the agent "
+        "thread has died")
+    assert "WaitForMultipleObjects" in body, "both 'stop' and 'the agent died' have to be waited on"
 
 
 def test_worker_death_is_signalled():
     body = _svc_do_run()
-    assert "self.hdead" in body, "缺少 agent 死亡事件"
-    assert "finally:" in body, "死亡事件必須在 finally 中觸發，異常路徑才不會漏掉"
+    assert "self.hdead" in body, "there is no agent-died event"
+    assert "finally:" in body, "the died event has to fire in a finally, or the exception path misses it"
     i = SRC.find("def __init__(self, args):")
-    assert "self.hdead = win32event.CreateEvent" in SRC[i:i + 600], "hdead 未建立"
+    assert "self.hdead = win32event.CreateEvent" in SRC[i:i + 600], "hdead is never created"
 
 
 def test_unexpected_death_exits_nonzero_to_trigger_recovery():
-    """`sc failure` 的三段式自動復原只在程序結束時生效。
-    不結束 = 那段設定形同虛設。"""
+    """The three-stage recovery from `sc failure` only applies when the process
+    exits. Not exiting makes that configuration decorative."""
     body = _svc_do_run()
-    assert "1064" in body, "應以 ERROR_EXCEPTION_IN_SERVICE (1064) 回報 SCM"
-    assert "os._exit" in body, "必須實際結束程序，否則自動復原不會觸發"
-    assert "error=True" in body, "非預期結束必須進事件檢視器"
+    assert "1064" in body, "the SCM should be told ERROR_EXCEPTION_IN_SERVICE (1064)"
+    assert "os._exit" in body, "the process has to actually exit, or recovery never fires"
+    assert "error=True" in body, "an unexpected exit has to reach the Event Log"
 
 
 def test_normal_stop_is_not_treated_as_a_crash():
-    """正常停止時不可誤觸發復原，否則 `sc stop` 之後服務會自己爬回來。"""
+    """A normal stop must not trigger recovery, or the service climbs back up
+    after `sc stop`."""
     body = _svc_do_run()
     assert "not self.stop_event.is_set()" in body, (
-        "必須排除正常停止路徑，否則 SvcStop 後會被自動復原重新拉起")
+        "the normal stop path has to be excluded, or SvcStop is undone by recovery")
 
 
 def test_recovery_is_configured_by_the_installer():
-    """程式端結束了，還要安裝端真的設過復原動作，這條路徑才完整。"""
+    """The program exiting is only half of it; the installer has to have
+    configured the recovery actions for the path to exist at all."""
     cfg = (Path(__file__).resolve().parent.parent / "packaging"
            / "msi-configure.ps1").read_text(encoding="utf-8-sig")
-    assert "sc.exe failure" in cfg, "未設定服務失效復原動作"
-    assert "failureflag" in cfg, "未設 failureflag，非零結束碼不會觸發復原"
+    assert "sc.exe failure" in cfg, "no service recovery actions are configured"
+    assert "failureflag" in cfg, "without failureflag, a non-zero exit does not trigger recovery"
 
 
-# --- 記錄檔位置必須答得出來 -------------------------------------------------
+# --- where the log lives has to be answerable -------------------------------
 
 def test_log_path_is_exposed_over_snmp():
-    """專案規則：「設定檔在哪」必須在四處都答得出來。
-    記錄檔同理，遠端診斷時 walk 一下就知道要去哪台的哪個目錄撈。"""
-    assert "jtAgentLogPath" in SRC, "記錄檔路徑未透過 SNMP 揭露"
+    """A project rule: "where is the configuration" has to be answerable in four
+    places. The same goes for the log, so that diagnosing remotely means a walk
+    rather than a guess about which directory on which machine."""
+    assert "jtAgentLogPath" in SRC, "the log path is not exposed over SNMP"
     assert "octet(LOG_DIR)" in SRC

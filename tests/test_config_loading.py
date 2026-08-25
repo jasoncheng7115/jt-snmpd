@@ -54,34 +54,34 @@ def _assign(name: str):
     for node in TREE.body:
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == name:
             return node
-    pytest.fail(f"找不到 {name}")
+    pytest.fail(f"{name} not found")
 
 
 def _func(name: str) -> str:
     for node in ast.walk(TREE):
         if isinstance(node, ast.FunctionDef) and node.name == name:
             return ast.unparse(node)
-    pytest.fail(f"找不到 {name}")
+    pytest.fail(f"{name} not found")
 
 
-# --- 設定檔路徑必須與安裝程式一致 -------------------------------------------
+# --- the agent and the installer have to agree on the path ------------------
 
 def test_agent_and_installer_agree_on_the_config_path():
     """The exact mismatch that caused the bug: the agent pointed at config.yaml
     while the installer wrote config.json."""
     cfg_path = ast.unparse(_assign("CFG_PATH").value)
-    assert "config.json" in cfg_path, f"CFG_PATH 應指向 config.json，實際為 {cfg_path}"
+    assert "config.json" in cfg_path, f"CFG_PATH should point at config.json, not {cfg_path}"
     installer = (DEPLOY.parent / "packaging" / "msi-configure.ps1").read_text(
         encoding="utf-8-sig")
-    assert "config.json" in installer, "安裝程式寫的檔名與 agent 讀的不一致"
-    assert "config.yaml" not in CODE, "不應再出現 config.yaml"
+    assert "config.json" in installer, "the installer writes a different name from the one the agent reads"
+    assert "config.yaml" not in CODE, "config.yaml should be gone"
 
 
 def test_config_file_is_actually_opened():
     """A path constant that nothing opens is decorative. `CFG_PATH` was only
     ever published as an OID value."""
     body = _func("load_config")
-    assert "open(CFG_PATH" in body, "load_config 必須實際開啟設定檔"
+    assert "open(CFG_PATH" in body, "load_config never opens the file"
     assert "json.load" in body
 
 
@@ -92,55 +92,55 @@ def test_settings_are_validated_before_the_engine_is_configured():
     run = _func("run_agent")
     i_check = run.index("if not CFG['community']")
     for later in ("add_v1_system", "PreAuthGate(", "open_server_mode"):
-        assert i_check < run.index(later), f"設定檢查必須在 {later} 之前"
+        assert i_check < run.index(later), f"the configuration check has to come before {later}"
 
 
-# --- 預設值不得掩蓋「沒讀到設定」-------------------------------------------
+# --- a default must not hide the configuration having not been read ---------
 
 def test_no_usable_community_default():
     """A default that matches the test lab is what let the bug survive."""
     cfg = ast.literal_eval(ast.unparse(_assign("CFG").value))
-    assert cfg["community"] == "", "community 不得有預設值"
-    assert "mon2" not in CODE, "測試環境的 community 不可留在可執行的程式碼中"
+    assert cfg["community"] == "", "community must have no default"
+    assert "mon2" not in CODE, "the lab community must not survive in executable code"
 
 
 def test_no_usable_network_default():
     cfg = ast.literal_eval(ast.unparse(_assign("CFG").value))
-    assert cfg["allowed_networks"] == (), "allowed_networks 不得有預設值"
-    assert "192.168.1.0/24" not in CODE, "測試環境的網段不可留在可執行的程式碼中"
+    assert cfg["allowed_networks"] == (), "allowed_networks must have no default"
+    assert "192.168.1.0/24" not in CODE, "the lab network must not survive in executable code"
 
 
 def test_missing_community_refuses_to_serve():
     """An SNMP agent whose community nobody knows is not useful; it should say
     so rather than invent one."""
     run = _func("run_agent")
-    assert re.search(r"if not CFG\['community'\]", run), "缺少 community 檢查"
-    assert "SystemExit(1)" in run, "沒有 community 時必須以失敗結束"
+    assert re.search(r"if not CFG\['community'\]", run), "the community check is missing"
+    assert "SystemExit(1)" in run, "no community has to end in failure"
 
 
 def test_missing_networks_is_reported_loudly():
     run = _func("run_agent")
     m = re.search(r"if not CFG\['allowed_networks'\]:(.{0,400})", run, re.S)
-    assert m, "缺少 allowed_networks 檢查"
-    assert "error=True" in m.group(1), "未設定網段必須寫入事件檢視器"
+    assert m, "the allowed_networks check is missing"
+    assert "error=True" in m.group(1), "an unset network list has to reach the Event Log"
 
 
-# --- 值的驗證：設定檔是使用者手動編輯的，不可信任 ---------------------------
+# --- validation: the file is hand-edited, so it is not trusted --------------
 
 def test_loader_validates_types_and_ranges():
     """Operators edit this file by hand. A port of "161" as a string, or 99999,
     must not become the running configuration."""
     body = _func("load_config")
-    assert "1 <= port <= 65535" in body, "port 必須做範圍檢查"
+    assert "1 <= port <= 65535" in body, "port is not range-checked"
     assert "isinstance(data.get('community'), str)" in body or \
-           'isinstance(data.get("community"), str)' in body, "community 必須做型別檢查"
-    assert "isinstance(data, dict)" in body, "頂層必須是物件"
+           'isinstance(data.get("community"), str)' in body, "community is not type-checked"
+    assert "isinstance(data, dict)" in body, "the top level has to be an object"
 
 
 def test_broken_config_does_not_crash_the_loader():
     body = _func("load_config")
     for exc in ("FileNotFoundError", "OSError", "ValueError", "UnicodeError"):
-        assert exc in body, f"未處理 {exc}"
+        assert exc in body, f"{exc} is not handled"
 
 
 def test_loader_reports_where_the_settings_came_from():
@@ -151,19 +151,20 @@ def test_loader_reports_where_the_settings_came_from():
     assert "CFG_SOURCE" in AGENT
 
 
-# --- 安裝程式與 agent 的欄位必須對得起來 -----------------------------------
+# --- the installer and the agent have to use the same field names ----------
 
 def test_installer_writes_the_keys_the_agent_reads():
     installer = (DEPLOY.parent / "packaging" / "msi-configure.ps1").read_text(
         encoding="utf-8-sig")
     body = _func("load_config")
     for key in ("community", "allowed_networks", "port", "enable_arp_table"):
-        assert key in installer, f"安裝程式未寫出 {key}"
-        assert key in body, f"agent 未讀取 {key}"
+        assert key in installer, f"the installer never writes {key}"
+        assert key in body, f"the agent never reads {key}"
 
 
 def test_documented_config_shape_round_trips():
-    """文件承諾「改設定檔、重啟服務」，欄位形狀必須與 agent 的讀取一致。"""
+    """The documentation promises "edit the file and restart the service", so the
+    shape of the fields has to match what the agent reads."""
     sample = {"schema_version": 1, "community": "example",
               "allowed_networks": ["192.0.2.0/24"], "port": 161,
               "enable_arp_table": False}
@@ -183,13 +184,14 @@ def test_config_is_read_with_bom_tolerance():
     whichever tool last wrote the file.
     """
     body = _func("load_config")
-    assert "utf-8-sig" in body, "設定檔必須以 utf-8-sig 讀取以容忍 BOM"
+    assert "utf-8-sig" in body, "the file has to be read as utf-8-sig, to tolerate a BOM"
     assert 'encoding="utf-8")' not in body and "encoding='utf-8')" not in body, \
-        "不可用不容忍 BOM 的 utf-8 讀設定檔"
+        "plain utf-8 does not tolerate a BOM and must not be used here"
 
 
 def test_installer_writes_json_without_a_bom():
-    """兩端都修：agent 容忍 BOM，安裝程式仍寫乾淨的檔。"""
+    """Both ends fixed: the agent tolerates a BOM, and the installer still writes
+    a clean file."""
     installer = (DEPLOY.parent / "packaging" / "msi-configure.ps1").read_text(
         encoding="utf-8-sig")
     # Anchor on the write itself, not on the first mention of the file name.
@@ -199,8 +201,9 @@ def test_installer_writes_json_without_a_bom():
     block = installer[i:i + 400]
     assert "config.json" in block, \
         "the anchored block is not the config.json write"
-    assert "UTF8Encoding $false" in block, \
-        "config.json 應以不含 BOM 的 UTF-8 寫入（Set-Content -Encoding UTF8 會加 BOM）"
+    assert "UTF8Encoding $false" in block, (
+        "config.json has to be written as UTF-8 without a BOM "
+        "(Set-Content -Encoding UTF8 adds one)")
 
 
 def test_config_is_loaded_before_the_entry_point_reads_cfg():
@@ -218,20 +221,20 @@ def test_config_is_loaded_before_the_entry_point_reads_cfg():
     body = src[i_svc:i_svc + 900]
     i_load = body.index("load_config()")
     i_use = body.index("run_agent(")
-    assert i_load < i_use, "SvcDoRun 必須先載入設定再呼叫 run_agent"
-    # 記錄行也在載入之後，否則它會印出載入前的值
-    assert i_load < body.index("SvcDoRun port="), "記錄行必須反映載入後的設定"
+    assert i_load < i_use, "SvcDoRun has to load the configuration before calling run_agent"
+    # The log line comes after the load too, or it prints the pre-load values
+    assert i_load < body.index("SvcDoRun port="), "the log line has to reflect the loaded configuration"
 
-    # main_co 內不應再載入（那是太晚的位置）
+    # Loading inside main_co would be too late
     run = _func("run_agent")
-    assert "load_config()" not in run, "run_agent 內載入設定為時已晚"
+    assert "load_config()" not in run, "loading inside run_agent is too late; the parameters are already bound"
 
 
 def test_command_line_overrides_the_file_not_the_other_way_round():
     i = AGENT.index('if __name__ == "__main__":')
     tail = AGENT[i:]
     assert tail.index("load_config()") < tail.index('_arg("--community"'), \
-        "命令列是覆寫，必須在讀檔之後套用"
+        "the command line overrides the file, so it has to be applied after the read"
 
 
 def test_loading_twice_is_harmless():
@@ -241,4 +244,4 @@ def test_loading_twice_is_harmless():
     happened to be saving it at that moment."""
     body = _func("load_config")
     assert 'CFG_SOURCE != "defaults"' in body or "CFG_SOURCE != 'defaults'" in body, \
-        "load_config 必須冪等"
+        "load_config has to be idempotent"

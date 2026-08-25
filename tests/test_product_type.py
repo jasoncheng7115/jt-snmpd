@@ -1,23 +1,26 @@
-"""sysObjectID 三分支與 Windows Server 情境。
+"""The three sysObjectID branches, and Windows Server.
 
-**為什麼三個分支都必須存在**
+**Why all three branches have to exist**
 
-LibreNMS 的 `LibreNMS/OS/Windows.php` 依 sysObjectID 走三條不同的版本查表：
+LibreNMS's `LibreNMS/OS/Windows.php` picks one of three version tables from the
+sysObjectID:
 
     .1.3.6.1.4.1.311.1.1.3.1.1  → getClientVersion()
     .1.3.6.1.4.1.311.1.1.3.1.2  → getServerVersion()
     .1.3.6.1.4.1.311.1.1.3.1.3  → getDatacenterVersion()
 
-同一個 build number 在三張表裡對應不同字串（例如 26100 在 client 表是
-`11 (24H2)`、在 server 表是 `Server 2025 (24H2)`）。少了 DC 分支，
-網域控制站會被歸到 server，版本字串因此不同，而這是無聲的錯誤，
-agent 照常運作、LibreNMS 照常顯示，只是顯示錯的版本。
+The same build number maps to different strings in each: 26100 is `11 (24H2)` in
+the client table and `Server 2025 (24H2)` in the server one. Without the domain
+controller branch a DC is classified as a server and gets a different version
+string, and the mistake is silent: the agent works, LibreNMS displays, and the
+version is wrong.
 
-**Server Core 的陷阱**
+**The Server Core trap**
 
-`InstallationType` 在不同 Windows 版本的值不一致：`Server`、`Server Core`、
-`Windows Server Core` 都出現過。用等值比較會讓 Server Core 被誤判為工作站，
-而設計規格的平台 DoD 明列 Server Core 必須支援。
+`InstallationType` is not consistent across Windows releases: `Server`,
+`Server Core` and `Windows Server Core` have all been seen. An equality test
+misclassifies Server Core as a workstation, and Server Core is on the list of
+platforms this has to support.
 """
 
 from __future__ import annotations
@@ -34,9 +37,10 @@ MS_PREFIX = "(1, 3, 6, 1, 4, 1, 311, 1, 1, 3, 1, "
 
 
 def _sysobjid_map() -> dict[str, tuple[int, ...]]:
-    """從原始碼取出 ptype → sysObjectID 的對照表。
+    """Read the ptype to sysObjectID mapping out of the source.
 
-    以 ast 解析而非 import：agent 相依 winreg / ctypes.windll，Linux 上無法 import。
+    ast rather than import: the agent needs winreg and ctypes.windll, which do
+    not exist on Linux.
     """
     tree = ast.parse(SRC)
     for node in ast.walk(tree):
@@ -50,7 +54,7 @@ def _sysobjid_map() -> dict[str, tuple[int, ...]]:
                 if isinstance(k, ast.Constant) and isinstance(v, ast.Tuple):
                     out[k.value] = tuple(e.value for e in v.elts)
             return out
-    pytest.fail("agent 中找不到 client/server/domain_controller 的 sysObjectID 對照表")
+    pytest.fail("no client/server/domain_controller sysObjectID mapping found in the agent")
 
 
 @pytest.mark.parametrize("ptype,expected_last", [
@@ -59,79 +63,82 @@ def _sysobjid_map() -> dict[str, tuple[int, ...]]:
     ("domain_controller", 3),
 ])
 def test_sysobjectid_branch_matches_librenms(ptype: str, expected_last: int):
-    """三個分支的最後一個 sub-identifier 必須分別是 1 / 2 / 3。
+    """The last sub-identifier has to be 1, 2 and 3 respectively.
 
-    LibreNMS 以此決定呼叫 getClientVersion / getServerVersion /
-    getDatacenterVersion，弄錯會顯示錯的 Windows 版本。
+    LibreNMS uses it to choose between getClientVersion, getServerVersion and
+    getDatacenterVersion. Get it wrong and it shows the wrong Windows version.
     """
     m = _sysobjid_map()
-    assert ptype in m, f"缺少 {ptype} 分支"
+    assert ptype in m, f"the {ptype} branch is missing"
     expected = (1, 3, 6, 1, 4, 1, 311, 1, 1, 3, 1, expected_last)
     assert m[ptype] == expected, (
-        f"{ptype} 應為 .1.3.6.1.4.1.311.1.1.3.1.{expected_last}，實際 {m[ptype]}")
+        f"{ptype} should be .1.3.6.1.4.1.311.1.1.3.1.{expected_last}, but is {m[ptype]}")
 
 
 def test_all_three_branches_are_distinct():
     m = _sysobjid_map()
-    assert len(set(m.values())) == 3, f"三個分支必須互異：{m}"
+    assert len(set(m.values())) == 3, f"the three branches have to differ: {m}"
 
 
 def test_all_branches_use_microsoft_pen():
-    """必須沿用 Microsoft 的 PEN 311。
+    """Microsoft's PEN, 311, is what has to be used.
 
-    取得自有 PEN 之前，sysObjectID 維持 Microsoft 相容值，
-    否則 LibreNMS 的三個分支全部落空，Version 欄位會空白。
+    Until this project has a PEN of its own, sysObjectID stays
+    Microsoft-compatible. Otherwise all three LibreNMS branches miss and the
+    Version field is blank.
     """
     for ptype, oid in _sysobjid_map().items():
-        assert oid[:6] == (1, 3, 6, 1, 4, 1), f"{ptype} 前置碼錯誤"
-        assert oid[6] == 311, f"{ptype} 必須用 Microsoft 的 PEN 311，實際 {oid[6]}"
+        assert oid[:6] == (1, 3, 6, 1, 4, 1), f"{ptype} has the wrong prefix"
+        assert oid[6] == 311, f"{ptype} has to use Microsoft's PEN 311, not {oid[6]}"
 
 
 def test_installation_type_uses_prefix_match_not_equality():
-    """Server Core 的 InstallationType 是 "Server Core" 而非 "Server"。
+    """Server Core reports an InstallationType of "Server Core", not "Server".
 
-    用等值比較會讓 Server Core 被誤判為工作站。設計規格的平台 DoD
-    明列 Server Core 必須支援。
+    An equality test misclassifies it as a workstation, and Server Core is on
+    the list of platforms this has to support.
     """
     assert 'startswith("server")' in SRC or "startswith('server')" in SRC, (
-        "InstallationType 必須用 startswith 比對，否則 Server Core 會被誤判")
-    assert '== "Server"' not in SRC, "不可用等值比較 InstallationType"
+        "InstallationType has to be matched with startswith, or Server Core is "
+        "misclassified")
+    assert '== "Server"' not in SRC, "InstallationType must not be compared for equality"
 
 
 def test_domain_controller_detection_exists():
-    """DC 判定必須實際呼叫 DsRoleGetPrimaryDomainInformation。
+    """The DC check has to call DsRoleGetPrimaryDomainInformation.
 
-    設計規格指定此 API（不使用 WMI）。
+    That API rather than WMI, which this project does not use.
     """
     assert "DsRoleGetPrimaryDomainInformation" in SRC
-    assert "DsRoleFreeMemory" in SRC, "DsRole 系列 API 配置的記憶體必須釋放"
-    # PDC 與 BDC 都算 DC
+    assert "DsRoleFreeMemory" in SRC, "memory allocated by the DsRole APIs has to be freed"
+    # Both PDC and BDC count as a domain controller
     assert "DSROLE_PRIMARY_DC" in SRC and "DSROLE_BACKUP_DC" in SRC
 
 
 def test_product_type_has_fallback_when_installation_type_missing():
-    """舊版或精簡安裝可能沒有 InstallationType。
+    """Older or trimmed installations may have no InstallationType.
 
-    退路是 ProductOptions\\ProductType：
-      WinNT=工作站、LanmanNT=網域控制站、ServerNT=伺服器
-    沒有退路的話這些機器會全部被當成工作站。
+    The fallback is ProductOptions\\ProductType:
+      WinNT is a workstation, LanmanNT a domain controller, ServerNT a server.
+    Without it, all of those machines are classified as workstations.
     """
-    assert "ProductOptions" in SRC, "缺少 ProductType 退路"
-    assert "LanmanNT" in SRC, "LanmanNT（DC）必須被辨識"
-    assert "ServerNT" in SRC, "ServerNT（伺服器）必須被辨識"
+    assert "ProductOptions" in SRC, "the ProductType fallback is missing"
+    assert "LanmanNT" in SRC, "LanmanNT, a domain controller, has to be recognised"
+    assert "ServerNT" in SRC, "ServerNT, a server, has to be recognised"
 
 
 def test_dc_detection_failure_does_not_raise():
-    """非網域環境或 API 不可用時，DC 判定必須安靜地回傳 False。
+    """Outside a domain, or where the API is unavailable, the check returns
+    False quietly.
 
-    啟動不硬失敗。一個判定不出角色的 agent
-    應該當工作站繼續服務，而不是拒絕啟動。
+    Startup does not fail hard. An agent that cannot work out its role should
+    carry on as a workstation rather than refuse to start.
     """
     tree = ast.parse(SRC)
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "_is_domain_controller":
             body = ast.unparse(node)
-            assert "except" in body, "_is_domain_controller 必須捕捉例外"
-            assert "return False" in body, "失敗時必須回傳 False"
+            assert "except" in body, "_is_domain_controller has to catch exceptions"
+            assert "return False" in body, "a failure has to return False"
             return
-    pytest.fail("找不到 _is_domain_controller")
+    pytest.fail("_is_domain_controller not found")

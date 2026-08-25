@@ -1,16 +1,18 @@
-"""前置解析閘門的對抗式測試。
+"""Adversarial tests for the pre-parse gate.
 
-這個檔案的立場是**攻擊者**，不是使用者。每個測試都在問「這樣能不能繞過」，
-而不是「正常請求會不會通過」。
+This file takes the **attacker's** side, not the user's. Every test asks whether
+something can get through, not whether a normal request works.
 
-設計規格的威脅模型指出：agent 以 LocalSystem 常駐，任何 RCE 直接等同 SYSTEM，
-而 UDP/161 上每一個位元組都會先經過純 Python 的 BER decoder 才輪到認證。
-主要對手是**已在內網的攻擊者**，所以「來源 IP 在內網」不能當成信任依據，
-速率限制與畸形封包檢查一樣要對內網來源生效。
+The threat model: the agent runs continuously as LocalSystem, so any remote code
+execution is immediately SYSTEM, and on UDP/161 every byte reaches a pure-Python
+BER decoder before authentication happens at all. The primary adversary is
+**already inside the network**, so a source address being internal is not grounds
+for trust: the rate limit and the malformed-packet check apply to internal
+sources too.
 
-位址一律使用 RFC 5737 的文件用保留範圍（192.0.2.0/24、198.51.100.0/24）。
-測試的是網段包含關係，用哪一段都一樣；用保留範圍可以讓
-個資掃描不必為測試夾具開例外。
+Addresses use the RFC 5737 documentation ranges (192.0.2.0/24, 198.51.100.0/24).
+What is being tested is network containment, so any range would do, and using the
+reserved ones means the privacy scan needs no exception for test fixtures.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from preauth import DropReason, PreAuthGate  # noqa: E402
 
 
 def _seq(payload: bytes) -> bytes:
-    """組一個長度正確的外層 SEQUENCE。"""
+    """An outer SEQUENCE with a correct length."""
     n = len(payload)
     if n < 0x80:
         return bytes([0x30, n]) + payload
@@ -44,7 +46,7 @@ def gate():
 )
 
 
-# --- ① 來源 IP 白名單 -------------------------------------------------------
+# --- 1. the source allow-list -----------------------------------------------
 
 def test_allowed_source_passes(gate):
     ok, reason = gate.check(GOOD, "192.0.2.68", now=0.0)
@@ -57,12 +59,13 @@ def test_source_outside_acl_is_dropped_with_zero_parsing(gate):
 
 
 def test_acl_is_checked_before_everything_else(gate):
-    """ACL 必須是第一道。畸形又超大的封包若來自被拒 IP，
-    應以 ACL 記數，代表它根本沒被檢查內容，零解析。"""
+    """The allow-list comes first. A malformed, oversized packet from a rejected
+    address must be counted against the allow-list, which is how we know its
+    contents were never examined at all."""
     evil = b"\xff" * 100_000
     ok, reason = gate.check(evil, "10.0.0.1", now=0.0)
     assert not ok
-    assert reason == DropReason.ACL, "被拒來源不應進入大小或格式檢查"
+    assert reason == DropReason.ACL, "a rejected source must not reach the size or format checks"
     assert gate.counters[DropReason.OVERSIZE] == 0
     assert gate.counters[DropReason.MALFORMED] == 0
 
@@ -89,12 +92,12 @@ def test_empty_acl_denies_everything_except_loopback():
     ok, reason = g.check(GOOD, "203.0.113.1", now=0.0)
     assert not ok
     assert reason == "acl"
-    # loopback 仍必須放行，否則安裝的健康檢查會失敗
+    # Loopback still has to pass, or the installer's health check fails
     assert g.check(GOOD, "127.0.0.1", now=0.0)[0]
 
 
 def test_explicit_any_still_works():
-    """明確寫出 0.0.0.0/0 才是「刻意開放給所有來源」的表達方式。"""
+    """Writing 0.0.0.0/0 explicitly is how "open to every source" is said aloud."""
     g = PreAuthGate(allowed_networks=PreAuthGate.parse_networks(["0.0.0.0/0"]))
     assert g.check(GOOD, "203.0.113.1", now=0.0)[0]
 
@@ -105,7 +108,8 @@ def test_malformed_source_ip_is_rejected(gate):
 
 
 def test_ipv4_address_does_not_match_ipv6_network():
-    """version 不同必須直接不匹配，不可讓 ipaddress 拋出而變成例外路徑。"""
+    """A version mismatch is simply not a match; it must not raise and turn into
+    an exception path."""
     g = PreAuthGate(allowed_networks=PreAuthGate.parse_networks(["2001:db8::/32"]))
     ok, reason = g.check(GOOD, "192.0.2.68", now=0.0)
     assert not ok and reason == DropReason.ACL
@@ -117,7 +121,7 @@ def test_single_ip_without_mask_is_host_route():
     assert not g.check(GOOD, "192.0.2.69", now=0.0)[0]
 
 
-# --- ② 封包大小上限 ---------------------------------------------------------
+# --- 2. the packet size cap -------------------------------------------------
 
 def test_oversized_packet_dropped(gate):
     ok, reason = gate.check(b"\x30" + b"\x00" * 5000, "192.0.2.68", now=0.0)
@@ -125,18 +129,19 @@ def test_oversized_packet_dropped(gate):
 
 
 def test_size_limit_is_checked_before_tlv_parsing(gate):
-    """超大封包不應進入 TLV 解析，那正是記憶體/CPU 放大的入口。"""
+    """An oversized packet must not reach TLV parsing, which is the way in for
+    memory and CPU amplification."""
     gate.check(b"\xff" * 9000, "192.0.2.68", now=0.0)
     assert gate.counters[DropReason.OVERSIZE] == 1
     assert gate.counters[DropReason.MALFORMED] == 0
 
 
-# --- ③ 速率限制 -------------------------------------------------------------
+# --- 3. the rate limit ------------------------------------------------------
 
 def test_burst_is_allowed_then_rate_limited(gate):
     for i in range(100):
         ok, _ = gate.check(GOOD, "192.0.2.68", now=0.0)
-        assert ok, f"burst 內第 {i} 個封包不應被擋"
+        assert ok, f"packet {i} is inside the burst and should not be dropped"
     ok, reason = gate.check(GOOD, "192.0.2.68", now=0.0)
     assert not ok and reason == DropReason.RATE_LIMIT
 
@@ -145,54 +150,55 @@ def test_tokens_refill_over_time(gate):
     for _ in range(100):
         gate.check(GOOD, "192.0.2.68", now=0.0)
     assert not gate.check(GOOD, "192.0.2.68", now=0.0)[0]
-    # 1 秒後應補回 rate_pps 個 token
+    # After a second, rate_pps tokens should be back
     ok, _ = gate.check(GOOD, "192.0.2.68", now=1.0)
     assert ok
 
 
 def test_rate_limit_is_per_source_not_global(gate):
-    """單一來源不得耗盡全域配額，否則一台被入侵的機器就能讓
-    正常管理主機取不到資料。"""
+    """One source must not exhaust a shared allowance, or a single compromised
+    machine can starve the real management host."""
     for _ in range(100):
         gate.check(GOOD, "192.0.2.10", now=0.0)
     assert not gate.check(GOOD, "192.0.2.10", now=0.0)[0]
     ok, _ = gate.check(GOOD, "192.0.2.68", now=0.0)
-    assert ok, "其他來源不該受影響"
+    assert ok, "other sources should be unaffected"
 
 
 def test_rate_limit_applies_to_allowed_sources_too(gate):
-    """主要對手是**已在內網的攻擊者**。來源 IP 在白名單內
-    不能成為免除速率限制的理由。"""
+    """The primary adversary is **already inside the network**. Being on the
+    allow-list is not grounds for exemption from the rate limit."""
     for _ in range(100):
         gate.check(GOOD, "192.0.2.68", now=0.0)
     ok, reason = gate.check(GOOD, "192.0.2.68", now=0.0)
     assert not ok and reason == DropReason.RATE_LIMIT
 
 
-# --- ④ 外層 TLV 合法性 ------------------------------------------------------
+# --- 4. outer TLV sanity ----------------------------------------------------
 
 @pytest.mark.parametrize("data,desc", [
-    (b"", "空封包"),
-    (b"\x30", "只有 tag"),
-    (b"\x02\x01\x01", "第一個 byte 不是 0x30"),
-    (b"\x30\x05abc", "宣告長度大於實際"),
-    (b"\x30\x02abcdef", "宣告長度小於實際（尾端夾帶）"),
-    (b"\x30\x80\x02\x01\x01", "不定長度編碼"),
-    (b"\x30\x85\x01\x01\x01\x01\x01x", "長度欄位過長"),
-    (b"\x30\x84\xff\xff\xff\xffx", "宣告 4GB 長度"),
+    (b"", "empty packet"),
+    (b"\x30", "tag only"),
+    (b"\x02\x01\x01", "first byte is not 0x30"),
+    (b"\x30\x05abc", "declared length exceeds what arrived"),
+    (b"\x30\x02abcdef", "declared length is short, with trailing bytes"),
+    (b"\x30\x80\x02\x01\x01", "indefinite length"),
+    (b"\x30\x85\x01\x01\x01\x01\x01x", "over-long length field"),
+    (b"\x30\x84\xff\xff\xff\xffx", "declares a 4 GB length"),
 ])
 def test_malformed_outer_tlv_rejected(gate, data, desc):
     ok, reason = gate.check(data, "192.0.2.68", now=0.0)
-    assert not ok, f"應拒絕：{desc}"
+    assert not ok, f"should have been rejected: {desc}"
     assert reason == DropReason.MALFORMED, desc
 
 
 def test_deeply_nested_sequence_is_size_or_tlv_bounded(gate):
-    """深度巢狀 SEQUENCE 是 pyasn1 RecursionError 的入口。
+    """Deeply nested SEQUENCEs are the way to a RecursionError inside pyasn1.
 
-    閘門不做深度解析（那正是要避免的），但巢狀攻擊要嘛超過大小上限、
-    要嘛外層長度對不上。這裡驗證一個「外層長度正確」的深巢狀封包
-    仍會被大小上限攔下。
+    The gate does no deep parsing, since parsing is the thing being avoided. A
+    nesting attack either exceeds the size cap or fails the outer length check.
+    This confirms that one with a correct outer length is still stopped by the
+    size cap.
     """
     payload = b"\x05\x00"
     for _ in range(3000):
@@ -203,13 +209,14 @@ def test_deeply_nested_sequence_is_size_or_tlv_bounded(gate):
 
 
 def test_long_form_length_accepted_when_correct(gate):
-    """合法的長格式長度不能被誤殺，正常的大型 GETBULK 回應請求會用到。"""
+    """A valid long-form length must not be rejected; ordinary large GETBULK
+    requests use one."""
     body = b"\x04" + bytes([0x82]) + (200).to_bytes(2, "big") + b"A" * 200
     ok, reason = gate.check(_seq(body), "192.0.2.68", now=0.0)
-    assert ok, f"合法長格式被誤殺: {reason}"
+    assert ok, f"a valid long-form length was rejected: {reason}"
 
 
-# --- 計數器與記憶體 ---------------------------------------------------------
+# --- counters and memory ----------------------------------------------------
 
 def test_counters_track_each_drop_reason(gate):
     gate.check(GOOD, "10.0.0.1", now=0.0)                    # ACL
@@ -223,13 +230,15 @@ def test_counters_track_each_drop_reason(gate):
 
 
 def test_bucket_table_does_not_grow_unbounded(gate):
-    """偽造來源 IP 洗一輪就能讓 bucket dict 無限成長，這本身是攻擊面。
+    """A flood from spoofed sources would grow the bucket dictionary without
+    bound, which is an attack surface in itself.
 
-    注意：這些來源都不在 ACL 內，所以連 bucket 都不該建立。
+    Note that none of these sources is on the allow-list, so no bucket should be
+    created for them at all.
     """
     for i in range(500):
         gate.check(GOOD, f"10.1.{i // 256}.{i % 256}", now=0.0)
-    assert len(gate._buckets) == 0, "被 ACL 拒絕的來源不該建立 bucket"
+    assert len(gate._buckets) == 0, "a source rejected by the allow-list must not get a bucket"
 
 
 def test_prune_removes_idle_buckets(gate):
@@ -249,22 +258,26 @@ def test_prune_keeps_active_buckets(gate):
     assert "192.0.2.68" not in gate._buckets
 
 
-# --- loopback 永遠放行---------------------------
+# --- loopback is always allowed ---------------------------------------------
 
 @pytest.mark.parametrize("addr", ["127.0.0.1", "127.0.0.53", "::1"])
 def test_loopback_always_allowed_regardless_of_acl(gate, addr):
-    """loopback 自我測試是唯一能偵測「服務 Running 但事件迴圈卡死」的機制，
-    安裝程式的健康檢查也靠它。若被 ACL 擋住，每個站台的安裝都會在最後一步失敗。
+    """The loopback self-test is the only thing that detects "the service reports
+    Running but the event loop is wedged", and the installer's health check relies
+    on it. Behind the allow-list, every site's installation fails at its last
+    step.
 
-    這個 bug 實測發生過：安裝程式在實體機上跑到最後一步，服務其實正常
-    （670 varbinds、正在聽 161），但 loopback 查詢被閘門丟棄，安裝判定失敗。
+    That happened: the installer reached its final step on real hardware with the
+    service working perfectly -- 670 varbinds, listening on 161 -- and the gate
+    dropped the loopback query, so the installation was judged a failure.
     """
     ok, reason = gate.check(GOOD, addr, now=0.0)
-    assert ok, f"loopback {addr} 必須永遠放行，實際被擋: {reason}"
+    assert ok, f"loopback {addr} has to be allowed, but was dropped: {reason}"
 
 
 def test_loopback_still_subject_to_rate_limit(gate):
-    """放行不等於免疫。loopback 仍受速率限制，避免本機行程灌爆 agent。"""
+    """Allowed is not exempt. Loopback is still rate limited, so a local process
+    cannot flood the agent."""
     for _ in range(100):
         gate.check(GOOD, "127.0.0.1", now=0.0)
     ok, reason = gate.check(GOOD, "127.0.0.1", now=0.0)
@@ -272,6 +285,6 @@ def test_loopback_still_subject_to_rate_limit(gate):
 
 
 def test_loopback_still_subject_to_malformed_check(gate):
-    """畸形封包檢查對 loopback 一樣生效。"""
+    """The malformed-packet check applies to loopback as well."""
     ok, reason = gate.check(b"\x02\x01\x01", "127.0.0.1", now=0.0)
     assert not ok and reason == DropReason.MALFORMED

@@ -1,10 +1,11 @@
-"""閘門 C 測試 agent：把 pysnmp 的 MIB 層換成 snapshot + bisect。
+"""Gate C test agent: pysnmp's MIB layer replaced with snapshot + bisect.
 
-用法：
+Usage:
     python -m bench.gate_c.agent --varbinds 10000 --port 11161 [--stock-bulk]
 
---stock-bulk 使用 pysnmp 原生的 BulkCommandResponder（一次 repetition 一次
-read_next_variables 呼叫），用來對照批次化版本的差異。
+--stock-bulk uses pysnmp's own BulkCommandResponder, which makes one
+read_next_variables call per repetition, so the batched version can be measured
+against it.
 """
 
 from __future__ import annotations
@@ -22,22 +23,22 @@ from pysnmp.proto.api import v2c
 
 from .snapshot import Snapshot, SnapshotMibInstrumController, build_synthetic_snapshot
 
-# 回應上限 1400 bytes，避免 IP 分片。扣掉 SNMP 訊息外層
+# Responses are capped at 1400 bytes to avoid IP fragmentation. The allowance
 # （version / community / PDU header / request-id / error status+index /
-# 各層 SEQUENCE 標頭）的保留額度。
+# below subtracts the SNMP message envelope and the nested SEQUENCE headers.
 MAX_RESPONSE_BYTES = 1400
 MESSAGE_OVERHEAD_RESERVE = 120
-MAX_REPETITIONS_CAP = 25  # 伺服器端對 max-repetitions 設上限
+MAX_REPETITIONS_CAP = 25  # the server's own ceiling on max-repetitions
 
 
 class SliceableSnapshotController(SnapshotMibInstrumController):
-    """在 §4.3 的 GET/GETNEXT 之外，多開一條「連續切片」路徑給 GETBULK。"""
+    """A contiguous-slice path for GETBULK, alongside GET and GETNEXT."""
 
     def read_next_slice(self, name, max_count: int, max_bytes: int, acFun, context):
-        """從 name 之後取最多 max_count 筆，且累計編碼大小不超過 max_bytes。
+        """Take up to max_count entries after `name`, stopping before max_bytes.
 
-        這是 §4.3 說的「GETBULK 退化為陣列切片」。一次 bisect 定位，
-        之後純粹是陣列前進，沒有任何樹走訪。
+        This is what "GETBULK degenerates to an array slice" means: one bisect to
+        find the start, then walking the array. No tree traversal at all.
         """
         snap = self.snapshot
         oids, values, sizes = snap.oids, snap.values, snap.sizes
@@ -55,7 +56,7 @@ class SliceableSnapshotController(SnapshotMibInstrumController):
                     continue
             sz = sizes[i] if sizes else 64
             if out and used + sz > max_bytes:
-                break  # 截斷：回應少於請求的 repetition 數，manager 端必定會處理
+                break  # truncated: fewer repetitions than asked for, which every manager handles
             used += sz
             out.append((v2c.ObjectIdentifier(oid), val))
             i += 1
@@ -66,16 +67,17 @@ class SliceableSnapshotController(SnapshotMibInstrumController):
 
 
 class BatchedBulkCommandResponder(cmdrsp.BulkCommandResponder):
-    """取代 pysnmp 原生的 GETBULK 處理。
+    """Replace pysnmp's own GETBULK handling.
 
-    原生實作（cmdrsp.py:436）是 `while M and R: rspVarBinds.extend(mgmtFun(...))`
-，每個 repetition 都是一次獨立的 read_next_variables 呼叫，pysnmp 原始碼
-    自己也留著 `TODO: manage all PDU var-binds in a single call`。
+    The stock implementation (cmdrsp.py:436) is
+    `while M and R: rspVarBinds.extend(mgmtFun(...))`: one independent
+    read_next_variables call per repetition. pysnmp's own source carries a
+    `TODO: manage all PDU var-binds in a single call` beside it.
 
-    對 snapshot + bisect 架構而言這是純浪費：M=25 就是 25 次 bisect，
-    而正確答案是 1 次 bisect + 1 次切片。同時原生實作只有 varbind 筆數上限
-    （max_varbinds=64），**沒有任何位元組上限**，所以 §4.4 的 1400 bytes
-    截斷也只能在這裡實作。
+    Against snapshot + bisect that is pure waste: M=25 becomes 25 bisects where
+    the answer is one bisect and one slice. The stock version also caps only the
+    number of varbinds (max_varbinds=64) and has **no byte cap at all**, so the
+    1400-byte truncation has to live here too.
     """
 
     def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
@@ -90,8 +92,10 @@ class BatchedBulkCommandResponder(cmdrsp.BulkCommandResponder):
         instrum = self.snmpContext.get_mib_instrum(contextName)
         ctx = dict(snmpEngine=snmpEngine, acFun=self.verify_access, cbCtx=self.cbCtx)
 
-        # 只有單一 repeater（bulkwalk 的常態）走快速路徑；多 repeater 需交錯
-        # 輸出，語意較複雜且實務上罕見，交回原生實作。
+        # Only the single-repeater case takes the fast path, which is what
+        # bulkwalk does. Several repeaters have to interleave their output, which
+        # is more involved and rare in practice, so that falls back to the stock
+        # implementation.
         if N == 0 and R == 1 and isinstance(instrum, SliceableSnapshotController):
             rspVarBinds = instrum.read_next_slice(
                 reqVarBinds[0][0],
@@ -125,7 +129,7 @@ def build_agent(snapshot: Snapshot, host: str, port: int, community: str, stock_
 
     instrum = SliceableSnapshotController(snapshot)
     snmpCtx = context.SnmpContext(snmpEngine)
-    snmpCtx.context_names[b""] = instrum  # 整個換掉預設 context 的 MIB 層
+    snmpCtx.context_names[b""] = instrum  # replace the default context's MIB layer wholesale
 
     cmdrsp.GetCommandResponder(snmpEngine, snmpCtx)
     cmdrsp.NextCommandResponder(snmpEngine, snmpCtx)
@@ -144,7 +148,7 @@ async def main() -> None:
     ap.add_argument("--community", default="bench")
     ap.add_argument("--stock-bulk", action="store_true")
     ap.add_argument("--profile-seconds", type=float, default=0.0,
-                    help="剖析請求路徑 N 秒後印出熱點並結束")
+                    help="profile the request path for N seconds, print the hot spots and exit")
     args = ap.parse_args()
 
     t = time.perf_counter()

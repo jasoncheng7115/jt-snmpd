@@ -1,24 +1,30 @@
-"""解除安裝與 PURGE 完整清除的行為（靜態守則）。
+"""Uninstall and what PURGE has to leave behind, which is nothing.
 
-**這個 bug 怎麼被發現的**
+**How this was found**
 
-完整生命週期測試（安裝 → 升級 → 移除 → 重裝 → PURGE 移除）跑到最後一項失敗：
-`PURGE=1` 之後資料目錄仍然存在，裡面剩下 `logs\\msi-configure.log`。
+The full lifecycle run -- install, upgrade, remove, reinstall, purge -- failed on
+its last step: after `PURGE=1` the data directory was still there, holding
+`logs\\msi-configure.log`.
 
-原因是自訂動作的記錄檔就放在**它自己要清除的目錄裡**。`Remove-Item` 確實刪掉了整個
-目錄，但緊接著的兩行 `Log` 又把 `logs\\` 重新建出來，清除動作被自己的收尾訊息推翻。
+The custom action writes its log **inside the directory it is purging**.
+`Remove-Item` did delete the whole thing, and the next two `Log` lines recreated
+`logs\\`. The removal was undone by its own closing messages.
 
-**為什麼一般測試抓不到**
+**Why ordinary testing misses it**
 
-`Remove-Item` 成功、結束碼 0、記錄檔也寫著「資料目錄已完整清除」。從 msiexec、
-從服務狀態、從程式目錄看全都正常，只有真的去看資料目錄才會發現殘骸。而殘骸的後果
-是延遲性的：下次安裝會沿用舊狀態，讓「移除再重裝」這個客戶最常用的排除手段失效。
+`Remove-Item` succeeded, the exit code was 0, and the log said the data directory
+had been completely removed. From msiexec, from the service state, from the
+program directory, everything looked right; only opening the data directory shows
+the debris. And the consequence is delayed: the next installation inherits the
+old state, which defeats remove-and-reinstall, the first thing a customer tries.
 
-同一段程式碼還有第二個問題：`Remove-Item ... -ErrorAction SilentlyContinue` 會把
-「檔案被鎖住刪不掉」也吞掉，一樣回報成功。服務剛停止時 DPAPI blob 或記錄檔可能還被
-短暫持有，這不是假設性情境。
+The same few lines had a second problem. `Remove-Item ... -ErrorAction
+SilentlyContinue` swallows "the file is locked and cannot be deleted" as well,
+and still reports success. Just after the service stops, a DPAPI blob or the log
+file may still be held briefly; that is not hypothetical.
 
-這個測試把兩件事釘住：清除前必須停止檔案記錄，且清除後必須驗證結果、失敗時不得謊報。
+This file pins two things: file logging stops before the removal, and the result
+is verified afterwards rather than assumed.
 """
 
 from __future__ import annotations
@@ -34,13 +40,14 @@ SRC = CONFIGURE.read_text(encoding="utf-8-sig")
 
 
 def _purge_block() -> str:
-    """取出 `if ($Purge -eq '1') { ... }` 的 then 區塊。
+    """The then branch of `if ($Purge -eq '1') { ... }`.
 
-    用括號配對而非搜尋第一個 `} else {`，then 區塊裡本身就有巢狀的 if/else
-    （驗證清除結果），第一次寫的時候正是被這個絆倒。
+    Matched by counting braces rather than by finding the first `} else {`: the
+    branch contains a nested if/else of its own, verifying the removal, and the
+    first version of this helper tripped over exactly that.
     """
     i = SRC.find("if ($Purge -eq '1')")
-    assert i != -1, "找不到 PURGE 分支"
+    assert i != -1, "the purge branch is gone"
     start = SRC.index("{", i)
     depth = 0
     for k in range(start, len(SRC)):
@@ -50,77 +57,84 @@ def _purge_block() -> str:
             depth -= 1
             if depth == 0:
                 return SRC[start:k + 1]
-    pytest.fail("PURGE 分支的大括號未閉合")
+    pytest.fail("the purge branch's braces never close")
 
 
-# --- 記錄檔重建陷阱 ---------------------------------------------------------
+# --- the log file recreating the directory ----------------------------------
 
 def test_log_writes_are_gated_by_a_flag():
-    """Log 必須能被關閉，否則清除後任何一行訊息都會重建目錄。"""
+    """Logging has to be switchable, or any line after the removal recreates the
+    directory."""
     assert "$script:LogToFile" in SRC, (
-        "Log 缺少可關閉的旗標，PURGE 後的收尾訊息會把 logs\\ 重建回來")
+        "Log has no flag to turn it off, so the closing messages after a purge "
+        "recreate logs\\")
     i = SRC.find("function Log {")
     body = SRC[i:SRC.find("\n}", i)]
-    assert "if ($script:LogToFile)" in body, "Log 的寫檔動作必須受旗標保護"
+    assert "if ($script:LogToFile)" in body, "the file write is not guarded by the flag"
     assert "Add-Content" in body
 
 
 def test_file_logging_is_disabled_before_the_delete():
-    """順序很重要：必須先關記錄再刪，反過來沒有意義。"""
+    """The order carries the meaning: logging off, then delete. The other way
+    round achieves nothing."""
     block = _purge_block()
     off = block.find("$script:LogToFile = $false")
     rm = block.find("Remove-Item $DATA_DIR")
-    assert off != -1, "PURGE 前未關閉檔案記錄"
-    assert rm != -1, "PURGE 分支未刪除資料目錄"
-    assert off < rm, "必須在刪除**之前**關閉檔案記錄"
+    assert off != -1, "file logging is not turned off before the purge"
+    assert rm != -1, "the purge branch never deletes the data directory"
+    assert off < rm, "file logging has to be turned off **before** the delete"
 
 
 def test_log_dir_lives_inside_data_dir():
-    """這個測試的前提：記錄檔確實在要被清除的目錄裡。
+    """The premise of the two assertions above: the log really is inside the
+    directory being purged.
 
-    若哪天記錄檔搬到 %TEMP%，上面兩個斷言就不再必要，但那要是個明確的決定，
-    而不是無聲的漂移。
+    If the log ever moves to %TEMP% they stop being necessary, but that should be
+    a decision someone made rather than a drift nobody noticed.
     """
     assert "$LOG_DIR     = Join-Path $DATA_DIR 'logs'" in SRC.replace("  ", " ").replace(
         "$LOG_DIR = Join-Path $DATA_DIR 'logs'", "$LOG_DIR     = Join-Path $DATA_DIR 'logs'"
 ) or re.search(r"\$LOG_DIR\s*=\s*Join-Path \$DATA_DIR 'logs'", SRC), (
-        "記錄檔位置改變時，請一併檢視 PURGE 的關閉記錄邏輯是否仍需要")
+        "if the log location changes, revisit whether the purge still needs to "
+        "turn logging off")
 
 
-# --- 不得謊報成功 -----------------------------------------------------------
+# --- success must not be claimed without checking ---------------------------
 
 def test_purge_verifies_the_directory_is_actually_gone():
-    """設計規格的精神：不得回報未經驗證的結果。"""
+    """Nothing is reported that has not been verified."""
     block = _purge_block()
     assert "Test-Path $DATA_DIR" in block, (
-        "刪除後必須實際驗證目錄消失，不能只看 Remove-Item 沒拋錯")
+        "the directory has to be confirmed gone, not inferred from Remove-Item "
+        "not raising")
 
 
 def test_purge_retries_because_files_may_still_be_locked():
-    """服務剛停止時 DPAPI blob / 記錄檔可能仍被持有。"""
+    """Just after the service stops, a DPAPI blob or the log may still be held."""
     block = _purge_block()
-    assert re.search(r"foreach \(\$attempt in 1\.\.\d+\)", block), "清除必須重試"
-    assert "Start-Sleep" in block, "重試之間必須等待"
+    assert re.search(r"foreach \(\$attempt in 1\.\.\d+\)", block), "the purge does not retry"
+    assert "Start-Sleep" in block, "there is no wait between retries"
 
 
 def test_failed_purge_is_reported_not_swallowed():
-    """失敗時必須留下警告，殘骸會讓下次安裝沿用舊狀態。"""
+    """A failure has to leave a warning: debris makes the next installation
+    inherit the old state."""
     block = _purge_block()
-    assert "WARN" in block, "清除失敗必須以 WARN 回報"
+    assert "WARN" in block, "a failed purge has to be reported as a warning"
     ok = block.find('Log "data directory completely removed')
-    assert ok != -1, "找不到成功訊息"
-    # 成功訊息必須在 $purged 為真的分支裡
-    assert "if ($purged)" in block, "成功訊息必須以實際驗證結果為條件"
-    assert block.find("if ($purged)") < ok, "成功訊息不可無條件輸出"
+    assert ok != -1, "the success message is gone"
+    # The success message has to sit inside the branch where $purged is true
+    assert "if ($purged)" in block, "the success message is not conditional on the check"
+    assert block.find("if ($purged)") < ok, "the success message must not be unconditional"
 
 
-# --- 預設（非 PURGE）行為 ---------------------------------------------------
+# --- the default, without PURGE ---------------------------------------------
 
 def test_default_uninstall_keeps_data_dir():
-    """預設保留是刻意的。
+    """Keeping it by default is deliberate.
 
-    客戶常以「移除再重裝」排除問題；索引被清掉會讓 LibreNMS 重新 discovery，
-    舊 RRD 全數失去對應。
+    Customers troubleshoot by removing and reinstalling. Clearing the index map
+    makes LibreNMS rediscover everything and orphans the existing RRDs.
     """
     i = SRC.find("if ($Purge -eq '1')")
     assert i != -1, "the purge branch is gone"
@@ -142,12 +156,14 @@ def test_default_uninstall_keeps_data_dir():
 
 
 def test_uninstall_restores_builtin_snmp():
-    """接管內建 SNMP 的機器，移除後必須還原原本的啟動類型與狀態。"""
+    """On a machine whose built-in SNMP we took over, removal has to put back
+    both its start type and whether it was running."""
     assert "Set-Service -Name SNMP -StartupType $orig" in SRC
-    assert "original_status" in SRC, "還原時必須考慮原本是否在執行中"
+    assert "original_status" in SRC, "the restore ignores whether it had been running"
 
 
 def test_purge_property_is_secured_or_documented():
-    """PURGE 是破壞性屬性，必須在 wxs 中有定義才會被自訂動作看見。"""
+    """PURGE is destructive, and it has to be declared in the wxs or the custom
+    action never sees it."""
     wxs = (PKG / "wix" / "jt-snmpd.wxs").read_text(encoding="utf-8-sig")
-    assert "PURGE" in wxs, "wxs 未定義 PURGE 屬性，PURGE=1 將無效"
+    assert "PURGE" in wxs, "the wxs declares no PURGE property, so PURGE=1 does nothing"

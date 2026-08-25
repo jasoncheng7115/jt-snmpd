@@ -1,15 +1,19 @@
-"""Base OID 常數對照 RFC 標準值。
+"""Base OID constants pinned to their RFC values.
 
-為什麼需要這個測試：OID 打錯是**無聲**的。實測踩過一次，ifXTable 寫成
-`1.3.6.1.31.1.1.1`（少了 `2.1`），agent 照樣啟動、walk 照樣有回應，
-只是那張表整個掛在一個不存在的分支底下。LibreNMS 端的症狀是
-「Ports 頁沒有名稱、沒有 64-bit counters」，而 agent 這邊完全看不出異常。
+**Why this exists**
 
-LibreNMS 的 windows.yaml 設了 `ifname: true`，port 標籤直接取自 ifXTable 的
-ifName，所以這張表錯了等於 Ports 功能廢掉一半。
+A mistyped OID fails **silently**. It happened once: ifXTable was written as
+`1.3.6.1.31.1.1.1`, missing the `2.1`. The agent started, the walk answered, and
+the entire table hung off a branch that does not exist. From LibreNMS the symptom
+was "the Ports page has no names and no 64-bit counters", and from the agent
+there was nothing to see at all.
 
-這個檔案把每個 base OID 釘死在 RFC 定義上。改動 OID 常數必須同時改這裡，
-而改這裡會強迫你去查 RFC，而不是憑印象。
+LibreNMS's windows.yaml sets `ifname: true`, so port labels come straight from
+ifXTable's ifName. Getting that table wrong disables half of what Ports does.
+
+This file pins every base OID to its RFC definition. Changing an OID constant
+means changing this too, and changing this forces a look at the RFC rather than
+a guess from memory.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ import pytest
 
 AGENT = Path(__file__).resolve().parent.parent / "deploy" / "jt_agent.py"
 
-# 來源：RFC 1213 / RFC 2863 (IF-MIB) / RFC 2790 (HOST-RESOURCES-MIB) / UCD-SNMP-MIB
+# Sources: RFC 1213 / RFC 2863 (IF-MIB) / RFC 2790 (HOST-RESOURCES-MIB) / UCD-SNMP-MIB
 EXPECTED = {
     "SYS":    ((1, 3, 6, 1, 2, 1, 1),                  "SNMPv2-MIB::system"),
     "IFT":    ((1, 3, 6, 1, 2, 1, 2, 2, 1),            "IF-MIB::ifEntry"),
@@ -35,10 +39,10 @@ EXPECTED = {
 
 
 def _module_constants() -> dict[str, tuple[int, ...]]:
-    """靜態解析 agent 原始碼取出 base OID 常數。
+    """Read the base OID constants out of the agent source, statically.
 
-    用 ast 而不是 import：agent 依賴 winreg / ctypes.windll，在 Linux CI 上
-    無法 import。靜態解析讓這個測試在任何平台都能跑。
+    ast rather than import: the agent needs winreg and ctypes.windll, which do
+    not exist on the Linux CI runner. Parsing keeps this test runnable anywhere.
     """
     tree = ast.parse(AGENT.read_text(encoding="utf-8"))
     env: dict[str, tuple[int, ...]] = {}
@@ -75,25 +79,27 @@ def _module_constants() -> dict[str, tuple[int, ...]]:
 ])
 def test_base_oid_matches_rfc(name: str, expected: tuple[int, ...], rfc_name: str):
     consts = _module_constants()
-    assert name in consts, f"{name} 未在 agent 中定義"
+    assert name in consts, f"{name} is not defined in the agent"
     got = consts[name]
     assert got == expected, (
-        f"{name} 應為 {rfc_name} = {'.'.join(map(str, expected))}，"
-        f"實際為 {'.'.join(map(str, got))}"
+        f"{name} should be {rfc_name} = {'.'.join(map(str, expected))}, "
+        f"but is {'.'.join(map(str, got))}"
 )
 
 
 def test_all_base_oids_are_under_iso_org_dod_internet():
-    """所有 base OID 必須在 .1.3.6.1 之下。打錯前置碼會讓整張表消失在無效分支。"""
+    """Every base OID lives under .1.3.6.1. A wrong prefix hides the whole table
+    on a branch nothing will ever walk."""
     consts = _module_constants()
     for name in EXPECTED:
         got = consts[name]
-        assert got[:4] == (1, 3, 6, 1), f"{name} 前置碼錯誤: {got[:4]}"
+        assert got[:4] == (1, 3, 6, 1), f"{name} has the wrong prefix: {got[:4]}"
 
 
 def test_enterprise_oids_use_registered_pen():
-    """私有分支必須用已註冊的 PEN。2021 = UCD-SNMP（net-snmp），這是 LibreNMS
-    讀 diskIO 的標準位置；不可換成自訂 PEN，否則 LibreNMS 抓不到。"""
+    """A private branch has to use a registered PEN. 2021 is UCD-SNMP, which is
+    where LibreNMS looks for diskIO. Substituting our own PEN would put the table
+    somewhere LibreNMS never reads."""
     consts = _module_constants()
-    assert consts["DIO"][:6] == (1, 3, 6, 1, 4, 1), "DIO 必須在 enterprises 之下"
-    assert consts["DIO"][6] == 2021, "diskIO 必須用 UCD-SNMP 的 PEN 2021"
+    assert consts["DIO"][:6] == (1, 3, 6, 1, 4, 1), "DIO has to sit under enterprises"
+    assert consts["DIO"][6] == 2021, "diskIO has to use UCD-SNMP's PEN, 2021"

@@ -1,12 +1,12 @@
-"""閘門 C 效能實驗。
+"""The gate C performance experiment.
 
-量測三件事：
-  1. 每 varbind 處理成本      門檻 < 80 µs
-  2. 全樹 snmpbulkwalk 時間   門檻 < 10 秒
-  3. 單次 GETBULK 回應時間    門檻 < 30 ms（max-repetitions = 25）
+Three measurements:
+  1. processing cost per varbind        threshold < 80 µs
+  2. full-tree snmpbulkwalk time        threshold < 10 s
+  3. one GETBULK round trip             threshold < 30 ms (max-repetitions 25)
 
-同時對照 pysnmp 原生 BulkCommandResponder 與批次化版本，量化
-「GETBULK 退化為陣列切片」實際值多少。
+It also runs pysnmp's stock BulkCommandResponder alongside the batched one, to
+put a number on what "GETBULK degenerates to an array slice" is worth.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def _start_agent(n: int, stock: bool):
             return p, float(re.search(r"build_ms=([\d.]+)", line).group(1))
         time.sleep(0.01)
     p.kill()
-    raise RuntimeError("agent 未就緒")
+    raise RuntimeError("the agent did not become ready")
 
 
 def _walk(timeout: int) -> tuple[float, int]:
@@ -62,7 +62,7 @@ def _walk(timeout: int) -> tuple[float, int]:
 
 
 def _getbulk_latency(samples: int = 40) -> list[float]:
-    """單次 GETBULK 往返（max-repetitions=25）。用 snmpbulkget 只發一個封包。"""
+    """One GETBULK round trip at max-repetitions 25; snmpbulkget sends a single packet."""
     out = []
     for i in range(samples):
         oid = f"{BASE_OID}.1.1.{(i % 20) + 1}.1"
@@ -78,18 +78,18 @@ def _getbulk_latency(samples: int = 40) -> list[float]:
 
 def main() -> None:
     if not shutil.which("snmpbulkwalk"):
-        sys.exit("需要 net-snmp 工具：apt-get install -y snmp")
+        sys.exit("the net-snmp tools are required: apt-get install -y snmp")
 
     sizes = [int(x) for x in (sys.argv[1:] or ["1000", "10000", "50000"])]
     print(f"{'varbinds':>9} {'bulk':>8} {'build_ms':>9} {'walk_s':>8} {'µs/vb':>8} "
-          f"{'agent_cpu_s':>11} {'cpu_µs/vb':>10} {'getbulk_p50':>12} {'getbulk_p95':>12} {'筆數':>7}")
+          f"{'agent_cpu_s':>11} {'cpu_µs/vb':>10} {'getbulk_p50':>12} {'getbulk_p95':>12} {'count':>7}")
     print("-" * 108)
 
     for n in sizes:
         for stock in (False, True):
             proc, build_ms = _start_agent(n, stock)
             try:
-                _walk(timeout=300)  # 暖機：讓解譯器與快取穩定
+                _walk(timeout=300)  # warm-up, so the interpreter and caches settle
                 c0 = _cpu_seconds(proc.pid)
                 t0 = time.perf_counter()
                 reps = 3

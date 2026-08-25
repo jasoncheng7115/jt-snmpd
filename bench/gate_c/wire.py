@@ -1,25 +1,27 @@
-"""手寫 BER varbind 編碼器（閘門 C 的關鍵最佳化）。
+"""A hand-written BER varbind encoder, and the optimisation gate C turned on.
 
-為什麼需要這個：實測顯示 pysnmp/pyasn1 產生一個回應的成本是
-**每 varbind 約 125 µs**，其中
+Why it exists: building a response through pysnmp and pyasn1 was measured at
+**about 125 µs per varbind**, split as
 
-    pyasn1 物件建構（apiPDU.set_varbinds）   84 µs/vb
-    純 BER 編碼                              49 µs/vb
+    pyasn1 object construction (apiPDU.set_varbinds)   84 µs/vb
+    BER encoding itself                                49 µs/vb
 
-，遠超 §4.2 的 80 µs/varbind 總預算，而且是線性成本，調高
-max-repetitions 攤不掉（25 筆時 127 µs/vb，100 筆時 124 µs/vb）。
+which is far past the 80 µs per varbind budget, and it is linear: raising
+max-repetitions does not amortise it (127 µs/vb at 25, 124 µs/vb at 100).
 
-snapshot + bisect 已經把 MIB 層降到 8 µs/vb，瓶頸完全在編碼層，
-正是 §1.3 預先點名的風險②「純 Python BER 的效能」。
+With snapshot + bisect the MIB layer costs 8 µs/vb, so the whole bottleneck sits
+in encoding. This was the risk named in advance as "the performance of BER in
+pure Python".
 
-解法：既然 snapshot 是不可變的，就在**建立時**把每筆 varbind 編成 BER bytes，
-請求路徑上只做「切片 + 串接」。這也自然取代了原本只預存大小的做法，
-有了 wire bytes，長度就是 len()。
+The answer follows from the snapshot being immutable: encode every varbind to
+BER bytes **when the snapshot is built**, and leave the request path with a
+slice and a concatenation. It also replaces the earlier approach of storing only
+the sizes, because with the wire bytes in hand the size is len().
 """
 
 from __future__ import annotations
 
-# ASN.1 / SNMP 標籤
+# ASN.1 / SNMP tags
 TAG_INTEGER = 0x02
 TAG_OCTET_STRING = 0x04
 TAG_NULL = 0x05
@@ -34,7 +36,7 @@ TAG_COUNTER64 = 0x46
 
 
 def enc_len(n: int) -> bytes:
-    """BER 長度欄位：< 128 為短式，否則長式。"""
+    """The BER length field: short form under 128, long form otherwise."""
     if n < 0x80:
         return bytes((n,))
     b = n.to_bytes((n.bit_length() + 7) // 8, "big")
@@ -46,16 +48,18 @@ def tlv(tag: int, content: bytes) -> bytes:
 
 
 def enc_int_content(v: int) -> bytes:
-    """整數內容。刻意對齊 pyasn1 的行為（負數邊界會多一個多餘的前導位元組），
-    而非 DER 最短編碼，見 docs/phase0-findings.md §2.4。"""
+    """Integer content, deliberately matching what pyasn1 emits rather than
+    DER's shortest encoding: at negative boundaries pyasn1 adds a redundant
+    leading byte. Predicting pyasn1 is the point, so this follows pyasn1."""
     n = v.bit_length() // 8 + 1
     return v.to_bytes(n, "big", signed=True)
 
 
 def enc_oid_content(oid: tuple[int, ...]) -> bytes:
-    """OID 內容：前兩個 sub-id 併為 40*a+b，其後各自 base-128 變長編碼。"""
+    """OID content: the first two sub-identifiers combine as 40*a+b, and each of
+    the rest is base-128 variable length."""
     if len(oid) < 2:
-        raise ValueError(f"OID 至少需兩個 sub-identifier: {oid}")
+        raise ValueError(f"an OID needs at least two sub-identifiers: {oid}")
     out = bytearray()
     for sub in (oid[0] * 40 + oid[1], *oid[2:]):
         if sub < 0x80:
@@ -77,10 +81,11 @@ def enc_oid(oid: tuple[int, ...]) -> bytes:
 
 
 def enc_value(val) -> bytes:
-    """把一個 pyasn1/pysnmp 值物件編成 BER。
+    """Encode one pyasn1/pysnmp value object to BER.
 
-    型別判定順序重要：Counter32 / Gauge32 / TimeTicks 都是 Integer 的子類別，
-    必須先於 Integer 判定，否則會被編成錯誤的 tag。
+    The order of the type checks matters. Counter32, Gauge32 and TimeTicks are
+    all subclasses of Integer, so they have to be tested first or they are
+    encoded with the wrong tag.
     """
     from pysnmp.proto import rfc1902
 
@@ -88,7 +93,7 @@ def enc_value(val) -> bytes:
         return tlv(TAG_COUNTER64, enc_int_content(int(val)))
     if isinstance(val, rfc1902.Counter32):
         return tlv(TAG_COUNTER32, enc_int_content(int(val)))
-    if isinstance(val, rfc1902.Gauge32):  # Unsigned32 同 tag
+    if isinstance(val, rfc1902.Gauge32):  # Unsigned32 shares the tag
         return tlv(TAG_GAUGE32, enc_int_content(int(val)))
     if isinstance(val, rfc1902.TimeTicks):
         return tlv(TAG_TIMETICKS, enc_int_content(int(val)))
@@ -102,17 +107,18 @@ def enc_value(val) -> bytes:
         return tlv(TAG_OCTET_STRING, val.asOctets())
     if isinstance(val, rfc1902.Integer32) or isinstance(val, rfc1902.Integer):
         return tlv(TAG_INTEGER, enc_int_content(int(val)))
-    raise TypeError(f"不支援的型別：{type(val).__name__}")
+    raise TypeError(f"unsupported type: {type(val).__name__}")
 
 
 def enc_varbind(oid: tuple[int, ...], val) -> bytes:
-    """完整的 VarBind ::= SEQUENCE { name ObjectName, value ObjectSyntax }"""
+    """A complete VarBind ::= SEQUENCE { name ObjectName, value ObjectSyntax }"""
     return tlv(TAG_SEQUENCE, enc_oid(oid) + enc_value(val))
 
 
 def precompute_wire(oids, values) -> tuple[bytes, ...]:
-    """snapshot 建立時把每筆 varbind 預先編碼。
+    """Pre-encode every varbind when the snapshot is built.
 
-    記憶體代價：真實規模（3,000～6,500 varbind）約 90～180 KB，可忽略。
+    The memory cost at real scale (3,000 to 6,500 varbinds) is 90 to 180 KB,
+    which is not worth weighing against the time it saves.
     """
     return tuple(enc_varbind(o, v) for o, v in zip(oids, values))

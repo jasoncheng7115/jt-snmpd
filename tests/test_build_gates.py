@@ -34,8 +34,8 @@ MSI = (PKG / "build-msi.ps1").read_text(encoding="utf-8-sig")
 # --- build-exe.ps1 -----------------------------------------------------------
 
 def test_exe_build_checks_the_artefact_is_newer_than_the_source():
-    assert "LastWriteTime" in EXE, "缺少產物新鮮度檢查"
-    assert re.search(r"exit 1", EXE), "檢查失敗必須以非零碼結束"
+    assert "LastWriteTime" in EXE, "there is no freshness check on the output"
+    assert re.search(r"exit 1", EXE), "a failed check has to exit non-zero"
 
 
 def test_exe_build_runs_a_selftest():
@@ -55,24 +55,24 @@ def test_exe_build_waits_for_file_handles_to_be_released():
 def test_msi_build_fails_when_wix_fails():
     """This checked only `Test-Path $msi`, so a failed build picked up the
     previous MSI and reported success with the old version number."""
-    assert re.search(r"if \(\$code -ne 0\)", MSI), "wix build 的結束碼必須被檢查"
+    assert re.search(r"if \(\$code -ne 0\)", MSI), "wix build's exit code is not checked"
     i = MSI.index("$code = $LASTEXITCODE")
     block = MSI[i:i + 700]
     assert "exit 1" in block
 
 
 def test_msi_build_rejects_a_stale_msi():
-    assert "is not from this build" in MSI, "MSI 必須確認是本次建出來的"
+    assert "is not from this build" in MSI, "the MSI is not confirmed to be from this build"
 
 
 def test_msi_build_rejects_an_exe_older_than_the_source():
     """build-msi packages what is already in build/. Without this gate a forgotten
     build-exe ships old code under a new version number."""
-    assert "$exeTime" in MSI and "$newestSrc" in MSI, "缺少執行檔新鮮度閘門"
+    assert "$exeTime" in MSI and "$newestSrc" in MSI, "the executable freshness gate is missing"
     i = MSI.index("$newestSrc")
     block = MSI[i:i + 800]
-    assert "exit 1" in block, "執行檔過舊必須中止"
-    assert "build-exe.ps1" in block, "錯誤訊息應告訴使用者下一步"
+    assert "exit 1" in block, "an executable older than the source has to abort the build"
+    assert "build-exe.ps1" in block, "the message should say what to do next"
 
 
 def test_msi_build_records_source_fingerprints():
@@ -81,7 +81,7 @@ def test_msi_build_records_source_fingerprints():
     build used the one that had not been edited."""
     assert "SrcHash" in MSI
     for what in ("configure", "wxs", "agent"):
-        assert f'"{what}' in MSI or f"{what} " in MSI, f"BUILDINFO 缺少 {what} 指紋"
+        assert f'"{what}' in MSI or f"{what} " in MSI, f"BUILDINFO has no {what} fingerprint"
 
 
 def test_msi_uses_the_real_icon_and_says_so_when_it_cannot():
@@ -89,14 +89,14 @@ def test_msi_uses_the_real_icon_and_says_so_when_it_cannot():
     half-finished install."""
     assert "brand\\jt-snmpd.ico" in MSI
     assert "using a blank placeholder icon" in MSI, \
-        "找不到圖示時必須講出來，不可無聲退回"
+        "a missing icon has to be reported, not silently substituted"
 
 
-# --- 兩者共通 ----------------------------------------------------------------
+# --- common to both ---------------------------------------------------------
 
 @pytest.mark.parametrize("script,name", [(EXE, "build-exe.ps1"), (MSI, "build-msi.ps1")])
 def test_scripts_are_utf8_with_bom(script, name):
     """PowerShell 5.1 reads a BOM-less .ps1 as the system ANSI code page, which
     turns Chinese comments into a syntax error."""
     raw = (PKG / name).read_bytes()
-    assert raw.startswith(b"\xef\xbb\xbf"), f"{name} 必須存成 UTF-8 with BOM"
+    assert raw.startswith(b"\xef\xbb\xbf"), f"{name} has to be saved as UTF-8 with BOM"
