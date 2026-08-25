@@ -132,12 +132,21 @@ figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 
 /* The wizard pages are captured at 1x, so they are shown at their own size and
    never scaled up: enlarging a UI screenshot adds blur, not detail. On a narrow
-   viewport they fall back to one per row. */
+   viewport they fall back to one per row.
+
+   **Square corners, deliberately.** These are pictures of a Windows dialog,
+   which is a rectangle with its own frame and its own corners. Rounding the
+   image cuts those corners off and leaves a shape that is neither the window
+   nor a card -- the rounding reads as damage to the screenshot rather than as
+   styling. The same goes for a border: the dialog already has one, and a second
+   one drawn a pixel outside it just looks like a mistake. What is left is a
+   shadow, which is what a window sitting above a page actually does. */
 .wizard{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
-  gap:18px;margin:0 0 26px}
+  gap:20px;margin:0 0 26px}
 .wizard figure{margin:0}
-.wizard img{width:100%;max-width:495px;border:1px solid var(--line);border-radius:8px;
-  display:block;cursor:zoom-in;box-shadow:0 1px 3px rgba(31,35,40,.10)}
+.wizard img{width:100%;max-width:495px;border:0;border-radius:0;
+  display:block;cursor:zoom-in;
+  box-shadow:0 1px 2px rgba(31,35,40,.16), 0 6px 16px rgba(31,35,40,.10)}
 .wizard figcaption{color:var(--dim);font-size:13px;margin-top:7px}
 .wizard figcaption b{color:var(--fg)}
 
@@ -162,7 +171,10 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 
 #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;z-index:50;
   padding:28px;overflow:auto;cursor:zoom-out}
-#lightbox img{max-width:100%;margin:0 auto;display:block;border-radius:8px}
+/* No rounding here either. The lightbox is where a wizard page is seen at
+   full size, which is exactly where a clipped window corner is most
+   obvious. */
+#lightbox img{max-width:100%;margin:0 auto;display:block;border-radius:0}
 #lightbox.on{display:block}
 @media(max-width:640px){header.hero h1{font-size:31px}section{padding:40px 0}}
 </style>
