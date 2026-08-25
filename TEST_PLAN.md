@@ -248,9 +248,10 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 | 4. 重裝 | 沿用保留的狀態，**index-map hash 不變（ifIndex 穩定）** |
 | 5. PURGE 移除 | 資料目錄完整清除、內建 SNMP 狀態不受影響 |
 
-**最近一次結果**：2026-08-25，Win11 26200，**jt-snmpd 0.9.7**，`PASS=40 FAIL=0`。
-測的是 GitHub Release 上下載的那一顆 MSI，在機器上核對過 SHA-256
-（`8fa539ff…901a`，與發布的 `.sha256` 相符），不是本機建置的產物。
+**最近一次結果**：2026-08-25，Win11 26200，**jt-snmpd 0.9.8**，`PASS=40 FAIL=0`。
+測的是 GitHub Release 上下載的那一顆 MSI，在機器上核對過 SHA-256，
+與發布的 `.sha256` 相符，不是本機建置的產物。第 1 階段的版本檢查回報 `0.9.8`，
+所以測到的確實是這一版。
 
 這一次是**開跑前的準備**抓到問題，測試本身全綠：
 
