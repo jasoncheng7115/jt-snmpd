@@ -308,7 +308,7 @@ agent 回報的 `ifIndex` 仍然是 1、`ifName` 仍然是 `乙太網路`，與 
 |---|---|---|
 | 6.1c.1 | 雙擊 MSI 後精靈**走得到**設定畫面 | **[已驗]** 讀建出的 MSI `ControlEvent` 表：`JtSettingsDlg` 在 Order 5，壓過 WixUI 的 `VerifyReadyDlg`（Order 4）；0.9.5 實機五頁逐頁確認 |
 | 6.1c.2 | 啟動條件不得在 GUI 收集到值之前就擋下安裝 | **[已驗]** `MANAGEMENTNETWORKS OR REMOVE OR UILevel > 4`；CI 讀 `LaunchCondition` 表 |
-| 6.1c.3 | 管理網段未填時不允許繼續 | **[已實作]** `JtNeedNetworksDlg`，且 `SpawnDialog` 排在 `NewDialog` 之前；[待驗] 需人工操作 GUI |
+| 6.1c.3 | 管理網段未填時不允許繼續 | **[已驗]** 2026-08-25 在 `.154` 對**發布的 0.9.8** MSI 實際操作：兩欄留空按「下一步」，跳出「Please enter the management networks. Without them the agent answers local queries only, which means it is installed but not monitoring.」，停在原頁不放行 |
 | 6.1c.4 | 無訊息安裝不受 UI 影響 | **[已驗]** `/qn` 下 UI 序列不執行，屬性照舊生效 |
 | 6.1c.5 | 選用核取方塊預設未勾選，且標示與行為一致 | **[已驗]** `KEEPMSSNMP` 不在 `Property` 表中（非空值會讓方塊顯示為已勾選）；CI 讀 `Property` 表 |
 | 6.1c.6 | 授權頁顯示本專案的 LICENSE，不是佔位文字 | **[已驗]** GPL-3.0 全文；CI 檢查沒有 `Lorem ipsum` |
@@ -316,7 +316,7 @@ agent 回報的 `ifIndex` 仍然是 1、`ifName` 仍然是 `乙太網路`，與 
 | 6.1c.8 | 標題列在整個精靈中一致 | **[已驗]** 所有對話框皆為 `jt-snmpd Setup` |
 | 6.1c.9 | 「加入或移除程式」顯示圖示 | **[已驗]** `DisplayIcon` 指向已安裝的執行檔 |
 | 6.1c.10 | 無法決定 community 時給出可行動的錯誤 | **[已實作]** 安裝程式在健康檢查之前就中止；[待驗] 需無內建 SNMP 的乾淨機器 |
-| 6.1c.11 | **端對端 GUI 安裝**（真的按下 Install 並完成） | **[已驗]** 2026-08-25 在 `.154` 以 RDP 實際走完五頁精靈並完成安裝，另有六張未修圖的截圖；`/qn` 路徑則由 6.1a 的 40 項涵蓋 |
+| 6.1c.11 | **端對端 GUI 安裝**（真的按下 Install 並完成） | **[已驗]** 2026-08-25 對**發布的 0.9.8** MSI 在 `.154` 以 RDP 走完全程：歡迎頁 → 授權（GPL-3.0 全文）→ 目的地資料夾（`C:\Program Files\jt-snmpd\`）→ 監控設定 → 準備安裝 → UAC → 安裝 → 完成。裝完實測：服務 Running/Automatic、版本 0.9.8、161 由 jt-snmpd 持有、內建 SNMP 已停用、防火牆兩條、`config.json` 寫入了精靈裡填的網段與 community。`/qn` 路徑由 6.1a 的 40 項涵蓋 |
 | 6.1c.12 | 圖形升級不應跳出「使用中的檔案」對話框 | **[已知缺陷，未修]** 服務在升級時還在跑，Windows Installer 的 Restart Manager 偵測到 `jt-snmpd.exe` 被占用，要求使用者選擇關閉或重開機。`/qn` 與 GPO 派送不受影響（沒有 UI 可跳），所以 6.1a 那 40 項全部走 `/qn`，永遠抓不到它。**試過 `ServiceControl` 但不管用**：讀建出來的 MSI，`InstallValidate` 在序號 1400、`StopServices` 在 1900，Restart Manager 早在 500 個位置之前就已經找過使用中的檔案了。2026-08-25 在 `.154` 以 RDP 實際跑完圖形升級（服務執行中），對話框照樣出現並列出 `jt-snmpd`。真正的修法是在 `InstallValidate` 之前就把服務停掉，那是另一套機制（`util:CloseApplication`，或在 UI 序列裡以提升權限的自訂動作停服務），需要另外評估與實測 |
 
 **仍然沒有覆蓋的**：整套生命週期自動化（`tests/lifecycle.ps1`）從頭到尾都走
