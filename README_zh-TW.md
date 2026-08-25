@@ -110,6 +110,12 @@ SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`，
 > `lnms config:set discovery_modules.applications true`。
 >（內建那台顯示的 `Proxmox` 是先前探索留下的誤判，與本對照無關，
 > 內建服務並不提供任何 SMART 資料。）
+>
+> **全域打開之後，有自己設定的裝置不會跟著生效。** LibreNMS 的判定順序是
+> 命令列、裝置層、OS 層、全域，先設到的先贏。裝置頁齒輪選單裡的 Modules
+> 開關只要動過就會留下一筆裝置層設定，關掉留下的那個「否」會一直壓過全域的
+> 「是」。整批 Windows 主機要一次打開，
+> `lnms config:set os.windows.discovery_modules.applications true` 比全域更準。
 
 ![SMART 對照](docs/images/smart-zh-TW.png)
 
