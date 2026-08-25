@@ -167,6 +167,15 @@ mutation: restoring the previous value turns it red.
 
 ## [0.9.7] - 2026-08-25
 
+### Added
+
+- **The wizard screenshots are retaken from the released 0.9.7 installer on real
+  hardware, and none of them is retouched.** The earlier set had the settings
+  page edited to replace a real management network and a throwaway community
+  with documentation values; this set was captured with the documentation values
+  typed in, so there is nothing to alter. It also covers all six pages, the
+  completion page included.
+
 ### Fixed
 
 - **The data directory migration could never run.** 0.9.6 moved the data
