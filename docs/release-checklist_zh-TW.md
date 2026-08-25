@@ -27,7 +27,7 @@ python3 tools/prepare-public-repo.py /tmp/jt-snmpd-public
 cd /tmp/jt-snmpd-public
 git init -b main
 git add -A
-git commit -m "jt-snmpd v0.9.0"
+git commit -m "jt-snmpd v<版本>"
 git remote add origin git@github.com:jasoncheng7115/jt-snmpd.git
 git push -u origin main
 ```
