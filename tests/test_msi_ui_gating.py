@@ -390,19 +390,19 @@ def test_configure_script_fails_closed_on_empty_networks():
 
 
 # ------------------------------------------------- the "Files in use" dialog
-def test_the_service_is_declared_so_windows_installer_stops_it():
-    """A graphical upgrade must not ask the operator to close the application.
+def test_the_service_is_declared_to_windows_installer():
+    """Windows Installer should own stopping the service it ships.
 
-    The service is created, started and deleted by msi-configure.ps1, which runs
-    as a custom action -- long after Windows Installer has worked out which
-    files are in use. So on a graphical upgrade the wizard found jt-snmpd.exe
-    running and put up the "Files in use" page. Nothing broke and the upgrade
-    completed either way; it asked a question it had no business asking.
+    Note what this does **not** assert. It was added to remove the "Files in
+    use" page from graphical upgrades and it does not: measured on the built
+    package, InstallValidate sits at sequence 1400 and StopServices at 1900, so
+    Restart Manager has already looked for files in use long before this runs.
+    Driven through the wizard on real hardware with the service running, the
+    page still appeared. TEST_PLAN 6.1c.12 keeps that defect open.
 
-    Every one of the forty lifecycle checks runs /qn, where there is no UI to
-    show, which is exactly why none of them ever saw it.
-
-    A ServiceControl element schedules StopServices ahead of file costing.
+    The declaration is still right on its own terms -- stopping the service
+    belongs to the installer rather than only to a custom action -- so it stays,
+    with an assertion that says what it actually guarantees.
     """
     m = re.search(r"<ServiceControl\b[^>]*>", SRC)
     assert m, ("no ServiceControl element: Windows Installer does not know the "

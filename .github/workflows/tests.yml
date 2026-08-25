@@ -181,6 +181,50 @@ jobs:
           }
           Write-Host "the settings page is on the route"
 
+      - name: Confirm Windows Installer stops the service itself
+        # Windows Installer should own stopping the service the package ships,
+        # rather than that happening only inside a custom action.
+        #
+        # This does NOT remove the "Files in use" page from graphical upgrades:
+        # InstallValidate is at sequence 1400 and StopServices at 1900, so
+        # Restart Manager has already looked before any of this runs, and the
+        # page still appears when driven through the wizard. TEST_PLAN 6.1c.12
+        # keeps that open. A table check can see a declaration; it cannot see a
+        # behaviour.
+        #
+        # Event is a bitmask: 2 stop-on-install, 32 stop-on-uninstall,
+        # 1 start-on-install, 16 start-on-uninstall. Stopping is ours to
+        # declare; starting is not, because config.json is written later.
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem dist\jt-snmpd-*-x64.msi | Select-Object -First 1).FullName
+          $bt  = [char]96
+          $si  = New-Object -ComObject WindowsInstaller.Installer
+          $db  = $si.GetType().InvokeMember('OpenDatabase','InvokeMethod',$null,$si,@([string]$msi,[int]0))
+          $sql = "SELECT ${bt}Name${bt},${bt}Event${bt} FROM ${bt}ServiceControl${bt}"
+          $vw  = $db.GetType().InvokeMember('OpenView','InvokeMethod',$null,$db,@([string]$sql))
+          $vw.GetType().InvokeMember('Execute','InvokeMethod',$null,$vw,$null)
+          $rec = $vw.GetType().InvokeMember('Fetch','InvokeMethod',$null,$vw,$null)
+          if ($null -eq $rec) {
+            Write-Host "::error::the built MSI has no ServiceControl row; a graphical upgrade will ask the operator to close jt-snmpd.exe"
+            exit 1
+          }
+          $name  = [string]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,[int]1)
+          $event = [int]$rec.GetType().InvokeMember('StringData','GetProperty',$null,$rec,[int]2)
+          if ($name -ne 'jt-snmpd') {
+            Write-Host "::error::ServiceControl names '$name', not the agent service"
+            exit 1
+          }
+          if (-not ($event -band 2)) {
+            Write-Host "::error::ServiceControl Event=$event does not stop the service on install"
+            exit 1
+          }
+          if ($event -band 1) {
+            Write-Host "::error::ServiceControl Event=$event starts the service on install; config.json is not written until later"
+            exit 1
+          }
+          Write-Host "ServiceControl: $name Event=$event"
+
       - name: Confirm the optional checkbox starts unticked
         # Windows Installer draws a checkbox ticked whenever its property is
         # non-empty, and "0" is non-empty. 0.9.4 shipped KEEPMSSNMP="0", so the
