@@ -46,8 +46,8 @@ at install time. Every release attaches `<msi-name>.sha256` alongside the MSI.
 
 ```powershell
 # CLI - run in the folder containing both files
-Get-FileHash .\jt-snmpd-0.9.6-x64.msi -Algorithm SHA256
-Get-Content  .\jt-snmpd-0.9.6-x64.msi.sha256
+Get-FileHash .\jt-snmpd-0.9.7-x64.msi -Algorithm SHA256
+Get-Content  .\jt-snmpd-0.9.7-x64.msi.sha256
 ```
 
 The two values must match, ignoring case. **If they do not, stop** — do not
@@ -67,7 +67,7 @@ hash, remove it:
 
 ```powershell
 # CLI
-Unblock-File .\jt-snmpd-0.9.6-x64.msi
+Unblock-File .\jt-snmpd-0.9.7-x64.msi
 ```
 
 The graphical equivalent is right-click → **Properties** → tick **Unblock** at
@@ -140,7 +140,7 @@ Two files need covering: the MSI itself, and the service executable it installs.
 
 ```powershell
 # CLI - the paths a rule has to cover
-.\jt-snmpd-0.9.6-x64.msi
+.\jt-snmpd-0.9.7-x64.msi
 C:\Program Files\jt-snmpd\jt-snmpd.exe
 ```
 
@@ -174,9 +174,9 @@ than a third party's name.
 # CLI
 signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
   /f your-code-signing.pfx /p <password> `
-  .\jt-snmpd-0.9.6-x64.msi
+  .\jt-snmpd-0.9.7-x64.msi
 
-signtool verify /pa /v .\jt-snmpd-0.9.6-x64.msi
+signtool verify /pa /v .\jt-snmpd-0.9.7-x64.msi
 ```
 
 Verify the SHA-256 against the published value **before** signing. Signing

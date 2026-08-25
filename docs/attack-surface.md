@@ -12,7 +12,7 @@ description: What installing jt-snmpd adds to a Windows host, measured
 | Measurement | Value |
 |---|---|
 | Date | 2026-08-24 |
-| Version | jt-snmpd 0.9.6 |
+| Version | jt-snmpd 0.9.7 |
 | Host under test | Dell Latitude E5270 / Windows 10 22H2 |
 | Poller | LibreNMS 26.8.1 |
 

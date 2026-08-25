@@ -34,6 +34,14 @@ AGENT = ROOT / "deploy" / "jt_agent.py"
 SRC = CONFIGURE.read_text(encoding="utf-8")
 
 
+def _migration_block() -> str:
+    """Just the migration, so an assertion here cannot be satisfied or broken by
+    the purge branch, which legitimately does test whether a directory is gone."""
+    start = SRC.index("# --- Carry the data directory across")
+    end = SRC.index("# --- Data directory and ACL")
+    return SRC[start:end]
+
+
 def _assign(name: str) -> str:
     m = re.search(rf"^\${name}\s*=\s*(.+)$", SRC, re.M)
     if not m:
@@ -70,20 +78,51 @@ def test_migration_moves_rather_than_leaving_two_copies():
     """One directory afterwards, so there is no question which one is live."""
     assert "Move-Item" in SRC and "$DATA_DIR_OLD" in SRC, \
         "no move from the old data directory to the new one"
-    i = SRC.index("$DATA_DIR_OLD -Destination $DATA_DIR")
-    assert i > 0, "the move does not go from the old path to the new one"
 
 
 def test_migration_falls_back_to_copying_rather_than_failing_silently():
     """A duplicated directory is recoverable; a lost one is not."""
     assert "Copy-Item" in SRC, \
-        "there is no fallback if the move fails, which would lose the directory"
+        "there is no fallback if the move fails, which would lose the data"
 
 
-def test_migration_only_runs_when_the_new_location_is_absent():
-    """Running it again must not overwrite a live directory with a stale one."""
-    assert re.search(r"Test-Path \$DATA_DIR_OLD\)\s*-and\s*-not\s*\(Test-Path \$DATA_DIR\)", SRC), \
-        "the migration is not guarded on the destination being absent"
+def test_migration_is_not_gated_on_the_destination_directory_existing():
+    """The check that could never fire.
+
+    The first version guarded the whole migration on
+    `-not (Test-Path $DATA_DIR)`. That can never be true here: this script writes
+    its own log inside $LOG_DIR, so the destination is created by the first Log
+    call, long before the check runs. Every upgrade skipped the migration, left
+    the old data behind, and started the agent with a fresh index map -- exactly
+    the failure the migration exists to prevent. Found on the first real upgrade.
+
+    The condition has to be about the individual items, not the directory.
+    """
+    assert not re.search(r"-not\s*\(Test-Path \$DATA_DIR\)", _migration_block()), (
+        "the migration is gated on $DATA_DIR being absent, and it never is: "
+        "the log file creates it before the check runs")
+
+
+def test_migration_decides_per_item():
+    """Item by item, so a half-finished migration finishes next time."""
+    assert re.search(r"foreach \(\$rel in @\('config\.json'", SRC), \
+        "the migration no longer walks the individual items"
+    assert "if (Test-Path $dst)" in SRC, \
+        "the migration does not check the destination item before moving"
+
+
+def test_migration_never_overwrites_live_data():
+    """On a reinstall the new location holds current data; it must win."""
+    i = SRC.index("if (Test-Path $dst)")
+    tail = SRC[i:i + 400]
+    assert "leaving it alone" in tail or "continue" in tail, \
+        "an existing item at the destination must not be overwritten"
+
+
+def test_migration_stops_rather_than_continuing_with_partial_state():
+    """Half a state directory is worse than a failed install, which rolls back."""
+    assert re.search(r"\$failed -gt 0", SRC), \
+        "a failed item does not stop the installation"
 
 
 def test_purge_removes_both_locations():

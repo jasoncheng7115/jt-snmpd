@@ -252,35 +252,75 @@ Log "management networks: $($nets -join ', ')"
 # --- Carry the data directory across from the pre-rename location ---
 # Everything was renamed to jt-snmpd in 0.9.6 so the product, the service, the
 # paths and the repository finally agree. The data directory is the one that
-# cannot simply be recreated: index-map.json holds the ifIndex assignments, and
-# losing it makes LibreNMS delete every port and start again, taking the
-# historical RRDs with it. engine.json holds the SNMP engine identity, and
-# ms-snmp-restore.json is the only record of what the built-in service looked
-# like before we touched it.
+# cannot simply be recreated: state\index-map.json holds the ifIndex
+# assignments, and losing it makes LibreNMS delete every port and rediscover,
+# taking the historical RRDs with it. state\ms-snmp-restore.json is the only
+# record of what the built-in SNMP service looked like before we disabled it.
 #
-# Move rather than copy, so there is exactly one directory afterwards and no
-# question about which one is live. If the move fails, fall back to copying and
-# say so: a duplicated directory is recoverable, a lost one is not.
-if ((Test-Path $DATA_DIR_OLD) -and -not (Test-Path $DATA_DIR)) {
-    Log "carrying the data directory across: $DATA_DIR_OLD -> $DATA_DIR"
-    try {
-        Move-Item -Path $DATA_DIR_OLD -Destination $DATA_DIR -Force -ErrorAction Stop
-        Log "data directory moved"
-    } catch {
-        Log "[!] move failed ($_); copying instead"
+# **This is tested per file, not by asking whether the new directory exists.**
+# The first version asked exactly that, and could never fire: this script writes
+# its own log to $LOG_DIR, so by the time the check ran the destination had
+# already been created by the logging. The migration was skipped on every
+# upgrade, the old data was left behind, and the agent started with a fresh
+# index map -- the precise failure the migration exists to prevent. It was found
+# on the first real upgrade, not by reading the code.
+#
+# Moving item by item is also idempotent: a partially completed migration
+# finishes on the next run instead of being skipped for looking done.
+if (Test-Path $DATA_DIR_OLD) {
+    Log "carrying data across from $DATA_DIR_OLD"
+    $carried = 0; $skipped = 0; $failed = 0
+    foreach ($rel in @('config.json', 'state', 'secrets')) {
+        $src = Join-Path $DATA_DIR_OLD $rel
+        $dst = Join-Path $DATA_DIR $rel
+        if (-not (Test-Path $src)) { continue }
+        if (Test-Path $dst) {
+            # Never overwrite: the destination is live data on a reinstall.
+            Log "  $rel already present at the new location; leaving it alone"
+            $skipped++
+            continue
+        }
         try {
-            Copy-Item -Path $DATA_DIR_OLD -Destination $DATA_DIR -Recurse -Force -ErrorAction Stop
-            Log "[!] data directory copied; $DATA_DIR_OLD is left in place and can be removed by hand"
+            Move-Item -Path $src -Destination $dst -Force -ErrorAction Stop
+            Log "  moved $rel"
+            $carried++
         } catch {
-            Log "FAIL could not carry the data directory across: $_"
-            exit 1
+            try {
+                Copy-Item -Path $src -Destination $dst -Recurse -Force -ErrorAction Stop
+                Log "  [!] move failed, copied $rel instead: $_"
+                $carried++
+            } catch {
+                Log "  FAIL could not carry $rel across: $_"
+                $failed++
+            }
         }
     }
-} elseif ((Test-Path $DATA_DIR_OLD) -and (Test-Path $DATA_DIR)) {
-    # Both present means a previous run already migrated, or someone installed
-    # 0.9.6 fresh on a machine that still had the old directory. The new one is
-    # authoritative; say the old one is there rather than silently ignoring it.
-    Log "[!] $DATA_DIR_OLD still exists alongside $DATA_DIR and is no longer used; it can be removed by hand"
+    # Keep the old logs as history rather than deleting them, but out of the way.
+    $oldLogs = Join-Path $DATA_DIR_OLD 'logs'
+    if (Test-Path $oldLogs) {
+        $archive = Join-Path $LOG_DIR 'pre-0.9.6'
+        try {
+            if (-not (Test-Path $archive)) { New-Item -ItemType Directory -Force $archive | Out-Null }
+            Get-ChildItem $oldLogs -File -ErrorAction Stop | ForEach-Object {
+                Move-Item $_.FullName (Join-Path $archive $_.Name) -Force -ErrorAction SilentlyContinue
+            }
+            Log "  earlier logs kept in $archive"
+        } catch { Log "  [!] could not archive the earlier logs: $_" }
+    }
+    if ($failed -gt 0) {
+        Log "FAIL the data directory could not be carried across; refusing to continue with a partial state"
+        exit 1
+    }
+    # Only remove the old directory once everything worth keeping is out of it.
+    try {
+        $left = @(Get-ChildItem $DATA_DIR_OLD -Recurse -File -ErrorAction SilentlyContinue)
+        if ($left.Count -eq 0) {
+            Remove-Item $DATA_DIR_OLD -Recurse -Force -ErrorAction Stop
+            Log "  removed $DATA_DIR_OLD ($carried carried, $skipped already present)"
+        } else {
+            Log "  [!] $DATA_DIR_OLD still holds $($left.Count) file(s) and was left in place"
+        }
+    } catch { Log "  [!] could not remove $DATA_DIR_OLD`: $_" }
 }
 
 # --- Data directory and ACL  ---
