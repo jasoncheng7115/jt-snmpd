@@ -7,7 +7,7 @@ by editing the config file? Checking the answer revealed that they could not —
 and neither could they be set *during* installation.
 
 The installer collected `COMMUNITY` and `MANAGEMENTNETWORKS`, validated them,
-and wrote them to `C:\\ProgramData\\JT-SNMP\\config.json`. The agent declared
+and wrote them to `C:\\ProgramData\\jt-snmpd\\config.json`. The agent declared
 `CFG_PATH = ...\\config.yaml` — a different file — and never opened either one.
 `CFG` was a module-level dict with `community="mon2"` and
 `allowed_networks=("192.168.1.0/24",)` baked in, and those were the values every

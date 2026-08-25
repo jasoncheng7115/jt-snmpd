@@ -42,7 +42,7 @@ $commit = (& git rev-parse --short HEAD 2>$null)
 ) | Set-Content (Join-Path $stage 'VERSION') -Encoding UTF8
 
 @(
-    "JT SNMP Agent $Version"
+    "jt-snmpd $Version"
     ""
     "Install (requires administrator rights):"
     "  powershell -ExecutionPolicy Bypass -File install.ps1 -ManagementNetworks 192.168.1.0/24"

@@ -177,11 +177,25 @@ written exception; dependency CVEs at High or above must be zero; fuzzing must
 produce zero crashes. Anything short of that does not ship (`TEST_PLAN.md` §10,
 Release Gate).
 
-## 8. Current state
+## 8. Current state, and where the results are
 
-CI is not yet in place. The next step is to wire the "every commit" and "every
-PR" tiers into a local script, produce a first baseline report, and then decide
-which items belong in CI.
+**[Security scan results](https://jasoncheng7115.github.io/jt-snmpd/security-report.html)**
+carries the current baseline with a verdict on every finding. In short: Bandit
+HIGH 0, pip-audit clean across 62 packages, and a runtime dependency surface of
+two packages.
+
+Running on every push, in GitHub Actions:
+
+| Check | Where |
+|---|---|
+| The full test suite | `tests.yml`, Linux |
+| Personal data and secret scan | `tests.yml`, Linux |
+| Executable and MSI build | `tests.yml`, Windows |
+| Installer artefact checks, read from the MSI's own tables | `tests.yml`, Windows |
+
+Run by hand, not yet in CI: Bandit and pip-audit. Not yet run at all: Semgrep,
+gitleaks, the fuzzing tiers, and the Windows platform batch. The results page
+lists those explicitly rather than leaving this document to imply they happened.
 
 ---
 

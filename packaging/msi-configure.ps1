@@ -28,13 +28,17 @@ param(
 $ErrorActionPreference = 'Continue'
 
 $SERVICE_NAME  = 'jt-snmpd'
-$DATA_DIR      = Join-Path $env:ProgramData 'JT-SNMP'
+$DATA_DIR      = Join-Path $env:ProgramData 'jt-snmpd'
+# Where the data directory lived up to 0.9.5, before everything was renamed to
+# match the project. Upgrades have to bring it across: it holds index-map.json,
+# and losing that makes LibreNMS rediscover every port and orphan the history.
+$DATA_DIR_OLD  = Join-Path $env:ProgramData 'JT-SNMP'
 $STATE_DIR     = Join-Path $DATA_DIR 'state'
 $LOG_DIR       = Join-Path $DATA_DIR 'logs'
 $SECRETS_DIR   = Join-Path $DATA_DIR 'secrets'
 $EXE_NAME      = 'jt-snmpd.exe'
-$FW_RULE       = 'JT SNMP Agent (UDP 161)'
-$FW_RULE_ICMP  = 'JT SNMP Agent (ICMPv4)'
+$FW_RULE       = 'jt-snmpd (UDP 161)'
+$FW_RULE_ICMP  = 'jt-snmpd (ICMPv4)'
 $MSSNMP_PARAMS = 'HKLM:\SYSTEM\CurrentControlSet\Services\SNMP\Parameters'
 
 # A custom action has no console, so everything is written to a log file for
@@ -106,10 +110,15 @@ if ($Uninstall) {
         $script:LogToFile = $false
         # The service has just stopped, so a DPAPI blob or the log file may still
         # be held briefly. Retry rather than skipping quietly.
+        # Both locations: on a machine upgraded from 0.9.5 or earlier the old
+        # directory may still be present, and a purge that leaves it behind is
+        # not a purge. The next installation would inherit it through the
+        # migration step.
         $purged = $false
         foreach ($attempt in 1..5) {
             Remove-Item $DATA_DIR -Recurse -Force -ErrorAction SilentlyContinue
-            if (-not (Test-Path $DATA_DIR)) { $purged = $true; break }
+            Remove-Item $DATA_DIR_OLD -Recurse -Force -ErrorAction SilentlyContinue
+            if (-not (Test-Path $DATA_DIR) -and -not (Test-Path $DATA_DIR_OLD)) { $purged = $true; break }
             Start-Sleep -Milliseconds 400
         }
         if ($purged) {
@@ -117,8 +126,9 @@ if ($Uninstall) {
         } else {
             # Do not claim success falsely: anything left behind is inherited by
             # the next installation.
-            $left = @(Get-ChildItem $DATA_DIR -Recurse -Force -ErrorAction SilentlyContinue).Count
-            Log "WARN data directory not fully removed; $left items remain: $DATA_DIR"
+            $left = @(Get-ChildItem $DATA_DIR -Recurse -Force -ErrorAction SilentlyContinue).Count +
+                    @(Get-ChildItem $DATA_DIR_OLD -Recurse -Force -ErrorAction SilentlyContinue).Count
+            Log "WARN data directory not fully removed; $left items remain under $DATA_DIR or $DATA_DIR_OLD"
         }
     } else {
         # keeping it by default is deliberate. Customers commonly
@@ -238,6 +248,40 @@ if ($nets.Count -eq 0) {
     exit 1
 }
 Log "management networks: $($nets -join ', ')"
+
+# --- Carry the data directory across from the pre-rename location ---
+# Everything was renamed to jt-snmpd in 0.9.6 so the product, the service, the
+# paths and the repository finally agree. The data directory is the one that
+# cannot simply be recreated: index-map.json holds the ifIndex assignments, and
+# losing it makes LibreNMS delete every port and start again, taking the
+# historical RRDs with it. engine.json holds the SNMP engine identity, and
+# ms-snmp-restore.json is the only record of what the built-in service looked
+# like before we touched it.
+#
+# Move rather than copy, so there is exactly one directory afterwards and no
+# question about which one is live. If the move fails, fall back to copying and
+# say so: a duplicated directory is recoverable, a lost one is not.
+if ((Test-Path $DATA_DIR_OLD) -and -not (Test-Path $DATA_DIR)) {
+    Log "carrying the data directory across: $DATA_DIR_OLD -> $DATA_DIR"
+    try {
+        Move-Item -Path $DATA_DIR_OLD -Destination $DATA_DIR -Force -ErrorAction Stop
+        Log "data directory moved"
+    } catch {
+        Log "[!] move failed ($_); copying instead"
+        try {
+            Copy-Item -Path $DATA_DIR_OLD -Destination $DATA_DIR -Recurse -Force -ErrorAction Stop
+            Log "[!] data directory copied; $DATA_DIR_OLD is left in place and can be removed by hand"
+        } catch {
+            Log "FAIL could not carry the data directory across: $_"
+            exit 1
+        }
+    }
+} elseif ((Test-Path $DATA_DIR_OLD) -and (Test-Path $DATA_DIR)) {
+    # Both present means a previous run already migrated, or someone installed
+    # 0.9.6 fresh on a machine that still had the old directory. The new one is
+    # authoritative; say the old one is there rather than silently ignoring it.
+    Log "[!] $DATA_DIR_OLD still exists alongside $DATA_DIR and is no longer used; it can be removed by hand"
+}
 
 # --- Data directory and ACL  ---
 foreach ($d in @($DATA_DIR, $STATE_DIR, $LOG_DIR, $SECRETS_DIR)) {

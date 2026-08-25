@@ -39,14 +39,14 @@ param(
 $ErrorActionPreference = 'Continue'
 
 $SERVICE_NAME  = 'jt-snmpd'
-$DISPLAY_NAME  = 'JT SNMP Agent'
-$INSTALL_DIR   = Join-Path $env:ProgramFiles 'JT SNMP Agent'
-$DATA_DIR      = Join-Path $env:ProgramData 'JT-SNMP'
+$DISPLAY_NAME  = 'jt-snmpd'
+$INSTALL_DIR   = Join-Path $env:ProgramFiles 'jt-snmpd'
+$DATA_DIR      = Join-Path $env:ProgramData 'jt-snmpd'
 $STATE_DIR     = Join-Path $DATA_DIR 'state'
 $LOG_DIR       = Join-Path $DATA_DIR 'logs'
 $SECRETS_DIR   = Join-Path $DATA_DIR 'secrets'
 $EXE_NAME      = 'jt-snmpd.exe'
-$FW_RULE       = 'JT SNMP Agent (UDP 161)'
+$FW_RULE       = 'jt-snmpd (UDP 161)'
 $MSSNMP_PARAMS = 'HKLM:\SYSTEM\CurrentControlSet\Services\SNMP\Parameters'
 
 # --- Output (the four-level style from jt-doc-tools) -------------------------
@@ -469,7 +469,7 @@ function Write-Summary {
             Select-Object -ExpandProperty IPAddress) -join ', '
     Write-Host ''
     Write-Host '========================================================'
-    Write-Host '  JT SNMP Agent installed'
+    Write-Host '  jt-snmpd installed'
     Write-Host '========================================================'
     Write-Host ''
     Write-Host "  service       $SERVICE_NAME (automatic start, running)"
@@ -541,7 +541,7 @@ if (-not (Test-Path (Join-Path $SourceDir $EXE_NAME))) {
 }
 
 Write-Host ''
-Write-Host "JT SNMP Agent installer" -ForegroundColor Cyan
+Write-Host "jt-snmpd installer" -ForegroundColor Cyan
 Write-Host ''
 
 Test-Prerequisites

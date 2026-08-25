@@ -31,10 +31,10 @@ Get-CimInstance Win32_Service -Filter "Name='jt-snmpd'" | Select-Object Name, St
 Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
   Where-Object DisplayName -like '*JT SNMP*' |
   Select-Object DisplayName, DisplayVersion, PSChildName
-Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' -ErrorAction SilentlyContinue |
+Get-NetFirewallRule -DisplayName 'jt-snmpd*' -ErrorAction SilentlyContinue |
   Select-Object DisplayName, Enabled
-Test-Path 'C:\Program Files\JT SNMP Agent'
-Test-Path 'C:\ProgramData\JT-SNMP'
+Test-Path 'C:\Program Files\jt-snmpd'
+Test-Path 'C:\ProgramData\jt-snmpd'
 Get-NetUDPEndpoint -LocalPort 161 -ErrorAction SilentlyContinue
 ```
 
@@ -50,7 +50,7 @@ msiexec /x '{把 ProductCode 填在這裡}' /qn /l*v "$env:TEMP\jt-uninstall.log
 
 失敗的話，`$env:TEMP\jt-uninstall.log` 會指出是哪一個動作失敗。
 在檔案裡搜 `Return value 3`，緊接在它上面的幾行就是原因。
-同時請看 `C:\ProgramData\JT-SNMP\logs\`，設定步驟會把自己的記錄寫在那裡，
+同時請看 `C:\ProgramData\jt-snmpd\logs\`，設定步驟會把自己的記錄寫在那裡，
 通常會直接寫出它做不到什麼。
 
 只有在正規解除安裝真的走不完時，才需要往下做。
@@ -76,10 +76,10 @@ sc.exe delete jt-snmpd
 
 ```powershell
 # CLI
-Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' | Remove-NetFirewallRule
+Get-NetFirewallRule -DisplayName 'jt-snmpd*' | Remove-NetFirewallRule
 ```
 
-安裝時會建立兩條：`JT SNMP Agent (UDP 161)` 與 `JT SNMP Agent (ICMPv4)`。
+安裝時會建立兩條：`jt-snmpd (UDP 161)` 與 `jt-snmpd (ICMPv4)`。
 服務移除之後留著它們不構成資安問題，而且下次安裝會重建，
 但在這裡一併清掉比較乾淨。
 
@@ -89,14 +89,14 @@ Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' | Remove-NetFirewallRule
 並記錄它原本的狀態，好在解除安裝時放回去。那份記錄在：
 
 ```
-C:\ProgramData\JT-SNMP\state\ms-snmp-restore.json
+C:\ProgramData\jt-snmpd\state\ms-snmp-restore.json
 ```
 
 刪資料目錄之前先讀它：
 
 ```powershell
 # CLI
-Get-Content 'C:\ProgramData\JT-SNMP\state\ms-snmp-restore.json' -Raw | ConvertFrom-Json
+Get-Content 'C:\ProgramData\jt-snmpd\state\ms-snmp-restore.json' -Raw | ConvertFrom-Json
 ```
 
 裡面記著我們動它之前的啟動類型與執行狀態。照著放回去：
@@ -116,11 +116,13 @@ Start-Service SNMP
 
 ```powershell
 # CLI
-Remove-Item 'C:\Program Files\JT SNMP Agent' -Recurse -Force
-Remove-Item 'C:\ProgramData\JT-SNMP' -Recurse -Force
+Remove-Item 'C:\Program Files\jt-snmpd' -Recurse -Force
+Remove-Item 'C:\ProgramData\jt-snmpd' -Recurse -Force
+# 從 0.9.5 以前升級上來的機器，如果搬移中斷過，改名前的目錄可能還在：
+Remove-Item 'C:\ProgramData\JT-SNMP' -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
-`C:\ProgramData\JT-SNMP` 裡有設定檔、記錄檔、SNMP engine 身分，以及介面索引映射。
+`C:\ProgramData\jt-snmpd` 裡有設定檔、記錄檔、SNMP engine 身分，以及介面索引映射。
 正常解除安裝**刻意**保留這個目錄：管理員常以「移除再重裝」來排除問題，
 而把索引映射一起丟掉會讓 LibreNMS 重新探索每一個 port，
 舊的歷史 RRD 全部失去對應。確定要永久移除這個 agent 時再刪。
@@ -135,7 +137,7 @@ Remove-Item 'C:\ProgramData\JT-SNMP' -Recurse -Force
 ```powershell
 # CLI，先問 Windows Installer 它認為註冊了什麼
 Get-Package -ProviderName msi | Where-Object Name -like '*JT SNMP*'
-Get-Package -ProviderName msi -Name 'JT SNMP Agent' | Uninstall-Package
+Get-Package -ProviderName msi -Name 'jt-snmpd' | Uninstall-Package
 ```
 
 這樣還是不行的話，可以直接從登錄檔移除註冊。
@@ -155,9 +157,9 @@ Remove-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{PRODUCTC
 ```powershell
 # CLI，以下每一項都應該是空的或 False
 Get-Service jt-snmpd -ErrorAction SilentlyContinue
-Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' -ErrorAction SilentlyContinue
-Test-Path 'C:\Program Files\JT SNMP Agent'
-Test-Path 'C:\ProgramData\JT-SNMP'
+Get-NetFirewallRule -DisplayName 'jt-snmpd*' -ErrorAction SilentlyContinue
+Test-Path 'C:\Program Files\jt-snmpd'
+Test-Path 'C:\ProgramData\jt-snmpd'
 Get-NetUDPEndpoint -LocalPort 161 -ErrorAction SilentlyContinue
 Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
   Where-Object DisplayName -like '*JT SNMP*'
@@ -182,10 +184,10 @@ Get-NetUDPEndpoint -LocalPort 161 | ForEach-Object {
 
 | 現象 | 可能原因 | 怎麼處理 |
 |---|---|---|
-| MSI 以 1603 結束並倒回 | 設定步驟失敗。因為是倒回，機器會回到原本的狀態 | 先看 `C:\ProgramData\JT-SNMP\logs\`，再看 MSI 的詳細記錄 |
+| MSI 以 1603 結束並倒回 | 設定步驟失敗。因為是倒回，機器會回到原本的狀態 | 先看 `C:\ProgramData\jt-snmpd\logs\`，再看 MSI 的詳細記錄 |
 | 出現「無法判定 community」 | 用無訊息安裝但沒給 `COMMUNITY`，而內建服務也沒有可沿用的 | 在命令列補上 `COMMUNITY=`，或改用圖形介面安裝 |
 | 安裝中止，說 UDP/161 已被佔用 | 有第三方 agent 佔著那個埠 | 這是刻意的：我們不會去停別人的 agent。請自行決定該由誰佔用 161 |
-| 服務啟動後又停止 | 健康檢查發現 agent 沒有在 loopback 上回應 | `C:\ProgramData\JT-SNMP\logs\` 會寫原因，通常是設定檔內容有問題 |
+| 服務啟動後又停止 | 健康檢查發現 agent 沒有在 loopback 上回應 | `C:\ProgramData\jt-snmpd\logs\` 會寫原因，通常是設定檔內容有問題 |
 | Windows 說產品已安裝 | 前一次的註冊卡住了 | 見 §7 |
 
 要診斷安裝問題，請收集詳細記錄：
@@ -201,7 +203,7 @@ msiexec /i jt-snmpd-0.9.6-x64.msi /qn /l*v "$env:TEMP\jt-install.log" `
 ## 請回報
 
 如果安裝程式做不到這一頁裡某件必須手動完成的事，那是一個值得回報的缺陷，
-不只是一台待修的機器。請附上 MSI 的詳細記錄與 `C:\ProgramData\JT-SNMP\logs\`
+不只是一台待修的機器。請附上 MSI 的詳細記錄與 `C:\ProgramData\jt-snmpd\logs\`
 的內容開 issue，記得先把 community 字串移除。
 
 <https://github.com/jasoncheng7115/jt-snmpd/issues>

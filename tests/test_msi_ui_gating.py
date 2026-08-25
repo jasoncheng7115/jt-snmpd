@@ -251,9 +251,9 @@ def test_dialog_titles_match_the_rest_of_the_wizard():
     titles = {d.get("Id"): d.get("Title") for d in TREE.iter(f"{{{NS['w']}}}Dialog")}
     assert titles, "no dialogs found"
     for dlg, title in titles.items():
-        assert title == "JT SNMP Agent Setup", (
+        assert title == "jt-snmpd Setup", (
             f"{dlg} has title {title!r}; WixUI's own pages use "
-            "\"JT SNMP Agent Setup\" and the title bar changing mid-wizard "
+            "\"jt-snmpd Setup\" and the title bar changing mid-wizard "
             "reads as a different program")
 
 

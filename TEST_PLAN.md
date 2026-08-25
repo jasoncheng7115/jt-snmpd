@@ -218,7 +218,7 @@
 | 6.1.4 | 解除安裝 → 服務刪除、規則刪除、ProgramData 保留、不需重開機 | **[已驗]** `msiexec /x` EXIT=0，服務/埠/規則/程式目錄皆清除，資料目錄與 index-map 保留 |
 | 6.1.5 | PURGE 解除安裝 → 完全清除 | **[已驗]** `PURGE=1` EXIT=0，資料目錄完整消失。首次實測**失敗**，自訂動作的記錄檔就在被清除的目錄裡，刪完後收尾的 `Log` 又把 `logs\` 重建回來。已修（清除前關閉檔案記錄 + 重試 + 驗證），迴歸測試見 `tests/test_uninstall_purge.py` |
 | 6.1.6 | 重複安裝冪等 | **[已驗]** 解除安裝後重裝 EXIT=0 |
-| 6.1.6a | 出現在「加入或移除程式」 | **[已驗]** `JT SNMP Agent v0.1.0 / Jason Tools` |
+| 6.1.6a | 出現在「加入或移除程式」 | **[已驗]** `jt-snmpd v0.1.0 / Jason Tools` |
 | 6.1.6b | 健康檢查失敗時 MSI 倒回 | **[已驗]** loopback 失敗時 MSIEXEC_EXIT=1603 並完整倒回（實測發生過）|
 | 6.1.7 | 161 被 MS SNMP Service 佔用 → 自動停用 + 設定移轉 | **[已驗]** Win11 內建 SNMP 設為 Automatic/Running 後安裝，安裝後內建為 Stopped/Disabled、161 由 jt-snmpd 持有 |
 | 6.1.8 | 161 被非 Microsoft 程式佔用 → 中止且不動它，訊息正確 | [受阻] |
@@ -296,7 +296,7 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 | 6.1c.5 | 選用核取方塊預設未勾選，且標示與行為一致 | **[已驗]** `KEEPMSSNMP` 不在 `Property` 表中（非空值會讓方塊顯示為已勾選）；CI 讀 `Property` 表 |
 | 6.1c.6 | 授權頁顯示本專案的 LICENSE，不是佔位文字 | **[已驗]** GPL-3.0 全文；CI 檢查沒有 `Lorem ipsum` |
 | 6.1c.7 | 精靈美術為本專案的，且與產生器輸出一致 | **[已驗]** CI 重新產生後比對雜湊 |
-| 6.1c.8 | 標題列在整個精靈中一致 | **[已驗]** 所有對話框皆為 `JT SNMP Agent Setup` |
+| 6.1c.8 | 標題列在整個精靈中一致 | **[已驗]** 所有對話框皆為 `jt-snmpd Setup` |
 | 6.1c.9 | 「加入或移除程式」顯示圖示 | **[已驗]** `DisplayIcon` 指向已安裝的執行檔 |
 | 6.1c.10 | 無法決定 community 時給出可行動的錯誤 | **[已實作]** 安裝程式在健康檢查之前就中止；[待驗] 需無內建 SNMP 的乾淨機器 |
 | 6.1c.11 | **端對端 GUI 安裝**（真的按下 Install 並完成） | [待驗] 需一台可犧牲的機器；`.154` 受正式 LibreNMS 監控，不能拿來跑 |

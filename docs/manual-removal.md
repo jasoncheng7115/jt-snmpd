@@ -34,10 +34,10 @@ Get-CimInstance Win32_Service -Filter "Name='jt-snmpd'" | Select-Object Name, St
 Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
   Where-Object DisplayName -like '*JT SNMP*' |
   Select-Object DisplayName, DisplayVersion, PSChildName
-Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' -ErrorAction SilentlyContinue |
+Get-NetFirewallRule -DisplayName 'jt-snmpd*' -ErrorAction SilentlyContinue |
   Select-Object DisplayName, Enabled
-Test-Path 'C:\Program Files\JT SNMP Agent'
-Test-Path 'C:\ProgramData\JT-SNMP'
+Test-Path 'C:\Program Files\jt-snmpd'
+Test-Path 'C:\ProgramData\jt-snmpd'
 Get-NetUDPEndpoint -LocalPort 161 -ErrorAction SilentlyContinue
 ```
 
@@ -53,7 +53,7 @@ msiexec /x '{PUT-THE-PRODUCTCODE-HERE}' /qn /l*v "$env:TEMP\jt-uninstall.log"
 
 If it fails, `$env:TEMP\jt-uninstall.log` names the action that failed. Search it
 for `Return value 3`; the lines just above are the cause. Read
-`C:\ProgramData\JT-SNMP\logs\` as well — the configure step writes its own log
+`C:\ProgramData\jt-snmpd\logs\` as well — the configure step writes its own log
 there, in English, and it usually says plainly what it could not do.
 
 Only continue past this point if the supported uninstall will not complete.
@@ -79,10 +79,10 @@ Close them, or reboot; the deletion completes on the next start.
 
 ```powershell
 # CLI
-Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' | Remove-NetFirewallRule
+Get-NetFirewallRule -DisplayName 'jt-snmpd*' | Remove-NetFirewallRule
 ```
 
-Two rules are created: `JT SNMP Agent (UDP 161)` and `JT SNMP Agent (ICMPv4)`.
+Two rules are created: `jt-snmpd (UDP 161)` and `jt-snmpd (ICMPv4)`.
 Leaving them behind is not a security problem once the service is gone, but the
 next installation will replace them, so it is tidier to remove them here.
 
@@ -93,14 +93,14 @@ built-in Windows SNMP Service rather than removing it, and records what it was
 so that uninstalling can put it back. That record is:
 
 ```
-C:\ProgramData\JT-SNMP\state\ms-snmp-restore.json
+C:\ProgramData\jt-snmpd\state\ms-snmp-restore.json
 ```
 
 Read it before deleting the data directory:
 
 ```powershell
 # CLI
-Get-Content 'C:\ProgramData\JT-SNMP\state\ms-snmp-restore.json' -Raw | ConvertFrom-Json
+Get-Content 'C:\ProgramData\jt-snmpd\state\ms-snmp-restore.json' -Raw | ConvertFrom-Json
 ```
 
 It names the start type and the state the built-in service had before we touched
@@ -122,11 +122,14 @@ enabled reopens a service the site may have deliberately turned off.
 
 ```powershell
 # CLI
-Remove-Item 'C:\Program Files\JT SNMP Agent' -Recurse -Force
-Remove-Item 'C:\ProgramData\JT-SNMP' -Recurse -Force
+Remove-Item 'C:\Program Files\jt-snmpd' -Recurse -Force
+Remove-Item 'C:\ProgramData\jt-snmpd' -Recurse -Force
+# On a machine upgraded from 0.9.5 or earlier, the pre-rename directory may
+# still be present if a migration was interrupted:
+Remove-Item 'C:\ProgramData\JT-SNMP' -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
-`C:\ProgramData\JT-SNMP` holds the configuration, the logs, the SNMP engine
+`C:\ProgramData\jt-snmpd` holds the configuration, the logs, the SNMP engine
 identity and the interface index map. Keeping the directory is what a normal
 uninstall does, deliberately: administrators often uninstall and reinstall to
 troubleshoot, and discarding the index map makes LibreNMS rediscover every port,
@@ -144,7 +147,7 @@ product is already installed".
 ```powershell
 # CLI - ask Windows Installer what it thinks is registered
 Get-Package -ProviderName msi | Where-Object Name -like '*JT SNMP*'
-Get-Package -ProviderName msi -Name 'JT SNMP Agent' | Uninstall-Package
+Get-Package -ProviderName msi -Name 'jt-snmpd' | Uninstall-Package
 ```
 
 If that also fails, the registration can be removed from the registry directly.
@@ -164,9 +167,9 @@ installation works before considering the machine fixed.
 ```powershell
 # CLI - every one of these should come back empty or false
 Get-Service jt-snmpd -ErrorAction SilentlyContinue
-Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' -ErrorAction SilentlyContinue
-Test-Path 'C:\Program Files\JT SNMP Agent'
-Test-Path 'C:\ProgramData\JT-SNMP'
+Get-NetFirewallRule -DisplayName 'jt-snmpd*' -ErrorAction SilentlyContinue
+Test-Path 'C:\Program Files\jt-snmpd'
+Test-Path 'C:\ProgramData\jt-snmpd'
 Get-NetUDPEndpoint -LocalPort 161 -ErrorAction SilentlyContinue
 Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
   Where-Object DisplayName -like '*JT SNMP*'
@@ -191,10 +194,10 @@ outcome, or a third-party agent that was there all along.
 
 | Symptom | Likely cause | What to do |
 |---|---|---|
-| MSI ends with 1603 and rolls back | The configure step failed. It is a rollback, so the machine is left as it was | Read `C:\ProgramData\JT-SNMP\logs\`, then the verbose MSI log |
+| MSI ends with 1603 and rolls back | The configure step failed. It is a rollback, so the machine is left as it was | Read `C:\ProgramData\jt-snmpd\logs\`, then the verbose MSI log |
 | "no community could be determined" | Installed silently with no `COMMUNITY`, and the built-in service had none to carry over | Supply `COMMUNITY=` on the command line, or use the graphical installation |
 | Installation aborts, saying UDP/161 is in use | A third-party agent holds the port | Deliberate: we never disable somebody else's agent. Decide which one should own the port |
-| Service starts, then stops | The health check found the agent not answering on loopback | `C:\ProgramData\JT-SNMP\logs\` records why; a bad configuration file is the usual cause |
+| Service starts, then stops | The health check found the agent not answering on loopback | `C:\ProgramData\jt-snmpd\logs\` records why; a bad configuration file is the usual cause |
 | Windows says the product is already installed | A previous registration is stuck | §7 |
 
 Collect a verbose log to diagnose an installation:
@@ -211,7 +214,7 @@ msiexec /i jt-snmpd-0.9.6-x64.msi /qn /l*v "$env:TEMP\jt-install.log" `
 
 If the installer could not do something this page had to do by hand, that is a
 defect worth reporting, not just a machine to fix. Please open an issue with the
-verbose MSI log and the contents of `C:\ProgramData\JT-SNMP\logs\`, with the
+verbose MSI log and the contents of `C:\ProgramData\jt-snmpd\logs\`, with the
 community string removed.
 
 <https://github.com/jasoncheng7115/jt-snmpd/issues>

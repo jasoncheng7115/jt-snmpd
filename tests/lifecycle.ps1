@@ -15,8 +15,8 @@ function Check { param($name, $cond, $detail="")
   if ($cond) { $script:PASS++; "  [PASS] $name $detail" }
   else { $script:FAIL++; "  [FAIL] $name $detail" } }
 
-$DATA = "C:\ProgramData\JT-SNMP"
-$PROG = "C:\Program Files\JT SNMP Agent"
+$DATA = "C:\ProgramData\jt-snmpd"
+$PROG = "C:\Program Files\jt-snmpd"
 $IDX  = "$DATA\state\index-map.json"
 $MSI  = "C:\jtdev\dist\jt-snmpd-0.2.0-x64.msi"
 
@@ -30,7 +30,7 @@ function Port161Owner {
   $o = @(Get-NetUDPEndpoint -LocalPort 161 -EA SilentlyContinue | ForEach-Object {
     (Get-Process -Id $_.OwningProcess -EA SilentlyContinue).ProcessName }) | Sort-Object -Unique
   if ($o) { $o -join ',' } else { 'none' } }
-function FwRules { (Get-NetFirewallRule -DisplayName "JT SNMP Agent*" -EA SilentlyContinue | Measure-Object).Count }
+function FwRules { (Get-NetFirewallRule -DisplayName "jt-snmpd*" -EA SilentlyContinue | Measure-Object).Count }
 # 注意：不可用 $args 當參數名，那是 PowerShell 的保留自動變數，
 # 會被自身的未具名參數陣列覆蓋，傳入值永遠是空的（實測踩過）。
 function MsiRun { param([string[]]$MsiArgs)

@@ -159,7 +159,7 @@ That is not a security-versus-features trade-off; there is simply no reason to
 publish them.
 
 ARP is the one that genuinely is useful, and it is **already implemented** and
-off by default. To turn it on, edit `C:\ProgramData\JT-SNMP\config.json`:
+off by default. To turn it on, edit `C:\ProgramData\jt-snmpd\config.json`:
 
 ```json
 {

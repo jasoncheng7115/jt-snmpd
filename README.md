@@ -148,7 +148,7 @@ Collectors (Win32 API via ctypes)
         ▼
 Snapshot builder ──► sorted array + pre-encoded BER bytes
         │
-        ▼ atomic handover (reference assignment)
+        ▼ swapped in at once (one reference; a walk in progress keeps the old one)
 Custom MibInstrumController      bisect
         │
         ▼
@@ -256,7 +256,7 @@ The installer will:
 2. Read the existing Microsoft SNMP Service configuration and carry over the
    community string, permitted managers, sysContact and sysLocation
 3. Stop any previous version and wait for its file handles to be released
-4. Install to `%ProgramFiles%\JT SNMP Agent\` and create `%ProgramData%\JT-SNMP\`
+4. Install to `%ProgramFiles%\jt-snmpd\` and create `%ProgramData%\jt-snmpd\`
    with hardened ACLs
 5. Disable the built-in SNMP Service — **disable, not remove**, and record enough
    state to restore it
@@ -293,12 +293,12 @@ LibreNMS re-discover every port and orphan the historical RRDs.
 
 | Purpose | Location |
 |---|---|
-| Program files | `%ProgramFiles%\JT SNMP Agent\` |
-| Configuration | `%ProgramData%\JT-SNMP\config.json` |
+| Program files | `%ProgramFiles%\jt-snmpd\` |
+| Configuration | `%ProgramData%\jt-snmpd\config.json` |
 | Group Policy (overrides configuration) | `HKLM\SOFTWARE\Policies\JasonTools\JTSNMPD` |
-| Interface index map | `%ProgramData%\JT-SNMP\state\index-map.json` |
-| Restore information | `%ProgramData%\JT-SNMP\state\ms-snmp-restore.json` |
-| Logs | `%ProgramData%\JT-SNMP\logs\` |
+| Interface index map | `%ProgramData%\jt-snmpd\state\index-map.json` |
+| Restore information | `%ProgramData%\jt-snmpd\state\ms-snmp-restore.json` |
+| Logs | `%ProgramData%\jt-snmpd\logs\` |
 | Service name | `jt-snmpd` |
 
 The same paths are reported over SNMP (`jtAgentConfigPath`, `jtAgentLogPath`,

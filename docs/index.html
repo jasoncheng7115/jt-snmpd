@@ -108,6 +108,25 @@ figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 .shots figure h3::before{content:"";width:6px;height:18px;border-radius:3px;
   background:var(--accent);display:inline-block}
 
+/* The test bed. Readers were assuming the comparison was one machine before and
+   after, which it is not, so the two hosts are shown side by side with their
+   actual hardware and the difference is stated rather than left to be noticed. */
+.bed{border:1px solid var(--line);border-radius:12px;background:#fff;
+  padding:20px 22px;margin:0 0 32px}
+.bed-head{color:var(--dim);margin:0 0 16px;line-height:1.75}
+.bed-head b{color:var(--fg)}
+.bed-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.bed-box{border:1px solid var(--line);border-radius:9px;padding:14px 16px;background:#f7f9fb}
+.bed-box h4{margin:0 0 10px;font-size:14.5px;display:flex;align-items:center;gap:8px}
+.bed-box h4::before{content:"";width:10px;height:10px;border-radius:3px;display:inline-block}
+.bed-a h4::before{background:#6c757d}
+.bed-b h4::before{background:var(--accent)}
+.bed-box dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13.5px}
+.bed-box dt{color:var(--dim)}
+.bed-box dd{margin:0;color:var(--fg)}
+.bed-note{margin:16px 0 0;color:var(--dim);font-size:14px;line-height:1.75}
+.bed-note b{color:var(--fg)}
+
 /* The wizard pages are captured at 1x, so they are shown at their own size and
    never scaled up: enlarging a UI screenshot adds blur, not detail. On a narrow
    viewport they fall back to one per row. */
@@ -174,8 +193,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 
 <header class="hero"><div class="wrap">
   <h1>
-    <span class="zh">Windows 內建 SNMP 已停止支援，<br>往後要怎麼輪詢？<br>交給 jt-snmpd 接手。</span>
-    <span class="en">Windows' built-in SNMP is deprecated.<br>So what polls your hosts now?<br>jt-snmpd takes over.</span>
+    <span class="zh">Windows 內建 SNMP 已停止支援，<br>往後要怎麼輪詢？交給 jt-snmpd 接手。</span>
+    <span class="en">Windows' built-in SNMP is deprecated.<br>So what polls your hosts now? jt-snmpd takes over.</span>
   </h1>
   <p class="lead">
     <span class="zh">jt-snmpd 是一個 <b>唯讀</b> 的 Windows SNMP agent，以標準 MIB 把主機監控資料餵給 LibreNMS，
@@ -264,12 +283,49 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 
 <section id="compare"><div class="wrap">
   <h2><span class="zh">與內建 SNMP Service 的實測對照</span><span class="en">Measured against the built-in service</span></h2>
-  <p class="sub">
-    <span class="zh">兩台都是實體 Windows 10 22H2，由同一套 LibreNMS 監控，LibreNMS 端未做任何客製。
-      截圖中的 MAC 位址已遮蔽。</span>
-    <span class="en">Both hosts are physical machines running Windows 10 22H2, polled by the same LibreNMS instance
-      with no customisation on the LibreNMS side. MAC addresses in the screenshots are redacted.</span>
-  </p>
+  <div class="bed">
+    <div class="bed-head">
+      <span class="zh">兩台都是<b>實體機</b>，都跑 <b>Windows 10 22H2</b>（build 19045），
+        由同一套 LibreNMS 監控，LibreNMS 端未做任何客製。</span>
+      <span class="en">Both hosts are <b>physical machines</b> running <b>Windows 10 22H2</b>
+        (build 19045), polled by the same LibreNMS instance, with no customisation on the LibreNMS
+        side.</span>
+    </div>
+    <div class="bed-pair">
+      <div class="bed-box bed-a">
+        <h4><span class="zh">內建 SNMP Service</span><span class="en">Built-in SNMP Service</span></h4>
+        <dl>
+          <dt><span class="zh">機器</span><span class="en">Machine</span></dt>
+          <dd><span class="zh">桌機，AMD Ryzen（Family 25）</span>
+              <span class="en">Desktop, AMD Ryzen (Family 25)</span></dd>
+          <dt><span class="zh">記憶體</span><span class="en">Memory</span></dt><dd>10 GiB</dd>
+        </dl>
+      </div>
+      <div class="bed-box bed-b">
+        <h4>jt-snmpd</h4>
+        <dl>
+          <dt><span class="zh">機器</span><span class="en">Machine</span></dt>
+          <dd><b>Dell Latitude E5270</b>
+              <span class="zh"> 筆記型電腦</span><span class="en"> notebook</span></dd>
+          <dt>CPU</dt><dd>Intel Core i5-6300U @ 2.40 GHz<span class="zh">，2 核</span><span class="en">, 2 cores</span></dd>
+          <dt><span class="zh">記憶體</span><span class="en">Memory</span></dt><dd>16 GB DDR4-2133</dd>
+          <dt><span class="zh">磁碟</span><span class="en">Disk</span></dt><dd>Samsung PM871b M.2 256 GB</dd>
+        </dl>
+      </div>
+    </div>
+    <p class="bed-note">
+      <span class="zh"><b>兩台不是同一台機器</b>，所以記憶體總量等絕對數字本來就不同。
+        這裡要看的是 <b>LibreNMS 收到了哪些資料表</b>，不是數字一不一樣。
+        右邊那台的規格全部由 jt-snmpd 自己從 SMBIOS 解析後經 SNMP 回報；
+        左邊那台的內建服務連 <code>entPhysical</code> 都沒有，所以那一欄是空的。
+        截圖中的 MAC 位址已遮蔽。</span>
+      <span class="en"><b>These are two different machines</b>, so absolute figures such as total memory
+        naturally differ. What the comparison shows is <b>which tables LibreNMS receives</b>, not whether
+        the numbers match. Everything listed on the right was parsed out of SMBIOS by jt-snmpd itself and
+        reported over SNMP; the built-in service on the left has no <code>entPhysical</code> at all, which
+        is why that column is empty. MAC addresses in the screenshots are redacted.</span>
+    </p>
+  </div>
 
   <table>
     <thead><tr>
@@ -413,11 +469,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   <p class="sub">
     <span class="zh">安裝程式會逐步詢問安裝路徑與監控設定。兩個必填的設定是<b>管理網段</b>與
       <b>community</b>，它們決定誰查得到這台主機。事後也可以編輯
-      <code>C:\ProgramData\JT-SNMP\config.json</code> 再重新啟動服務。</span>
+      <code>C:\ProgramData\jt-snmpd\config.json</code> 再重新啟動服務。</span>
     <span class="en">The installer asks for the install location and the monitoring settings.
       The two required values are the <b>management networks</b> and the <b>community string</b> —
       together they decide who may query this host. Both can be changed afterwards by editing
-      <code>C:\ProgramData\JT-SNMP\config.json</code> and restarting the service.</span>
+      <code>C:\ProgramData\jt-snmpd\config.json</code> and restarting the service.</span>
   </p>
 
   <div class="wizard">
@@ -532,6 +588,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <p><span class="zh">安裝或解除安裝走不完時，安裝程式做過的每一件事該怎麼用手做完</span>
          <span class="en">When an install or uninstall will not complete: every step the installer performs,
            and how to do each by hand</span></p></div>
+    <div class="card"><h3><a data-doc="security-report" href="security-report.html">
+      <span class="zh">資安檢測結果</span><span class="en">Scan results</span></a></h3>
+      <p><span class="zh">當前基線：Bandit HIGH 0、相依零弱點，每一條發現都附判定，也列出還沒跑的項目</span>
+         <span class="en">The current baseline: Bandit HIGH 0, no dependency vulnerabilities, a verdict on
+           every finding, and an explicit list of what has not been run</span></p></div>
     <div class="card"><h3><a data-doc="security-scanning" href="security-scanning.html">
       <span class="zh">資安檢測工具鏈</span><span class="en">Security scanning</span></a></h3>
       <p><span class="zh">Bandit / Semgrep / pip-audit / SBOM，以及可提交的報告格式</span>

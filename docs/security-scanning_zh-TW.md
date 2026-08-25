@@ -170,10 +170,24 @@ reports/
 相依 CVE 的 High 以上必須為零；fuzzing 必須零 crash。
 未達標即不得出貨（`TEST_PLAN.md` §10 Release Gate）。
 
-## 8. 目前狀態
+## 8. 目前狀態，以及結果放在哪裡
 
-尚未建立 CI。下一步是把上述「每次 commit」與「每次 PR」層級的工具
-接進本地腳本，先產出第一份基線報告，再決定哪些項目要進 CI。
+**[資安檢測結果](https://jasoncheng7115.github.io/jt-snmpd/security-report_zh-TW.html)**
+是當前的基線，每一條發現都附判定。摘要：Bandit HIGH 0、pip-audit 在 62 個套件中
+零弱點、執行時期的相依只有兩個套件。
+
+每次推送都會在 GitHub Actions 上跑的：
+
+| 檢查 | 位置 |
+|---|---|
+| 完整測試套件 | `tests.yml`，Linux |
+| 個資與機密掃描 | `tests.yml`，Linux |
+| 執行檔與 MSI 建置 | `tests.yml`，Windows |
+| 安裝檔產物檢查（直接讀 MSI 自己的表格） | `tests.yml`，Windows |
+
+人工跑、尚未進 CI 的：Bandit 與 pip-audit。完全還沒跑的：Semgrep、gitleaks、
+模糊測試各項，以及 Windows 平台那一批。結果頁面把這些明白列出，
+而不是讓這份文件暗示它們都做過了。
 
 ---
 
