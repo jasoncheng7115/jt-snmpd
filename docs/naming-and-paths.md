@@ -102,12 +102,21 @@ LISTENING 0.0.0.0:16162 varbinds=131
 fs_encoding=utf-8
 sysDescr     = Hardware: AMD64 Family 25 Model 80 Stepping 0 AT/AT COMPATIBLE
                - Software: Windows Version 6.3 (Build 26200 Multiprocessor Free)
-sysServices  = 76                        <- this agent (the built-in service reports 79)
+sysServices  = 76                        <- see the note below
 ifName       = 乙太網路                   <- non-ASCII, correct UTF-8
 ifDescr      = Red Hat VirtIO Ethernet Adapter
 hrProcLoad   = 8                         <- a real CPU sample
 diskIODevice = PhysicalDrive0            <- UCD-DISKIO
 ```
+
+> `sysServices` is not a way to tell the two agents apart, although it was used
+> as one here for a while. It comes from `RFC1156Agent\sysServices` in the
+> registry, which an administrator sets from the Agent tab of the service's
+> properties, so it describes the machine rather than the software. Measured on
+> a Windows Server 2016 domain controller, an untouched built-in service reports
+> **76** — the same value this agent reports. Use `sysDescr`, or the presence of
+> `jtAgentVersion` under the private subtree, which the built-in service has no
+> way to produce.
 
 ### The encoding rule, which came out of a real failure
 

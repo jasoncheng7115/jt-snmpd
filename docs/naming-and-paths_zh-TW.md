@@ -92,12 +92,18 @@ LISTENING 0.0.0.0:16162 varbinds=131
 fs_encoding=utf-8
 sysDescr     = Hardware: AMD64 Family 25 Model 80 Stepping 0 AT/AT COMPATIBLE
                - Software: Windows Version 6.3 (Build 26200 Multiprocessor Free)
-sysServices  = 76                        ← 我方 agent（內建 MS SNMP 為 79）
+sysServices  = 76                        ← 見下方說明
 ifName       = 乙太網路                   ← 中文 UTF-8 正確
 ifDescr      = Red Hat VirtIO Ethernet Adapter
 hrProcLoad   = 8                         ← 真實 CPU 取樣
 diskIODevice = PhysicalDrive0            ← UCD-DISKIO
 ```
+
+> **`sysServices` 不能用來分辨是哪一個 agent 在回答**，雖然這裡曾經這樣用過。
+> 它來自登錄檔的 `RFC1156Agent\sysServices`，管理員可以從服務內容的「代理程式」
+> 分頁勾選，所以它描述的是這台機器，不是這個軟體。在一台 Windows Server 2016
+> 網域控制站上實測，未經調整的內建服務回報的就是 **76**，與本 agent 相同。
+> 要分辨請看 `sysDescr`，或私有子樹底下的 `jtAgentVersion` —— 內建服務生不出那個。
 
 ### 編碼鐵則（從實測 bug 得出）
 
