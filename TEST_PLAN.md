@@ -176,7 +176,7 @@
 | # | 情境 | 風險 | 狀態 |
 |---|---|---|---|
 | 5.5.1 | Server 2016 / 2019 / 2022 / 2025 各自的 build number 對應 | LibreNMS 以 build 查表，錯了顯示錯版本 | **[部分已驗]** 2016 = build 14393、2022 = build 20348，兩台都由正式 LibreNMS 判讀正確（2022 顯示 `Server 2022 (21H2)`）。**2019 與 2025 無環境** |
-| 5.5.2 | **Server Core**（無 GUI） | `InstallationType` 值為 `Server Core`，等值比較會誤判為工作站 | **[已實作]** `tests/test_product_type.py` |
+| 5.5.2 | **`InstallationType` 為 `Server Core`** | 等值比較會把它誤判為工作站，sysObjectID 就走錯分支 | **[已實作]** `tests/test_product_type.py`。Server Core 不是目標平台，但**程式仍必須認得這個字串** —— 誤判的代價是 LibreNMS 顯示錯的版本，而不是安裝失敗，沒有人會發現 |
 | 5.5.3 | **網域控制站** | sysObjectID 需走第三分支，LibreNMS 才會呼叫 `getDatacenterVersion()` | **[已驗]** 2026-08-25 在一台運作中的 PDC 上實測，回報 `1.3.6.1.4.1.311.1.1.3.1.3`。三支分支現在都有實測：用戶端 `.1.1`（`.163`）、伺服器 `.1.2`（`.187`）、DC `.1.3`（`.49`）|
 | 5.5.4 | Nano Server / 容器映像 | 多數 Win32 API 不存在 | [待實作] 明確列為不支援 |
 | 5.5.5 | 舊版無 `InstallationType` | 需退回 `ProductOptions\ProductType`（WinNT / LanmanNT / ServerNT） | **[已實作]** |
@@ -228,7 +228,7 @@
 | # | 情境 | 狀態 |
 |---|---|---|
 | 5.5.16 | GPO 軟體安裝派送 MSI 到網域內多台 Server | [受阻] 需 MSI + 網域 |
-| 5.5.17 | Server Core 上無 GUI，安裝程式必須完全非互動 | [待驗] 安裝程式已無互動提示 |
+| 5.5.17 | 安裝程式必須完全非互動（無 GUI 環境） | **[已驗]** 每個值都以 MSI 屬性傳入，缺了就失敗，不會停在那裡等人輸入；40 項生命週期全程走 `/qn`。**Server Core 不列為目標平台**，因此不再追蹤「在 Server Core 上實測」這一項 |
 | 5.5.18 | 已安裝 SNMP 功能的 Server，設定仍應移轉 | **[已驗]** Server 2016 DC：內建服務執行中且設有一個唯讀、一個可寫 community，安裝後唯讀那個進了 `config.json`，可寫的被擋下並記錄；sysContact / sysLocation 實測回報正確。**服務「停用」的變體仍待驗** |
 | 5.5.19 | 已有第三方監控 agent 佔用 161（Zabbix / Net-SNMP） | **[已實作]** 中止且不動它 |
 | 5.5.20 | 遠端桌面工作階段主機（大量使用者、`hrSystemNumUsers` 應正確） | [待實作] 目前固定回 1 |
@@ -484,7 +484,6 @@ LibreNMS「存取待提供」、Windows Server「無」，而那三項當時都�
 | 環境 | 擋住什麼 | 有無替代 |
 |---|---|---|
 | Windows Server 2019 / 2025 | 5.5.1 的 build number 對應；2025 的 Credential Guard / VBS 預設啟用 | 無。2025 那條目前只有 Microsoft 文件依據 |
-| Server Core | 5.5.17；無 GUI 下的安裝 | 無 |
 | 唯讀網域控制站（RODC） | 5.5.21 的一半 | 無 |
 | HVCI / WDAC 強制的端點 | 閘門 D 剩餘、5.5.22 | 無。`.187` 的 VBS 實測為未啟用 |
 | 多網路卡跨網段主機 | 閘門 A、5.5.8 | 無 |
