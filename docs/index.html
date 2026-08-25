@@ -124,6 +124,10 @@ figcaption{color:var(--dim);font-size:13.5px;margin-top:9px}
 .bed-box dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13.5px}
 .bed-box dt{color:var(--dim)}
 .bed-box dd{margin:0;color:var(--fg)}
+/* The built-in service supplies no hardware identity, so two of its four rows
+   say so rather than being left out. Dropping the rows made the two cards
+   different heights and read as a layout fault instead of as the finding. */
+.bed-box dd.none{color:#96a0aa}
 .bed-note{margin:16px 0 0;color:var(--dim);font-size:14px;line-height:1.75}
 .bed-note b{color:var(--fg)}
 
@@ -298,7 +302,13 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
           <dt><span class="zh">機器</span><span class="en">Machine</span></dt>
           <dd><span class="zh">桌機，AMD Ryzen（Family 25）</span>
               <span class="en">Desktop, AMD Ryzen (Family 25)</span></dd>
+          <dt>CPU</dt>
+          <dd class="none"><span class="zh">4 核，型號不明（只回報 “Processor”）</span>
+              <span class="en">4 cores, model unknown (reported only as “Processor”)</span></dd>
           <dt><span class="zh">記憶體</span><span class="en">Memory</span></dt><dd>10 GiB</dd>
+          <dt><span class="zh">磁碟</span><span class="en">Disk</span></dt>
+          <dd class="none"><span class="zh">型號不明（無 <code>entPhysical</code>）</span>
+              <span class="en">Model unknown (no <code>entPhysical</code>)</span></dd>
         </dl>
       </div>
       <div class="bed-box bed-b">
@@ -317,13 +327,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <span class="zh"><b>兩台不是同一台機器</b>，所以記憶體總量等絕對數字本來就不同。
         這裡要看的是 <b>LibreNMS 收到了哪些資料表</b>，不是數字一不一樣。
         右邊那台的規格全部由 jt-snmpd 自己從 SMBIOS 解析後經 SNMP 回報；
-        左邊那台的內建服務連 <code>entPhysical</code> 都沒有，所以那一欄是空的。
+        左邊那台的內建服務連 <code>entPhysical</code> 都沒有，處理器也只回報 “Processor”
+        四個字，所以兩欄標成型號不明的，是它問不出來，不是我們沒填。
         截圖中的 MAC 位址已遮蔽。</span>
       <span class="en"><b>These are two different machines</b>, so absolute figures such as total memory
         naturally differ. What the comparison shows is <b>which tables LibreNMS receives</b>, not whether
         the numbers match. Everything listed on the right was parsed out of SMBIOS by jt-snmpd itself and
-        reported over SNMP; the built-in service on the left has no <code>entPhysical</code> at all, which
-        is why that column is empty. MAC addresses in the screenshots are redacted.</span>
+        reported over SNMP; the built-in service on the left has no <code>entPhysical</code> at all and
+        describes each processor as nothing more than “Processor”, so the two rows marked unknown are
+        unknown to it, not left blank by us. MAC addresses in the screenshots are redacted.</span>
     </p>
   </div>
 
