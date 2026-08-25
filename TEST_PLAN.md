@@ -200,6 +200,20 @@
 | **無 community 可繼承時的行為** | 見 6.1c.10，1603 回滾、無殘留、內建服務未被動過 |
 | **MS SNMP 移轉** | 唯讀 community 帶過來、**可寫的沒有**（記錄檔明載降級理由）；sysContact / sysLocation 由 agent 在執行時直接讀內建服務的登錄機碼，實測回報正確 |
 
+**2026-08-25 第二台**：Windows Server 2022 Standard（build 20348），
+**獨立伺服器、完全沒有安裝內建 SNMP**（服務不存在、161 無人佔用）。
+存取走 WinRM 與 HTTP，機器不需要對外網路，也不必在上面安裝任何額外軟體。
+
+| 項目 | 結果 |
+|---|---|
+| **生命週期** | **PASS=33 FAIL=0**。少的 7 項全部是內建 SNMP 相關（接管、還原記錄、歸還），這台沒有那個服務，屬**合理跳過**而非未執行 |
+| **完全沒有內建 SNMP 且未給 community** | msiexec 1603 回滾、服務不存在、程式目錄與防火牆規則皆無、Apps 清單沒有；記錄檔給出兩種補救方式 |
+| **`sysObjectID`** | `1.3.6.1.4.1.311.1.1.3.1.2`，**伺服器分支**。至此用戶端（`.1.1`）、伺服器（`.1.2`）、網域控制站（`.1.3`）三支都有實測 |
+| **正式 LibreNMS 端對端** | 已加入為 device 119，探索並輪詢成功。LibreNMS 判定 **`os=windows`、`version=Server 2022 (21H2)`、`hardware=Intel x64`**；收到 1 個連接埠、1 個儲存、4 個記憶體池、4 個處理器、1 個磁碟 I/O、5 筆 entPhysical |
+| 感測器 / 應用程式 | 0 / 0。虛擬機沒有 ACPI 溫度區、沒有電池、虛擬磁碟沒有 SMART，屬預期 |
+| VBS / Credential Guard / HVCI | 這台皆為 0（未啟用），所以 **2025 的預設值那條仍未實測** |
+
+
 | # | 情境 | 狀態 |
 |---|---|---|
 | 5.5.16 | GPO 軟體安裝派送 MSI 到網域內多台 Server | [受阻] 需 MSI + 網域 |
@@ -330,7 +344,7 @@ agent 回報的 `ifIndex` 仍然是 1、`ifName` 仍然是 `乙太網路`，與 
 | 6.1c.9 | 「加入或移除程式」顯示圖示 | **[已驗]** `DisplayIcon` 指向已安裝的執行檔 |
 | 6.1c.10 | 無法決定 community 時給出可行動的錯誤 | **[已驗]** 2026-08-25 Server 2016 DC：內建 SNMP 裝著、跑著、但未設定任何 community。不給 `COMMUNITY` 安裝 → msiexec 1603 回滾、服務不存在、程式目錄與防火牆規則皆無、內建服務仍 Running/Automatic 未被動過；記錄檔給出兩種補救方式 |
 | 6.1c.11 | **端對端 GUI 安裝**（真的按下 Install 並完成） | **[已驗]** 2026-08-25 對**發布的 0.9.8** MSI 在 `.154` 以 RDP 走完全程：歡迎頁 → 授權（GPL-3.0 全文）→ 目的地資料夾（`C:\Program Files\jt-snmpd\`）→ 監控設定 → 準備安裝 → UAC → 安裝 → 完成。裝完實測：服務 Running/Automatic、版本 0.9.8、161 由 jt-snmpd 持有、內建 SNMP 已停用、防火牆兩條、`config.json` 寫入了精靈裡填的網段與 community。`/qn` 路徑由 6.1a 的 40 項涵蓋 |
-| 6.1c.12 | 圖形升級不應跳出「使用中的檔案」對話框 | **[已知缺陷，未修]** 服務在升級時還在跑，Windows Installer 的 Restart Manager 偵測到 `jt-snmpd.exe` 被占用，要求使用者選擇關閉或重開機。`/qn` 與 GPO 派送不受影響（沒有 UI 可跳），所以 6.1a 那 40 項全部走 `/qn`，永遠抓不到它。**試過 `ServiceControl` 但不管用**：讀建出來的 MSI，`InstallValidate` 在序號 1400、`StopServices` 在 1900，Restart Manager 早在 500 個位置之前就已經找過使用中的檔案了。2026-08-25 在 `.154` 以 RDP 實際跑完圖形升級（服務執行中），對話框照樣出現並列出 `jt-snmpd`。真正的修法是在 `InstallValidate` 之前就把服務停掉，那是另一套機制（`util:CloseApplication`，或在 UI 序列裡以提升權限的自訂動作停服務），需要另外評估與實測 |
+| 6.1c.12 | 圖形升級不應跳出「使用中的檔案」對話框 | **[已知缺陷，未修，兩種修法都實測失敗]** 服務在升級時還在跑，Restart Manager 偵測到 `jt-snmpd.exe` 被占用。`/qn` 與 GPO 派送不受影響，所以 6.1a 那 40 項（全部走 `/qn`）永遠抓不到它。<br>**修法一：`ServiceControl` 放在獨立元件。** 那一列確實進了建出來的 MSI，但對話框照樣列出 `jt-snmpd`。<br>**修法二：`ServiceControl` 放進擁有 `jt-snmpd.exe` 的元件。** `jt-snmpd` **確實從清單上消失了**，但同一台機器的清單變成 `nxlog` 與 `Windows Event Log` —— Windows Installer 開始去列舉並關閉**與我們無關的服務**。`/qn` 之下它會直接關掉再重啟它們，而關掉事件記錄服務會干擾我們的服務啟動：升級以 1603 回滾，且**服務被留在停止狀態**。在 `.154`（有 nxlog 等軟體）可重現，在乾淨的 Server 2022 上則全部成功 —— 也就是說這個修法只在乾淨機器上看起來是對的。<br>**判斷：讓安裝程式去關閉別人的服務，比多跳一個對話框糟糕得多**，因此撤回。`tests/test_msi_ui_gating.py` 現在守著「不得再加回 ServiceControl」。<br>**下一個人可以從這裡開始**：exe 本身沒問題（`--selftest` 在失敗的那台上照樣通過），乾淨安裝與乾淨機器的升級都成功，所以要找的是「如何只停自己的服務而不驚動 Restart Manager 去碰別人的」 |
 
 **仍然沒有覆蓋的**：整套生命週期自動化（`tests/lifecycle.ps1`）從頭到尾都走
 `msiexec /qn`，所以任何只在 GUI 路徑上出現的問題，自動化一律抓不到。

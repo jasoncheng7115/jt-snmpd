@@ -9,6 +9,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.0] - 2026-08-25
+
+First release tested on Windows Server. Everything below was measured on real
+machines; nothing in it is inferred from a previous release.
+
+### Added
+
+- **Windows Server is now a tested platform, not an assumed one.** Two machines:
+
+  | | Result |
+  |---|---|
+  | **Server 2016 Standard**, a live **domain controller** | 40/40 lifecycle checks, migration from the built-in SNMP Service, and the domain-controller `sysObjectID` branch exercised for the first time |
+  | **Server 2022 Standard**, standalone, no built-in SNMP at all | 33/33 applicable lifecycle checks — the seven not run are the built-in-SNMP ones, and that machine has no such service — plus a clean end-to-end run through a production LibreNMS, which reads it as `Server 2022 (21H2)` |
+
+  All three `sysObjectID` branches now have a measurement behind them: client,
+  server, and domain controller. Getting the third wrong would have given every
+  domain controller the wrong version string in LibreNMS, quietly.
+
+- **Deploying to Windows Server** (`docs/windows-server-notes.md`), covering
+  what differs on 2019, 2022 and 2025 — and explicit about which parts are
+  measured here and which come from Microsoft's documentation. The one that
+  matters most for deployment: after 2016 the built-in service is generally a
+  Feature on Demand, which needs a source, so on an offline machine there may be
+  nothing to migrate and `COMMUNITY=` is the answer rather than installing the
+  built-in service first.
+
+- **A security policy** (`SECURITY.md`): where to report privately, what is in
+  scope, and the things that get reported but are documented behaviour — the
+  unsigned installer, and SNMPv2c having no cryptography.
+
+### Fixed
+
+- **`sysServices` was being used as a way to tell this agent from the built-in
+  service, and it is not one.** 76 was treated as "ours" and 79 as Microsoft's.
+  On a Server 2016 domain controller the untouched built-in service reports 76
+  as well: the value comes from `RFC1156Agent\sysServices` in the registry and
+  describes the machine, not the software. The 79 seen earlier came from a test
+  machine where it had been set by hand. Use `sysDescr`, or ask for
+  `jtAgentVersion` under the private subtree, which the built-in service cannot
+  produce.
+
+- **`pyproject.toml` described a package that has never existed** — the
+  pre-rename name, version 0.0.0, and a source path not in the tree, so
+  `pip install .` installed metadata and no module. It now takes its version
+  from `deploy/version.py` and builds a wheel that contains the agent.
+
+- **Build inputs are pinned.** The workflows installed pysnmp unpinned while
+  `pyproject.toml` pinned it, so the version in a released MSI was whatever PyPI
+  served that morning. That matters here because the agent pre-computes BER on
+  the wire. `requirements-build.txt` now pins every input, Pillow included, and
+  every GitHub Action is pinned by commit SHA.
+
+- **The development lab's SNMP community is no longer published.** It appeared
+  in seven files, each with a reason to name it. The privacy scanner now also
+  matches known secrets literally from an untracked file, and says so out loud
+  when that file is absent rather than printing a clean result it did not earn.
+
+- **Taiwanese wording is checked in CI** rather than by whoever happens to read
+  the finished page, and "已停止支援" is corrected to "棄用" throughout: by
+  Microsoft's own definition a deprecated component still ships and is still
+  supported for production. The reason to replace the built-in service is how
+  little it reports, not a support cliff.
+
+### Known defects
+
+- **A graphical upgrade shows the "Files in use" page.** Silent installation and
+  GPO deployment are unaffected, which is why forty lifecycle checks never see
+  it. Two fixes were built and driven through the wizard on real hardware. The
+  second removed jt-snmpd from the list and then made Windows Installer shut
+  down unrelated services on a machine that had them, failing the upgrade and
+  leaving the service stopped. Disturbing somebody else's services is worse than
+  the dialog, so neither shipped. `TEST_PLAN` 6.1c.12 records both attempts with
+  the measurements, and a test now guards against a third attempt that has not
+  read them.
+
+---
+
 ## [0.9.8] - 2026-08-25
 
 ### Added

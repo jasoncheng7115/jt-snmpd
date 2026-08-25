@@ -390,44 +390,37 @@ def test_configure_script_fails_closed_on_empty_networks():
 
 
 # ------------------------------------------------- the "Files in use" dialog
-def test_the_service_is_declared_to_windows_installer():
-    """Windows Installer should own stopping the service it ships.
+#
+# There is deliberately no ServiceControl in this package. Two placements were
+# built and driven through the wizard on real hardware:
+#
+#   in a component of its own      the dialog still listed jt-snmpd
+#   in the executable's component  jt-snmpd was gone from the list, but on a
+#                                  machine with other software Windows Installer
+#                                  then shut down unrelated services and the
+#                                  upgrade rolled back
+#
+# So the guard is that nobody adds one back without reading TEST_PLAN 6.1c.12
+# first.
+BUILD_MSI = (ROOT / "packaging" / "build-msi.ps1").read_text(encoding="utf-8")
 
-    Note what this does **not** assert. It was added to remove the "Files in
-    use" page from graphical upgrades and it does not: measured on the built
-    package, InstallValidate sits at sequence 1400 and StopServices at 1900, so
-    Restart Manager has already looked for files in use long before this runs.
-    Driven through the wizard on real hardware with the service running, the
-    page still appeared. TEST_PLAN 6.1c.12 keeps that defect open.
 
-    The declaration is still right on its own terms -- stopping the service
-    belongs to the installer rather than only to a custom action -- so it stays,
-    with an assertion that says what it actually guarantees.
+def test_no_service_control_is_emitted():
+    """Both placements were tried and measured; neither is acceptable yet.
+
+    This is not "we never thought about it". It is a recorded decision, and the
+    reason it is a test is that the second attempt looked like a success in the
+    MSI tables while breaking an upgrade on a real machine.
     """
-    m = re.search(r"<ServiceControl\b[^>]*>", SRC)
-    assert m, ("no ServiceControl element: Windows Installer does not know the "
-               "service is ours, so a graphical upgrade will ask the operator "
-               "to close jt-snmpd.exe")
-    el = m.group(0)
-    assert 'Name="jt-snmpd"' in el, f"ServiceControl names the wrong service: {el}"
-    assert 'Stop=' in el, f"ServiceControl does not stop the service: {el}"
+    assert "<ServiceControl" not in BUILD_MSI, (
+        "a ServiceControl is being emitted again. Read TEST_PLAN 6.1c.12: the "
+        "placement that removes the Files-in-use dialog also made Windows "
+        "Installer shut down unrelated services and roll the upgrade back")
+    wxs = (ROOT / "packaging" / "wix" / "jt-snmpd.wxs").read_text(encoding="utf-8")
+    assert "<ServiceControl" not in wxs, "a ServiceControl is back in the .wxs"
 
 
-def test_windows_installer_does_not_start_the_service_itself():
-    """Stop only. Starting belongs to the configure script.
-
-    The agent reads config.json at its entry point. If Windows Installer started
-    the service, it would start before the custom action had written the
-    operator's answers, and the agent would come up on whatever configuration
-    happened to be on disk -- an empty one on a first install.
-    """
-    el = re.search(r"<ServiceControl\b[^>]*>", SRC).group(0)
-    assert "Start=" not in el, (
-        "Windows Installer must not start the service: config.json is written "
-        f"by a custom action that runs later. {el}")
-
-
-def test_the_service_control_component_is_installed():
-    """A component nothing references is compiled and never installed."""
-    assert '<ComponentRef Id="StopAgentService" />' in SRC, \
-        "the component holding ServiceControl is not referenced by the feature"
+def test_the_reason_is_written_down_next_to_the_decision():
+    """A bare absence teaches nobody anything."""
+    assert "Files in use" in BUILD_MSI, \
+        "the comment explaining why there is no ServiceControl is gone"

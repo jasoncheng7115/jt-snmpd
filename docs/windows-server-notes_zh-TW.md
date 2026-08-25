@@ -23,7 +23,7 @@ agent 回報的是網域控制站那一支 `sysObjectID`。
 |---|---|---|
 | 2016 | **已實測**：40/40、移轉、DC 分支 | — |
 | 2019 | 可 | 若要移轉內建服務的設定，安裝方式不同 |
-| 2022 | 可 | 同上，另有一個 Microsoft 記載的問題：服務清單只看得到 SNMP Trap |
+| 2022 | **已實測**：33/33 項適用的生命週期檢查、伺服器分支的 `sysObjectID`，LibreNMS 判讀為 `Server 2022 (21H2)` | 一個 Microsoft 記載的問題：服務清單只看得到 SNMP Trap |
 | 2025 | 可 | Credential Guard 與 VBS 預設開啟；SMB 簽章預設為必要 |
 
 2019、2022、2025 都沒有移除這個 agent 依賴的任何介面。差異在它周圍的環境。
@@ -37,7 +37,8 @@ agent 回報的是網域控制站那一支 `sysObjectID`。
 | 版本 | 內建服務怎麼裝 |
 |---|---|
 | Server 2016 | `Install-WindowsFeature SNMP-Service`，是 Windows 功能。*實測：`Get-WindowsFeature SNMP-Service` 回報 `Installed`。* |
-| Server 2019 / 2022 / 2025 | 隨選功能：`Add-WindowsCapability -Online -Name "SNMP.Client~~~~0.0.1.0"` |
+| Server 2022 | `SNMP-Service` 這個功能名稱仍然存在。*實測：一台乾淨的 2022 上 `Get-WindowsFeature SNMP-Service` 回報 `Available`，也就是有這個功能但尚未安裝。* Microsoft 另外也記載了 `SNMP.Client~~~~0.0.1.0` 這個 capability |
+| Server 2019 / 2025 | 未在此實測。Microsoft 記載的是 capability 那條路；功能名稱有沒有像 2022 一樣還在，沒有量過 |
 | Windows 10 / 11 | 同上。`dism /online /enable-feature /featureName:SNMP` 會以 `0x800f080c` 失敗，**因為這個功能已棄用** |
 
 對部署有兩個影響：

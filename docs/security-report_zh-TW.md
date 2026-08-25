@@ -18,7 +18,7 @@ description: The current scan baseline, with a verdict on every finding
 | | |
 |---|---|
 | 日期 | 2026-08-25 |
-| 版本 | jt-snmpd 0.9.8 |
+| 版本 | jt-snmpd 1.0.0 |
 | 掃描範圍 | `deploy/`、`tools/`、`packaging/`，共 13 個檔案、4,279 行 |
 
 ---
@@ -28,13 +28,13 @@ description: The current scan baseline, with a verdict on every finding
 | 檢查項目 | 工具 | 結果 |
 |---|---|---|
 | 原始碼靜態分析（SAST） | Bandit 1.9.4 | **HIGH 0**、MEDIUM 3、LOW 11，全部逐條交代於下 |
-| 相依弱點（SCA） | pip-audit 2.10.1 | **62 個套件，0 個已知弱點** |
+| 相依弱點（SCA） | pip-audit 2.10.1 | **70 個套件，0 個已知弱點** |
 | 個資與機密 | `tools/check-privacy.py` | **HIGH 0**，每次推送都跑 |
-| 測試套件 | pytest | 831 通過、1 略過，每次推送都跑 |
+| 測試套件 | pytest | 830 通過、1 略過，每次推送都跑 |
 | 安裝檔產物檢查 | 直接讀 Windows Installer 表格 | 5 項，每次推送都跑 |
 
 **執行時期的相依只有兩個套件。** `pysnmp 7.1.29` 依賴 `pyasn1 0.6.4`，
-而 `pyasn1` 不依賴任何東西。62 個裡的其餘全是建置與測試工具，
+而 `pyasn1` 不依賴任何東西。70 個裡的其餘全是建置與測試工具，
 不會進到客戶的機器。這是刻意的：相依愈少，這一節就愈短。
 
 ---
@@ -78,10 +78,10 @@ agent 本身完全不開子處理程序，那是專案的硬性規則。
 
 ## 相依弱點
 
-pip-audit 對照 PyPI Advisory Database 與 OSV，在 62 個已安裝套件中
+pip-audit 對照 PyPI Advisory Database 與 OSV，在 70 個已安裝套件中
 未發現任何已知弱點。
 
-62 這個數字會高估暴露面，值得分開看：
+70 這個數字會高估暴露面，值得分開看：
 
 | | 套件 | 會不會進到客戶機器 |
 |---|---|---|

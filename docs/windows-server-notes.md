@@ -24,7 +24,7 @@ marked *documented* comes from Microsoft and has **not** been reproduced here �
 |---|---|---|
 | 2016 | **Measured.** 40/40 lifecycle, migration, DC branch | — |
 | 2019 | Yes | Installing the built-in service, if you want its settings migrated |
-| 2022 | Yes | The same, plus a known Microsoft issue where only SNMP Trap appears in the service list |
+| 2022 | **Measured.** 33/33 applicable lifecycle checks, server `sysObjectID` branch, and LibreNMS reads it as `Server 2022 (21H2)` | A known Microsoft issue where only SNMP Trap appears in the service list |
 | 2025 | Yes | Credential Guard and VBS on by default; SMB signing required by default |
 
 Nothing in 2019, 2022 or 2025 removes an interface this agent depends on. The
@@ -40,7 +40,8 @@ over**. jt-snmpd does not need the built-in service to be present.
 | Release | How the built-in service is added |
 |---|---|
 | Server 2016 | `Install-WindowsFeature SNMP-Service` — a Windows Feature. *Measured: `Get-WindowsFeature SNMP-Service` reported `Installed`.* |
-| Server 2019 / 2022 / 2025 | A Feature on Demand: `Add-WindowsCapability -Online -Name "SNMP.Client~~~~0.0.1.0"` |
+| Server 2022 | The `SNMP-Service` feature name still exists. *Measured: `Get-WindowsFeature SNMP-Service` reported `Available` on a clean 2022 — present but not installed.* Microsoft also documents the `SNMP.Client~~~~0.0.1.0` capability for recent releases |
+| Server 2019 / 2025 | Not measured here. Microsoft documents the capability route; the feature name may still be present as it is on 2022 |
 | Windows 10 / 11 | The same capability. `dism /online /enable-feature /featureName:SNMP` fails with `0x800f080c`, **because the feature is deprecated** |
 
 Two consequences for a deployment:
