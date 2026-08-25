@@ -1,16 +1,48 @@
+# The product ships as an MSI, not as a wheel. This file exists so that the
+# runtime dependency is pinned in one machine-readable place -- pip-audit and
+# dependency scanners read it -- and so that `pip install .` does something
+# truthful.
+#
+# It previously claimed `packages = ["src/jt_win_snmp"]`, a path that has never
+# existed, under the pre-rename project name, at version 0.0.0. `pip install .`
+# therefore succeeded and installed nothing but metadata: a dist-info directory
+# and the dependencies, with no importable module. A build target that points at
+# nothing fails silently, which is the worst way for it to fail.
+
 [project]
-name = "jt-win-snmp"
-version = "0.0.0"
-description = "JT Windows SNMP Agent — 以標準 MIB 提供 Windows 主機監控資料的唯讀 SNMP Agent"
+name = "jt-snmpd"
+dynamic = ["version"]
+description = "A read-only SNMP agent that serves Windows host metrics to LibreNMS through standard MIBs"
 authors = [{ name = "Jason Cheng (Jason Tools)", email = "jason@jason.tools" }]
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 readme = "README.md"
+
+# Pinned, not floated. The agent pre-computes BER on the wire and the encoding
+# has to match what pyasn1 actually emits, which is not always the shortest
+# form. A silent minor upgrade that changed an encoded length would push
+# responses past the 1400-byte cap, and the symptom on the LibreNMS side is
+# intermittent missing data rather than an error.
 dependencies = ["pysnmp==7.1.29"]
+
+[project.urls]
+Homepage = "https://jasoncheng7115.github.io/jt-snmpd/"
+Source = "https://github.com/jasoncheng7115/jt-snmpd"
+Changelog = "https://github.com/jasoncheng7115/jt-snmpd/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# One source for the version, the same file the executable, the MSI and the
+# jtAgentVersion OID read.
+[tool.hatch.version]
+path = "deploy/version.py"
+
+# The agent lives in deploy/ and is imported as jt_snmpd once installed, so a
+# wheel built from this tree contains the code it says it does.
 [tool.hatch.build.targets.wheel]
-packages = ["src/jt_win_snmp"]
+packages = ["deploy"]
+
+[tool.hatch.build.targets.wheel.sources]
+"deploy" = "jt_snmpd"

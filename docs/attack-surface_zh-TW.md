@@ -184,7 +184,7 @@ ctypes 是 Python 記憶體安全性失效之處：緩衝區配小了，核心�
 
 | 方案 | UDP/161 | 執行身分 | 寫入 | 來源控制 | 速率限制 | 支援狀態 |
 |---|---|---|---|---|---|---|
-| **Windows 內建 SNMP** | 開 | LocalSystem（權限未縮減）| **支援 SET** | `PermittedManagers`，**在解析之後**生效 | 無 | Microsoft 已標記停止支援 |
+| **Windows 內建 SNMP** | 開 | LocalSystem（權限未縮減）| **支援 SET** | `PermittedManagers`，**在解析之後**生效 | 無 | Microsoft 已標記為棄用 |
 | **jt-snmpd** | 開 | LocalSystem（僅 3 項權限）| 唯讀 | 前置閘門，**在 BER 解碼器之前** | 每來源 token bucket | 持續維護 |
 | 不做 SNMP 監控 | 不開 | — | — | — | — | 沒有監控 |
 

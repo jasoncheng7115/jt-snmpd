@@ -1,0 +1,23 @@
+# Pinned build inputs. Both workflows install from this file, so the version
+# that goes into a released MSI is a decision recorded here rather than
+# whatever PyPI served that morning.
+#
+# pysnmp is the one that matters most. The agent pre-computes BER on the wire
+# and the bytes have to match what pyasn1 actually emits, which is not always
+# the shortest form. A minor upgrade that changed an encoded length would push
+# responses past the 1400-byte cap, and the symptom at the LibreNMS end is
+# intermittent missing data, not an error. tests/test_ber_size.py checks the
+# encoder against real output, but only for the version installed when it runs.
+#
+# These are the versions the verified builds were made with, read off the
+# machine that made them.
+pysnmp==7.1.29
+pyasn1==0.6.4
+
+# Windows-only. Listed with a marker so the same file works on the Linux test
+# job, which does not need them.
+pywin32==312 ; sys_platform == "win32"
+pyinstaller==6.22.2 ; sys_platform == "win32"
+pyinstaller-hooks-contrib==2026.6 ; sys_platform == "win32"
+
+pytest==9.1.1
