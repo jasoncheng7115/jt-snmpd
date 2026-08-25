@@ -191,7 +191,9 @@ Loopback、Teredo / IP-HTTPS / 6to4。
 只是 LibreNMS 不收，這種「兩邊都沒錯但接不起來」的落差最難查。
 
 計數型的 SMART 指標因此改走 **NET-SNMP-EXTEND-MIB**，那是 LibreNMS 讀 SMART 的
-正規路徑，而且完全走 SNMP（被監控端不需要 LibreNMS agent 或 smartctl）。
+正規路徑，而且完全走 SNMP。在其他平台上這條路徑是靠主機上一支輔助腳本
+呼叫 smartmontools 餵資料的，這裡是 agent 自己以 `IOCTL_STORAGE_QUERY_PROPERTY`
+讀屬性，所以被監控端裝的就只有 jt-snmpd 一個。
 
 順帶記錄一個 LibreNMS 的上游缺陷：`entity-sensor.inc.php:47` 把 `hertz` 對應到
 類別 `freq`，但 `LibreNMS/Enum/Sensor.php:24` 定義的合法類別是 `frequency`，

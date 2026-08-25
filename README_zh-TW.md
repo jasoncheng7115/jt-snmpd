@@ -98,8 +98,10 @@ ACPI 溫度區是主機板韌體自己定義的溫度量測點，通常對應 CP
 
 #### 磁碟 SMART
 
-SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`，
-被監控端不需要 LibreNMS agent，也不需要 smartctl。
+SMART **完全透過 SNMP** 送達 LibreNMS，走 `NET-SNMP-EXTEND-MIB`。
+在其他平台上，這個應用程式是靠主機上一支輔助腳本呼叫 smartmontools 餵資料的；
+jt-snmpd 是自己以 `IOCTL_STORAGE_QUERY_PROPERTY` 讀 SMART 屬性，
+所以被監控端裝的就只有 jt-snmpd 一個。
 沒量到的屬性保持 `null`，不會以 0 回報。
 
 > **SMART 需要在 LibreNMS 開一個設定。** 找到它的探索模組預設是關的，
