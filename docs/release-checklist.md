@@ -45,7 +45,15 @@ The local development repository keeps its full history and is unaffected.
 
 ```bash
 python3 tools/check-privacy.py
+python3 tools/check-terminology.py
 ```
+
+The second checks Taiwanese wording. A dozen terms in this project were caught
+only by a person reading the finished page, which is the most expensive place to
+catch them. A word enters the list once it has actually been wrong here, so a
+finding means something. Read the list with
+`python3 tools/check-terminology.py --list` rather than copying it here: a
+document that enumerates the forbidden words is one the tool then flags.
 
 **Do not push with any `HIGH`.** The scan covers the files git would actually
 push (tracked, plus untracked files that are not ignored), not the whole working

@@ -129,9 +129,39 @@
                      Value="[INSTALLFOLDER]jt-snmpd.exe" KeyPath="yes" />
     </Component>
 
+    <!-- Stop the service through Windows Installer as well as from the script.
+
+         msi-configure.ps1 stops it too, and on a silent install that is what
+         actually shuts it down. But the script runs as a custom action, long
+         after Windows Installer has decided which files are in use, so a
+         graphical upgrade found jt-snmpd.exe still running and put up the
+         "Files in use" page asking the operator to close the application or
+         reboot. Nothing was broken and the upgrade completed either way; it
+         simply asked a question it had no business asking.
+
+         Forty lifecycle checks never saw it because every one of them runs
+         /qn, and there is no UI to show. Silent installs and GPO deployment
+         were never affected. Only the person double-clicking the MSI was.
+
+         Declaring the service here schedules StopServices ahead of file
+         costing, so nothing is in use by the time that question would be
+         asked. **Stop only.** Creating, starting and deleting the service stay
+         with msi-configure.ps1, which has to write config.json before the agent
+         is allowed to start. Letting Windows Installer start it would start it
+         against whatever configuration happened to be on disk.
+
+         Stopping a service that does not exist is not an error, so this is
+         also correct on a first install. -->
+    <Component Id="StopAgentService" Directory="INSTALLFOLDER"
+               Guid="4394A215-9FE5-4B29-9D05-069F4F43878A">
+      <CreateFolder />
+      <ServiceControl Id="StopJtSnmpd" Name="jt-snmpd" Stop="both" Wait="yes" />
+    </Component>
+
     <Feature Id="Main" Title="jt-snmpd" Level="1" AllowAbsent="no">
       <ComponentGroupRef Id="AgentFiles" />
       <ComponentRef Id="ArpDisplayIcon" />
+      <ComponentRef Id="StopAgentService" />
     </Feature>
 
     <!-- ============ Custom actions ============

@@ -59,6 +59,13 @@ jobs:
         # because a regular expression cannot read pixels.
         run: python3 tools/check-privacy.py
 
+      - name: Taiwanese terminology
+        # The customers are Taiwanese agencies and hospitals. Wording that reads
+        # as translated has been corrected by hand a dozen times here, always by
+        # someone reading the finished page, which is the most expensive place
+        # to catch it.
+        run: python3 tools/check-terminology.py
+
   build-msi:
     # The WiX source is checked statically by tests/test_msi_ui_gating.py, but
     # static checks cannot tell whether wix.exe will accept it. Three classes of

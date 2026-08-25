@@ -387,3 +387,47 @@ def test_configure_script_fails_closed_on_empty_networks():
     tail = body[idx:idx + 400]
     assert "exit 1" in tail, \
         "an empty network list must abort the install, not continue"
+
+
+# ------------------------------------------------- the "Files in use" dialog
+def test_the_service_is_declared_so_windows_installer_stops_it():
+    """A graphical upgrade must not ask the operator to close the application.
+
+    The service is created, started and deleted by msi-configure.ps1, which runs
+    as a custom action -- long after Windows Installer has worked out which
+    files are in use. So on a graphical upgrade the wizard found jt-snmpd.exe
+    running and put up the "Files in use" page. Nothing broke and the upgrade
+    completed either way; it asked a question it had no business asking.
+
+    Every one of the forty lifecycle checks runs /qn, where there is no UI to
+    show, which is exactly why none of them ever saw it.
+
+    A ServiceControl element schedules StopServices ahead of file costing.
+    """
+    m = re.search(r"<ServiceControl\b[^>]*>", SRC)
+    assert m, ("no ServiceControl element: Windows Installer does not know the "
+               "service is ours, so a graphical upgrade will ask the operator "
+               "to close jt-snmpd.exe")
+    el = m.group(0)
+    assert 'Name="jt-snmpd"' in el, f"ServiceControl names the wrong service: {el}"
+    assert 'Stop=' in el, f"ServiceControl does not stop the service: {el}"
+
+
+def test_windows_installer_does_not_start_the_service_itself():
+    """Stop only. Starting belongs to the configure script.
+
+    The agent reads config.json at its entry point. If Windows Installer started
+    the service, it would start before the custom action had written the
+    operator's answers, and the agent would come up on whatever configuration
+    happened to be on disk -- an empty one on a first install.
+    """
+    el = re.search(r"<ServiceControl\b[^>]*>", SRC).group(0)
+    assert "Start=" not in el, (
+        "Windows Installer must not start the service: config.json is written "
+        f"by a custom action that runs later. {el}")
+
+
+def test_the_service_control_component_is_installed():
+    """A component nothing references is compiled and never installed."""
+    assert '<ComponentRef Id="StopAgentService" />' in SRC, \
+        "the component holding ServiceControl is not referenced by the feature"

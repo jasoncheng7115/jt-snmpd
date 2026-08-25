@@ -178,7 +178,7 @@ jobs:
           $body += ""
           $body += "請由下方 Assets 下載 ``$msi``，以 ``$msi.sha256`` 驗證雜湊，接著可直接點兩下開啟設定對話框，或以命令列安裝（上方指令同時也是 GPO 軟體派送所使用的形式）。"
           $body += ""
-          $body += "安裝檔完全自包含，安裝過程不上網下載任何東西。安裝程式會偵測內建 SNMP Service，沿用它的 community、sysContact 與 sysLocation，然後將它停用（停用，不移除），並在解除安裝時自動還原。"
+          $body += "安裝檔把需要的東西全部包在裡面，安裝過程不上網下載任何東西。安裝程式會偵測內建 SNMP Service，沿用它的 community、sysContact 與 sysLocation，然後將它停用（停用，不移除），並在解除安裝時自動還原。"
           $body += ""
           $body += "> **本安裝檔未經 Authenticode 簽章**，因此點兩下安裝時 SmartScreen 會出現警告，UAC 提示的發行者會顯示為「不明」。請改以上方的 SHA-256 驗證；WDAC / AppLocker 環境請見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html)。"
           $body += ""
