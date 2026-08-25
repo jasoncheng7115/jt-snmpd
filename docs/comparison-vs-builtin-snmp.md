@@ -124,14 +124,14 @@ The gap is concentrated in a handful of tables. Each is accounted for below.
 
 | Subtree | Built-in | jt-snmpd | Why it is withheld |
 |---|---:|---:|---|
-| `hrSWInstalled` | 407 | 0 | Exact version of every package = a ready-made CVE list |
-| `hrSWRun` | 1,394 | 0 | Which EDR is running and where = tailored evasion |
-| `hrSWRunPerf` | 398 | 0 | As above |
-| `tcpConnTable` | 460 | 0 | The full connection list |
-| `udpTable` | 68 | 0 | The service list |
-| `ipNetToMedia` (ARP) | 448 | 0 | The internal ARP table = a target list for lateral movement |
+| `hrSWInstalled` | 660 | 0 | Exact version of every package = a ready-made CVE list |
+| `hrSWRun` | 1,449 | 0 | Which EDR is running and where = tailored evasion |
+| `hrSWRunPerf` | 414 | 0 | As above |
+| `tcpConnTable` | 1,230 | 0 | The full connection list |
+| `udpTable` | 50 | 0 | The service list |
+| `ipNetToMedia` (ARP) | 196 | 0 | The internal ARP table = a target list for lateral movement |
 
-That is **3,175 OIDs**, the large majority of the difference.
+That is **3,999 OIDs**, well over half of the difference. These counts were taken on the test-bed machine and move with it: how much software is installed, how many processes are running and how many connections are open all feed straight into the built-in service's total.
 
 All of these are **implemented or implementable**; they are off by default. The
 threat model  treats the primary adversary as someone already inside
@@ -139,7 +139,7 @@ the network: a single unauthenticated read-only walk would otherwise yield a
 complete vulnerability assessment and an internal network map, from a process
 running as LocalSystem.
 
-### What the 3,175 withheld OIDs would actually buy you
+### What the withheld OIDs would actually buy you
 
 "Deliberately withheld" carries an implication that publishing them would be
 useful. Checked against the LibreNMS 26.8.1 source, three of the four categories

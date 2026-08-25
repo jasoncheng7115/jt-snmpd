@@ -82,18 +82,19 @@ built-in Microsoft SNMP Service — including where jt-snmpd deliberately report
 *less* and why — is in
 [`docs/comparison-vs-builtin-snmp.md`](docs/comparison-vs-builtin-snmp.md).
 
-Headline: the built-in service exposes 6,507 OIDs and jt-snmpd 776, but 3,175 of
-that gap is information disclosure that is off by default (installed software,
-running processes, connection tables, ARP), while jt-snmpd adds inventory,
-disk I/O, sensors, disk SMART and self-health that the built-in service does not
-provide at all.
+Headline, walked on the test-bed machine: the built-in service exposes 7,582
+OIDs and jt-snmpd 767, but 3,999 of that gap is information disclosure that is
+off by default (installed software, running processes, connection tables, ARP),
+while jt-snmpd adds inventory, disk I/O, sensors, disk SMART and self-health that
+the built-in service does not provide at all. These counts were taken on the test-bed machine and move with it: how much software is installed, how many processes are running and how many connections are open all feed straight into the built-in service's total.
 
-Both hosts below run Windows 10 22H2 and are polled by the same LibreNMS
-instance with no LibreNMS-side customisation. The host running the built-in
-service is a QEMU/KVM virtual machine; the one running jt-snmpd is a physical
-notebook. Being a virtual machine is not what empties the built-in service's
-inventory: another QEMU virtual machine running jt-snmpd reports a full
-`entPhysical` table.
+Both halves of every figure below come from **the same machine** — a Dell
+Latitude E5270 (Core i5-6300U, 16 GB, Samsung PM871b) running Windows 10 22H2,
+polled by the same LibreNMS instance with no LibreNMS-side customisation. The
+built-in Windows SNMP feature was installed and given UDP 161, LibreNMS
+rediscovered and captured the pages, then 161 was handed back to jt-snmpd and
+the same pages were captured again. Same hardware, same OS, same monitoring
+server: the only variable is which agent answers.
 
 #### Sensors
 
@@ -116,8 +117,6 @@ were not measured stay `null` rather than being reported as zero.
 > collects it. In the web interface: **gear icon → Settings → Discovery →
 > Discovery Modules → `applications`**, then rediscover the device. On the
 > command line the equivalent is `lnms config:set discovery_modules.applications true`.
-> (The `Proxmox` entry on the built-in host is an unrelated false positive from an
-> earlier discovery — the built-in service provides no SMART data.)
 >
 > **A global switch does not reach a device that has its own setting.** LibreNMS
 > resolves this in the order command line, per device, per OS, global, and the

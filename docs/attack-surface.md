@@ -176,15 +176,19 @@ The threat model  treats the primary adversary as **someone already
 inside the network**. If a single unauthenticated read-only walk yields a
 complete vulnerability assessment and an internal network map, the agent is an
 asset to the attacker rather than to the operator. The following are therefore
-**off by default** (3,175 OIDs in total):
+**off by default**. Walked on the test-bed machine, that is 3,999 OIDs the
+built-in service answers and this one does not:
 
 | Subtree | Built-in SNMP | jt-snmpd | Why it is withheld |
 |---|---:|---:|---|
-| `hrSWInstalled` | 407 | 0 | Exact version of every package = a ready-made CVE list |
-| `hrSWRun` / `hrSWRunPerf` | 1,792 | 0 | Which EDR is running and where = tailored evasion |
-| `tcpConnTable` | 460 | 0 | The full connection list |
-| `udpTable` | 68 | 0 | The service list |
-| `ipNetToMedia` (ARP) | 448 | 0 | The internal ARP table = a target list for lateral movement |
+| `hrSWInstalled` | 660 | 0 | Exact version of every package = a ready-made CVE list |
+| `hrSWRun` / `hrSWRunPerf` | 1,863 | 0 | Which EDR is running and where = tailored evasion |
+| `tcpConnTable` | 1,230 | 0 | The full connection list |
+| `udpTable` | 50 | 0 | The service list |
+| `ipNetToMedia` (ARP) | 196 | 0 | The internal ARP table = a target list for lateral movement |
+
+The counts move with the machine: installed software, running processes and open
+connections all feed straight into them. The shape does not.
 
 Interface filtering reduces disclosure as a side effect: only physical adapters
 are published, so VPN virtual adapters, WFP filter drivers and tunnel interfaces
@@ -213,7 +217,7 @@ never appear.
 | No SNMP monitoring | Closed | — | — | — | — | No monitoring |
 
 **Replacing the built-in service is a net reduction in attack surface**: no SET,
-27 fewer privileges, 3,175 fewer disclosure OIDs, plus rate limiting and a
+27 fewer privileges, roughly four thousand fewer disclosure OIDs, plus rate limiting and a
 source check that runs before anything is parsed.
 
 ---
