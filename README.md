@@ -16,6 +16,8 @@
 
 > **Project page: [https://jasoncheng7115.github.io/jt-snmpd/](https://jasoncheng7115.github.io/jt-snmpd/)** — comparison screenshots, measured numbers and the design rationale, in English and Traditional Chinese.
 
+**Security:** to report a vulnerability privately, see [SECURITY.md](SECURITY.md).
+
 ---
 
 ## Why jt-snmpd?
@@ -342,7 +344,9 @@ jt-snmpd/
 | SNMPv3 (SHA-256 + AES-128) | ⛔ not implemented; v2c only today |
 | OID view presets (VACM) | ⛔ not implemented |
 | Authenticode signing | ⏳ planned via an open-source certificate programme — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
-| Windows Server, Server Core, domain controllers | ⛔ not yet verified |
+| **Windows Server** | ✅ **2016 (a domain controller) and 2022 verified on real machines** — installation lifecycle, migration from the built-in service, and end to end through LibreNMS; see [Deploying to Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes.html) |
+| Server 2019 / 2025, read-only domain controllers | ⛔ not yet verified, no machine |
+| The "Files in use" page on graphical upgrades | ⚠️ **Known defect.** Silent installation and GPO deployment are unaffected; two fixes were measured and withdrawn, see `TEST_PLAN.md` 6.1c.12 |
 | Multi-homed source address selection | ⛔ not yet verified |
 
 Not planned for v1.0: SNMP traps and informs, SNMP SET, ARM64, IPv6-only

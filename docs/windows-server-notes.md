@@ -97,19 +97,7 @@ removal is not a migration for anyone using it.
 
 ---
 
-## 4. Server Core
-
-The installer has no interactive prompt: every value it needs arrives as an MSI
-property, and it fails closed when one is missing rather than waiting for
-someone to type. `msiexec /qn` is the whole procedure.
-
-Not yet verified on an actual Server Core installation. The graphical wizard
-obviously does not apply there; the silent path is the one to use, and it is the
-path the forty lifecycle checks exercise.
-
----
-
-## 5. Domain controllers
+## 4. Domain controllers
 
 **Measured on a live DC.** The agent detects the role through
 `DsRoleGetPrimaryDomainInformation` and reports the domain-controller branch of
@@ -128,7 +116,7 @@ A read-only domain controller has not been tested.
 
 ---
 
-## 6. `sysServices` will not tell you which agent answered
+## 5. `sysServices` will not tell you which agent answered
 
 Both report **76** on a Server 2016 domain controller: the built-in service's
 value comes from `RFC1156Agent\sysServices` in the registry, which an

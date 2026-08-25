@@ -16,6 +16,9 @@
 
 > **專案頁面：[https://jasoncheng7115.github.io/jt-snmpd/](https://jasoncheng7115.github.io/jt-snmpd/)**，對照截圖、實測數字與設計取捨，英文與繁體中文可切換。
 
+
+**資安通報**：要私下回報弱點，請看 [SECURITY.md](SECURITY.md)。
+
 ---
 
 ## 為什麼要有 jt-snmpd？
@@ -326,7 +329,9 @@ jt-snmpd/
 | SNMPv3（SHA-256 + AES-128）| ⛔ 未實作，目前只有 v2c |
 | OID 檢視範圍預設集（VACM）| ⛔ 未實作 |
 | Authenticode 簽章 | ⏳ 日後規劃申請開源專案憑證，見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
-| Windows Server、Server Core、網域控制站 | ⛔ 尚未驗證 |
+| **Windows Server** | ✅ **2016（網域控制站）與 2022 已實機驗證**，含安裝生命週期、內建 SNMP 移轉、LibreNMS 端對端；見[部署到 Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes_zh-TW.html) |
+| Server 2019 / 2025、唯讀網域控制站 | ⛔ 尚未驗證，無環境 |
+| 圖形升級的「使用中的檔案」對話框 | ⚠️ **已知缺陷**。無訊息安裝與 GPO 派送不受影響;兩種修法都實測後撤回，原因見 `TEST_PLAN.md` 6.1c.12 |
 | 多網路卡來源位址選擇 | ⛔ 尚未驗證 |
 
 v1.0 不列入計畫：SNMP trap 與 inform、SNMP SET、ARM64、純 IPv6 部署、
