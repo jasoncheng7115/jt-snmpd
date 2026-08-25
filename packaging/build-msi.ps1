@@ -126,6 +126,13 @@ foreach ($f in $files) {
     $cid = Get-SafeId $relPath 'c_'
     $fid = Get-SafeId $relPath 'f_'
     $src = $f.FullName.Replace('&', '&amp;')
+    # No ServiceControl here, deliberately. Declaring one inside this component
+    # did take jt-snmpd off the "Files in use" list -- measured -- but on a
+    # machine with other software installed it made Windows Installer enumerate
+    # and shut down unrelated services, nxlog and Windows Event Log among them,
+    # and the upgrade then failed its loopback health check and rolled back.
+    # Reproducible on one machine, clean on another. Disturbing somebody else's
+    # services is worse than the dialog. TEST_PLAN 6.1c.12 has the measurements.
     $components.Add(@"
       <Component Id="$cid" Directory="$dirId" Guid="*">
         <File Id="$fid" Source="$src" KeyPath="yes" />

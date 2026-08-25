@@ -19,7 +19,7 @@ not "how many" but "why is each one acceptable".
 | | |
 |---|---|
 | Date | 2026-08-25 |
-| Version | jt-snmpd 0.9.8 |
+| Version | jt-snmpd 1.0.0 |
 | Scope | `deploy/`, `tools/`, `packaging/` — 13 files, 4,279 lines |
 
 ---
@@ -29,13 +29,13 @@ not "how many" but "why is each one acceptable".
 | Check | Tool | Result |
 |---|---|---|
 | Static analysis (SAST) | Bandit 1.9.4 | **HIGH 0**, MEDIUM 3, LOW 11 — all accounted for below |
-| Dependency vulnerabilities (SCA) | pip-audit 2.10.1 | **0 across 62 packages** |
+| Dependency vulnerabilities (SCA) | pip-audit 2.10.1 | **0 across 70 packages** |
 | Personal data and secrets | `tools/check-privacy.py` | **HIGH 0** — runs on every push |
-| Test suite | pytest | 831 passed, 1 skipped — runs on every push |
+| Test suite | pytest | 830 passed, 1 skipped — runs on every push |
 | Installer artefact checks | Windows Installer tables | 5 checks — run on every push |
 
 **The runtime dependency surface is two packages.** `pysnmp 7.1.29`, which
-requires `pyasn1 0.6.4`, which requires nothing. Everything else in the 62 is
+requires `pyasn1 0.6.4`, which requires nothing. Everything else in the 70 is
 build or test tooling that never reaches a customer machine. That is deliberate:
 the fewer dependencies, the shorter this section stays.
 
@@ -83,10 +83,10 @@ which is a project rule.
 
 ## Dependency vulnerabilities
 
-pip-audit found no known vulnerabilities across 62 installed packages, checked
+pip-audit found no known vulnerabilities across 70 installed packages, checked
 against the PyPI Advisory Database and OSV.
 
-Worth separating, because 62 overstates the exposure:
+Worth separating, because 70 overstates the exposure:
 
 | | Packages | Reaches a customer machine |
 |---|---|---|
