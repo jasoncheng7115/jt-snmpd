@@ -165,7 +165,10 @@ service from starting.
 
 If your organisation runs an internal PKI with a code-signing template — common
 in government agencies and hospitals — signing the MSI with your own certificate
-is more useful than a public signature would be. It makes the file match the
+is more useful than a public signature would be. The full procedure, including
+building from source first so that the service executable inside the package is
+signed as well, is in
+[Building and signing it yourself](https://jasoncheng7115.github.io/jt-snmpd/build-and-sign.html). It makes the file match the
 WDAC and AppLocker publisher rules you already maintain, and it puts your own
 name in the UAC prompt, which is a more meaningful statement to your operators
 than a third party's name.
@@ -207,21 +210,26 @@ Do not disable real-time protection as a workaround.
 
 It may not be, and that is a legitimate conclusion. Some points to weigh:
 
-- **The source is public and the build is reproducible from it.** Releases are
+- **The source is public and the build can be repeated from it.** Releases are
   built by GitHub Actions from a tagged commit, and the workflow that produced
-  each artefact is visible in the Actions log.
+  each artefact is visible in the Actions log. The build is not byte-reproducible
+  — PyInstaller stamps a build time into the executables it produces — so a local
+  build will not match the published hash.
 - **The hash chain is complete** from the release page to the installed file, as
   long as you fetch the hash from the release page.
 - **What is missing is publisher identity**, and no amount of hashing supplies
   it. If your controls require a named, certificate-backed publisher, §6 is the
   route that satisfies them.
 - **Building from source is supported.** If you would rather not trust a binary
-  at all, `packaging/build-msi.ps1` produces the same MSI locally.
+  at all, `packaging/build-exe.ps1` and `packaging/build-msi.ps1` produce an
+  installer from the same source on your own machine; see
+  [Building and signing it yourself](https://jasoncheng7115.github.io/jt-snmpd/build-and-sign.html).
 
 ---
 
 ## Related documentation
 
 - [Documentation home](https://jasoncheng7115.github.io/jt-snmpd/)
+- [Building and signing it yourself](https://jasoncheng7115.github.io/jt-snmpd/build-and-sign.html)
 - [Security assessment](https://jasoncheng7115.github.io/jt-snmpd/attack-surface.html)
 - [Security scanning toolchain](https://jasoncheng7115.github.io/jt-snmpd/security-scanning.html)

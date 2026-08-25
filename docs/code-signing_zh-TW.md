@@ -150,6 +150,8 @@ Merge-CIPolicy -PolicyPaths .\existing.xml,.\jt-snmpd.xml -OutputFilePath .\merg
 用自己的憑證簽這個 MSI，比公開簽章更有用。這麼做會讓檔案符合你既有的
 WDAC 與 AppLocker 發行者規則，而且 UAC 提示上出現的是貴單位的名稱，
 對第一線人員而言，這比第三方的名字更有意義。
+完整流程（包含先從原始碼建置，讓封裝在裡面的服務執行檔也一併簽章）見
+[自行編譯打包與簽章](https://jasoncheng7115.github.io/jt-snmpd/build-and-sign_zh-TW.html)。
 
 ```powershell
 # CLI
@@ -187,16 +189,21 @@ PyInstaller 產生的執行檔會週期性地被啟發式規則標記，而不�
 
 - **原始碼公開，且版本由原始碼建置而成。** 發行版本由 GitHub Actions 從一個
   帶標籤的 commit 建置，產出每個檔案的工作流程都留在 Actions 記錄中可供查閱。
+  建置並非位元組層級可重現（PyInstaller 會把建置時間寫進產生的執行檔），
+  所以自行建置的結果不會與發布的雜湊相符。
 - **雜湊鏈是完整的**：從發行頁面一路到安裝後的檔案，前提是雜湊要從發行頁面取得。
 - **缺的是發行者身分**，而這件事再怎麼比對雜湊都補不上。如果貴單位的控制項要求
   具名且有憑證背書的發行者，§6 才是能滿足要求的途徑。
-- **支援自行建置。** 若不願信任任何二進位檔，`packaging/build-msi.ps1`
-  可在本機產生相同的 MSI。
+- **支援自行建置。** 若不願信任任何二進位檔，
+  `packaging/build-exe.ps1` 與 `packaging/build-msi.ps1`
+  可在自己的機器上從同一份原始碼產生安裝檔，見
+  [自行編譯打包與簽章](https://jasoncheng7115.github.io/jt-snmpd/build-and-sign_zh-TW.html)。
 
 ---
 
 ## 相關文件
 
 - [說明文件首頁](https://jasoncheng7115.github.io/jt-snmpd/)
+- [自行編譯打包與簽章](https://jasoncheng7115.github.io/jt-snmpd/build-and-sign_zh-TW.html)
 - [安全性評估](https://jasoncheng7115.github.io/jt-snmpd/attack-surface_zh-TW.html)
 - [資安檢測工具鏈與報告](https://jasoncheng7115.github.io/jt-snmpd/security-scanning_zh-TW.html)

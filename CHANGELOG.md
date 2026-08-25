@@ -9,211 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.9.3] - 2026-08-24
-
-### Fixed
-
-- **The graphical installation could not install anything.** Double-clicking the
-  MSI raised "the management networks must be specified" on the Welcome page,
-  with no way forward, while the page that asks for the management networks sat
-  two clicks further on. The cause is an ordering property of Windows Installer:
-  `LaunchConditions` runs at the very start of the InstallUISequence, before any
-  dialog is shown, so a launch condition that depends on a property the wizard is
-  meant to collect can never be satisfied in a wizard install. The condition now
-  exempts `UILevel > 4`, which is the full wizard and the only level where a page
-  exists to ask; every quieter level (`/qn`, `/qb`, `/qr`) still stops, and the
-  settings page enforces the same requirement itself by refusing to advance.
-
-  Nothing in the suite could have caught this: the WiX source was valid, the
-  build succeeded, `/qn` installs worked, and the lifecycle test drives `msiexec
-  /qn` throughout. Every gate was green while the path an operator uses first was
-  completely broken. `tests/test_msi_ui_gating.py` now pins the shape of the fix,
-  including that the dialog still refuses to advance without a value and that the
-  configure script still fails closed.
-- **`docs/naming-and-paths.md` named three files that do not exist**:
-  `config.yaml` (it is `config.json`), `engine-state.json` (`engine.json`) and
-  `ms-snmp-migration.json` (`ms-snmp-restore.json`). The layout is now what is
-  actually on disk, with the planned-but-absent entries marked as such.
-
----
-
-## [0.9.4] - 2026-08-24
-
-### Fixed
-
-- **The settings page was never shown.** With the launch-condition fix in 0.9.3
-  the wizard finally ran, and went straight from Destination Folder to Ready to
-  install: the page that asks for the management networks and the community was
-  skipped entirely, so the install then failed in the configure step with nothing
-  to configure. `WixUI_InstallDir` already publishes `NewDialog=VerifyReadyDlg`
-  on that button at Order 4, and when several NewDialog events are true the last
-  one processed decides where the wizard goes. Our route was published at Order
-  3, so it was overruled every time. It is now Order 5, with the built-in row's
-  path-validation condition repeated so an invalid path still reaches
-  InvalidDirDlg. Confirmed by reading the ControlEvent table out of the built
-  MSI rather than from the source.
-- **The licence page showed *Lorem ipsum*.** With `WixUILicenseRtf` unset, WiX
-  supplies a placeholder, and a placeholder EULA is not a cosmetic defect: it is
-  a document presented as terms of use, saying nothing, in an installer for
-  software licensed GPL-3.0-or-later. The page now shows the repository's own
-  `LICENSE`, converted at build time by `packaging/make-ui-assets.py` so the two
-  cannot drift apart.
-- **The wizard wore WiX's stock artwork**, including a red "no entry" banner on
-  every page. The banner and side panel are now generated from
-  `docs/brand/icon-512.png` in the project's own colours.
-- **`NewDialog` was published before `SpawnDialog`** on the settings page's Next
-  button. Windows Installer discards every event that follows a NewDialog on the
-  same control, so the "please enter the management networks" prompt worked only
-  because the two conditions happened to be mutually exclusive. The complaint is
-  now published first and the transition last.
-
-- **The wizard assets broke the build before they fixed anything.** A
-  `WixVariable` path is resolved against the working directory, not against the
-  `.wxs`, so the bare file names failed with three WIX0103 "cannot find the
-  Binary file" errors. The build script now passes the directory the same way it
-  already passes the icon.
-
-### Added
-
-- **The MSI is built on every push, not only on a tag.** That gap is why a tag
-  was pushed whose build then failed: `tests.yml` ran on Linux only, and the
-  first Windows build of any change happened during the release. The new job
-  builds the executable and the MSI on `windows-latest`, then checks three
-  things the source cannot tell you: that the committed wizard assets still match
-  what the generator produces, that the built MSI really routes through the
-  settings page (read from its ControlEvent table), and that the licence page is
-  not WiX's placeholder. The MSI is kept as a build artefact for 14 days.
-
-`tests/test_msi_ui_gating.py` covers all four, and each assertion was checked by
-mutation: restoring the previous value turns it red.
-
----
-
-## [0.9.5] - 2026-08-24
-
-### Fixed
-
-- **The "keep the built-in SNMP service" checkbox contradicted itself.** Windows
-  Installer draws a checkbox ticked whenever its property is non-empty, and the
-  property defaulted to `"0"` -- a non-empty string. The box therefore appeared
-  **ticked**, beside a label saying the service would be kept, while the
-  installer went on to disable it. Confirmed by reading the Property table out
-  of the 0.9.4 MSI rather than from the source.
-
-  The second-order fault was worse. Unticking clears a property to `""`, and only
-  the tick writes `"1"`, so the reachable states were `"0"` (ticked, disables),
-  `""` (unticked, disables) and `"1"` (re-ticked, keeps). Using the box as
-  labelled could not keep the service; you had to untick it and tick it again.
-  The property now starts empty, so unticked means disable and ticked means keep,
-  and `KEEPMSSNMP=1` still works for a silent install.
-- **The title bar changed mid-wizard.** Our two pages announced "jt-snmpd"
-  while every WixUI page said "jt-snmpd Setup", which reads as a different
-  program taking over.
-
-### Added
-
-- **The build now inspects the artefact, not just the source.** Two of the last
-  three installer defects were invisible in the WiX source and plain in the built
-  MSI's own tables. CI reads them: the ControlEvent table, to confirm the wizard
-  really routes through the settings page and that our route outranks WixUI's,
-  and the Property table, to confirm the optional checkbox starts unticked.
-
----
-
-## [0.9.6] - 2026-08-25
-
-### Changed
-
-- **Everything is called `jt-snmpd` now.** The product name, the installer
-  title, the install directory, the data directory, the service display name and
-  the firewall rules all used to say "JT SNMP Agent" or "JT-SNMP" while the
-  project, the repository and the service name said `jt-snmpd`. Splitting a
-  display name from a technical identifier is a normal Windows convention, but
-  here it just caused confusion: you find jt-snmpd on GitHub and then meet a
-  different name in Apps & Features, and a third spelling on disk.
-
-  `C:\Program Files\JT SNMP Agent\` becomes `C:\Program Files\jt-snmpd\`,
-  which also removes the space from the path and with it the whole class of
-  unquoted-service-path findings.
-
-  `C:\ProgramData\JT-SNMP\` becomes `C:\ProgramData\jt-snmpd\`, and **the
-  installer moves the existing directory across.** That step is not optional:
-  `state\index-map.json` holds the ifIndex assignments, and losing it makes
-  LibreNMS delete every port and rediscover, orphaning the historical RRDs;
-  `state\ms-snmp-restore.json` is the only record of what the built-in SNMP
-  service looked like before it was disabled. If the move fails it copies
-  instead and says so, because a duplicated directory is recoverable and a lost
-  one is not. A purge now clears both locations, or the next installation would
-  migrate the old one straight back in.
-
-  `tests/test_data_dir_migration.py` covers it, and it earned its place
-  immediately: a repository-wide replacement of the old directory name rewrote
-  the migration's own source path, leaving it pointing at its destination. It
-  would have run, found nothing, reported success, and started every upgraded
-  machine from an empty state directory.
-
-### Fixed
-
-- **The settings page's description ran into the banner icon.** The control was
-  285 units wider than it could afford: the banner bitmap is 370 dialog units
-  across and the icon takes roughly the last 40, so text may run to about unit
-  325, and this one was allowed to reach 355. Measured from the rendered dialog,
-  where the text stopped 4 px short of the icon and read as running underneath
-  it. The description is now narrower and shorter, and
-  `tests/test_msi_ui_gating.py` fails any banner text control that reaches the
-  icon.
-
----
-
-## [0.9.7] - 2026-08-25
-
-### Added
-
-- **The wizard screenshots are retaken from the released 0.9.7 installer on real
-  hardware, and none of them is retouched.** The earlier set had the settings
-  page edited to replace a real management network and a throwaway community
-  with documentation values; this set was captured with the documentation values
-  typed in, so there is nothing to alter. It also covers all six pages, the
-  completion page included.
-
-### Fixed
-
-- **The data directory migration could never run.** 0.9.6 moved the data
-  directory to match the rename and guarded the move on the destination not
-  existing. That condition is never true: this script writes its own log inside
-  the destination, so the first `Log` call creates it before the check is
-  reached. Every upgrade skipped the migration, left the old directory behind,
-  and started the agent with an empty state directory — losing the ifIndex map,
-  which is the failure the migration existed to prevent.
-
-  Found by running a real upgrade over RDP rather than by reading the code. The
-  log said it plainly: `[!] C:\ProgramData\JT-SNMP still exists alongside
-  C:\ProgramData\jt-snmpd`, followed by a fresh `index-map.json` with today's
-  date.
-
-  The migration now decides **per item** rather than per directory, which also
-  makes it idempotent: a half-finished migration completes on the next run
-  instead of being skipped for looking done. An item already present at the
-  destination is never overwritten, because on a reinstall that is live data.
-  Earlier logs are kept under `logs\pre-0.9.6\` rather than discarded, and the
-  old directory is removed only once nothing worth keeping is left in it. If any
-  item cannot be carried across the installation stops, because half a state
-  directory is worse than a failed install that rolls back.
-
-- **Two tests were checking the wrong part of the file, and passing for it.**
-  `test_default_uninstall_keeps_data_dir` anchored on a Chinese log line that had
-  been translated to English, so `find` returned -1, the slice ran to the end of
-  the script, and it was asserting over the whole file. It also matched
-  `$DATA_DIR` as a substring of `$DATA_DIR_OLD`.
-  `test_installer_writes_json_without_a_bom` located the write by the first
-  mention of `config.json`, which the new migration block now precedes. Both are
-  anchored on the thing they actually test and fail loudly if the anchor moves.
-
----
-
 ## [Unreleased]
 
 ### Added
+
+- **A build-and-sign document** (`docs/build-and-sign.md`), covering the route
+  that WDAC and AppLocker environments actually need: build the MSI from the
+  published source on your own machine and sign it with your own certificate,
+  so your existing publisher rules apply instead of a hash rule that has to be
+  regenerated on every upgrade. It gives the exact prerequisites, including the
+  WiX extension pin without which the build fails with `WIX6101`, and states
+  where the signing order matters — the executable has to be signed before the
+  MSI packages it, and `msi-configure.ps1` has to be signed too on a domain that
+  sets `AllSigned` by Group Policy, because a policy set that way takes
+  precedence over `-ExecutionPolicy Bypass` on the command line. It also says
+  plainly that the build is not byte-reproducible, so no one is left comparing
+  hashes that were never going to match.
 
 - **Screenshots of the graphical installation** on the project site, showing all
   five wizard pages. The values in the settings page are documentation examples
@@ -337,6 +148,208 @@ mutation: restoring the previous value turns it red.
 
 ---
 
+## [0.9.7] - 2026-08-25
+
+### Added
+
+- **The wizard screenshots are retaken from the released 0.9.7 installer on real
+  hardware, and none of them is retouched.** The earlier set had the settings
+  page edited to replace a real management network and a throwaway community
+  with documentation values; this set was captured with the documentation values
+  typed in, so there is nothing to alter. It also covers all six pages, the
+  completion page included.
+
+### Fixed
+
+- **The data directory migration could never run.** 0.9.6 moved the data
+  directory to match the rename and guarded the move on the destination not
+  existing. That condition is never true: this script writes its own log inside
+  the destination, so the first `Log` call creates it before the check is
+  reached. Every upgrade skipped the migration, left the old directory behind,
+  and started the agent with an empty state directory — losing the ifIndex map,
+  which is the failure the migration existed to prevent.
+
+  Found by running a real upgrade over RDP rather than by reading the code. The
+  log said it plainly: `[!] C:\ProgramData\JT-SNMP still exists alongside
+  C:\ProgramData\jt-snmpd`, followed by a fresh `index-map.json` with today's
+  date.
+
+  The migration now decides **per item** rather than per directory, which also
+  makes it idempotent: a half-finished migration completes on the next run
+  instead of being skipped for looking done. An item already present at the
+  destination is never overwritten, because on a reinstall that is live data.
+  Earlier logs are kept under `logs\pre-0.9.6\` rather than discarded, and the
+  old directory is removed only once nothing worth keeping is left in it. If any
+  item cannot be carried across the installation stops, because half a state
+  directory is worse than a failed install that rolls back.
+
+- **Two tests were checking the wrong part of the file, and passing for it.**
+  `test_default_uninstall_keeps_data_dir` anchored on a Chinese log line that had
+  been translated to English, so `find` returned -1, the slice ran to the end of
+  the script, and it was asserting over the whole file. It also matched
+  `$DATA_DIR` as a substring of `$DATA_DIR_OLD`.
+  `test_installer_writes_json_without_a_bom` located the write by the first
+  mention of `config.json`, which the new migration block now precedes. Both are
+  anchored on the thing they actually test and fail loudly if the anchor moves.
+
+---
+
+## [0.9.6] - 2026-08-25
+
+### Changed
+
+- **Everything is called `jt-snmpd` now.** The product name, the installer
+  title, the install directory, the data directory, the service display name and
+  the firewall rules all used to say "JT SNMP Agent" or "JT-SNMP" while the
+  project, the repository and the service name said `jt-snmpd`. Splitting a
+  display name from a technical identifier is a normal Windows convention, but
+  here it just caused confusion: you find jt-snmpd on GitHub and then meet a
+  different name in Apps & Features, and a third spelling on disk.
+
+  `C:\Program Files\JT SNMP Agent\` becomes `C:\Program Files\jt-snmpd\`,
+  which also removes the space from the path and with it the whole class of
+  unquoted-service-path findings.
+
+  `C:\ProgramData\JT-SNMP\` becomes `C:\ProgramData\jt-snmpd\`, and **the
+  installer moves the existing directory across.** That step is not optional:
+  `state\index-map.json` holds the ifIndex assignments, and losing it makes
+  LibreNMS delete every port and rediscover, orphaning the historical RRDs;
+  `state\ms-snmp-restore.json` is the only record of what the built-in SNMP
+  service looked like before it was disabled. If the move fails it copies
+  instead and says so, because a duplicated directory is recoverable and a lost
+  one is not. A purge now clears both locations, or the next installation would
+  migrate the old one straight back in.
+
+  `tests/test_data_dir_migration.py` covers it, and it earned its place
+  immediately: a repository-wide replacement of the old directory name rewrote
+  the migration's own source path, leaving it pointing at its destination. It
+  would have run, found nothing, reported success, and started every upgraded
+  machine from an empty state directory.
+
+### Fixed
+
+- **The settings page's description ran into the banner icon.** The control was
+  285 units wider than it could afford: the banner bitmap is 370 dialog units
+  across and the icon takes roughly the last 40, so text may run to about unit
+  325, and this one was allowed to reach 355. Measured from the rendered dialog,
+  where the text stopped 4 px short of the icon and read as running underneath
+  it. The description is now narrower and shorter, and
+  `tests/test_msi_ui_gating.py` fails any banner text control that reaches the
+  icon.
+
+---
+
+## [0.9.5] - 2026-08-24
+
+### Fixed
+
+- **The "keep the built-in SNMP service" checkbox contradicted itself.** Windows
+  Installer draws a checkbox ticked whenever its property is non-empty, and the
+  property defaulted to `"0"` -- a non-empty string. The box therefore appeared
+  **ticked**, beside a label saying the service would be kept, while the
+  installer went on to disable it. Confirmed by reading the Property table out
+  of the 0.9.4 MSI rather than from the source.
+
+  The second-order fault was worse. Unticking clears a property to `""`, and only
+  the tick writes `"1"`, so the reachable states were `"0"` (ticked, disables),
+  `""` (unticked, disables) and `"1"` (re-ticked, keeps). Using the box as
+  labelled could not keep the service; you had to untick it and tick it again.
+  The property now starts empty, so unticked means disable and ticked means keep,
+  and `KEEPMSSNMP=1` still works for a silent install.
+- **The title bar changed mid-wizard.** Our two pages announced "jt-snmpd"
+  while every WixUI page said "jt-snmpd Setup", which reads as a different
+  program taking over.
+
+### Added
+
+- **The build now inspects the artefact, not just the source.** Two of the last
+  three installer defects were invisible in the WiX source and plain in the built
+  MSI's own tables. CI reads them: the ControlEvent table, to confirm the wizard
+  really routes through the settings page and that our route outranks WixUI's,
+  and the Property table, to confirm the optional checkbox starts unticked.
+
+---
+
+## [0.9.4] - 2026-08-24
+
+### Fixed
+
+- **The settings page was never shown.** With the launch-condition fix in 0.9.3
+  the wizard finally ran, and went straight from Destination Folder to Ready to
+  install: the page that asks for the management networks and the community was
+  skipped entirely, so the install then failed in the configure step with nothing
+  to configure. `WixUI_InstallDir` already publishes `NewDialog=VerifyReadyDlg`
+  on that button at Order 4, and when several NewDialog events are true the last
+  one processed decides where the wizard goes. Our route was published at Order
+  3, so it was overruled every time. It is now Order 5, with the built-in row's
+  path-validation condition repeated so an invalid path still reaches
+  InvalidDirDlg. Confirmed by reading the ControlEvent table out of the built
+  MSI rather than from the source.
+- **The licence page showed *Lorem ipsum*.** With `WixUILicenseRtf` unset, WiX
+  supplies a placeholder, and a placeholder EULA is not a cosmetic defect: it is
+  a document presented as terms of use, saying nothing, in an installer for
+  software licensed GPL-3.0-or-later. The page now shows the repository's own
+  `LICENSE`, converted at build time by `packaging/make-ui-assets.py` so the two
+  cannot drift apart.
+- **The wizard wore WiX's stock artwork**, including a red "no entry" banner on
+  every page. The banner and side panel are now generated from
+  `docs/brand/icon-512.png` in the project's own colours.
+- **`NewDialog` was published before `SpawnDialog`** on the settings page's Next
+  button. Windows Installer discards every event that follows a NewDialog on the
+  same control, so the "please enter the management networks" prompt worked only
+  because the two conditions happened to be mutually exclusive. The complaint is
+  now published first and the transition last.
+
+- **The wizard assets broke the build before they fixed anything.** A
+  `WixVariable` path is resolved against the working directory, not against the
+  `.wxs`, so the bare file names failed with three WIX0103 "cannot find the
+  Binary file" errors. The build script now passes the directory the same way it
+  already passes the icon.
+
+### Added
+
+- **The MSI is built on every push, not only on a tag.** That gap is why a tag
+  was pushed whose build then failed: `tests.yml` ran on Linux only, and the
+  first Windows build of any change happened during the release. The new job
+  builds the executable and the MSI on `windows-latest`, then checks three
+  things the source cannot tell you: that the committed wizard assets still match
+  what the generator produces, that the built MSI really routes through the
+  settings page (read from its ControlEvent table), and that the licence page is
+  not WiX's placeholder. The MSI is kept as a build artefact for 14 days.
+
+`tests/test_msi_ui_gating.py` covers all four, and each assertion was checked by
+mutation: restoring the previous value turns it red.
+
+---
+
+## [0.9.3] - 2026-08-24
+
+### Fixed
+
+- **The graphical installation could not install anything.** Double-clicking the
+  MSI raised "the management networks must be specified" on the Welcome page,
+  with no way forward, while the page that asks for the management networks sat
+  two clicks further on. The cause is an ordering property of Windows Installer:
+  `LaunchConditions` runs at the very start of the InstallUISequence, before any
+  dialog is shown, so a launch condition that depends on a property the wizard is
+  meant to collect can never be satisfied in a wizard install. The condition now
+  exempts `UILevel > 4`, which is the full wizard and the only level where a page
+  exists to ask; every quieter level (`/qn`, `/qb`, `/qr`) still stops, and the
+  settings page enforces the same requirement itself by refusing to advance.
+
+  Nothing in the suite could have caught this: the WiX source was valid, the
+  build succeeded, `/qn` installs worked, and the lifecycle test drives `msiexec
+  /qn` throughout. Every gate was green while the path an operator uses first was
+  completely broken. `tests/test_msi_ui_gating.py` now pins the shape of the fix,
+  including that the dialog still refuses to advance without a value and that the
+  configure script still fails closed.
+- **`docs/naming-and-paths.md` named three files that do not exist**:
+  `config.yaml` (it is `config.json`), `engine-state.json` (`engine.json`) and
+  `ms-snmp-migration.json` (`ms-snmp-restore.json`). The layout is now what is
+  actually on disk, with the planned-but-absent entries marked as such.
+
+---
+
 ## [0.9.2] - 2026-08-24
 
 ### Added
@@ -372,6 +385,8 @@ mutation: restoring the previous value turns it red.
 - Enabling SMART in LibreNMS is documented from the web interface first — gear
   icon, Settings, Discovery, Discovery Modules, `applications` — with the `lnms`
   command kept as the alternative.
+
+---
 
 ## [0.9.1] - 2026-08-24
 
@@ -420,6 +435,8 @@ mutation: restoring the previous value turns it red.
   GitHub's run logs need authentication to read, and "exit code 1" is not a
   diagnosis. The Linux job installs net-snmp and then asserts the protocol
   correctness tests actually ran, so they cannot quietly skip.
+
+---
 
 ## [0.9.0] - 2026-08-24
 
@@ -784,3 +801,5 @@ All of the following were found and fixed during deployment on real hardware:
   single NIC), HVCI/WDAC endpoints, Authenticode signing
 - Not yet implemented: SNMPv3, pre-authentication gate, VACM presets,
   self-health OIDs, MSI installer
+
+---
