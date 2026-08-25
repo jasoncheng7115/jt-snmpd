@@ -18,8 +18,8 @@ description: The current scan baseline, with a verdict on every finding
 | | |
 |---|---|
 | 日期 | 2026-08-25 |
-| 版本 | jt-snmpd 0.9.7 |
-| 掃描範圍 | `deploy/`、`tools/`、`packaging/`，共 11 個檔案、4,014 行 |
+| 版本 | jt-snmpd 0.9.8 |
+| 掃描範圍 | `deploy/`、`tools/`、`packaging/`，共 13 個檔案、4,279 行 |
 
 ---
 
@@ -27,11 +27,11 @@ description: The current scan baseline, with a verdict on every finding
 
 | 檢查項目 | 工具 | 結果 |
 |---|---|---|
-| 原始碼靜態分析（SAST） | Bandit 1.9.4 | **HIGH 0**、MEDIUM 3、LOW 8，全部逐條交代於下 |
+| 原始碼靜態分析（SAST） | Bandit 1.9.4 | **HIGH 0**、MEDIUM 3、LOW 11，全部逐條交代於下 |
 | 相依弱點（SCA） | pip-audit 2.10.1 | **62 個套件，0 個已知弱點** |
 | 個資與機密 | `tools/check-privacy.py` | **HIGH 0**，每次推送都跑 |
-| 測試套件 | pytest | 816 通過、1 略過，每次推送都跑 |
-| 安裝檔產物檢查 | 直接讀 Windows Installer 表格 | 4 項，每次推送都跑 |
+| 測試套件 | pytest | 831 通過、1 略過，每次推送都跑 |
+| 安裝檔產物檢查 | 直接讀 Windows Installer 表格 | 5 項，每次推送都跑 |
 
 **執行時期的相依只有兩個套件。** `pysnmp 7.1.29` 依賴 `pyasn1 0.6.4`，
 而 `pyasn1` 不依賴任何東西。62 個裡的其餘全是建置與測試工具，
@@ -41,7 +41,7 @@ description: The current scan baseline, with a verdict on every finding
 
 ## 靜態分析：逐條交代
 
-Bandit 沒有 HIGH。以下十一條為 MEDIUM 與 LOW，每一條不是誤判就是有紀錄的決定。
+Bandit 沒有 HIGH。以下十四條為 MEDIUM 與 LOW，每一條不是誤判就是有紀錄的決定。
 
 ### B104，「可能綁定到所有介面」（MEDIUM ×3）
 
@@ -65,11 +65,13 @@ Bandit 沒有 HIGH。以下十一條為 MEDIUM 與 LOW，每一條不是誤判�
 
 兩處都是窄範圍、都只攔一種預期得到的失敗，而且都有註解說明原因。
 
-### B404 / B603，使用 subprocess（LOW ×3）
+### B404 / B603 / B607，使用 subprocess（LOW ×7）
 
-`tools/check-privacy.py` 與 `tools/prepare-public-repo.py` 呼叫 `git`。
-**接受。** 兩者都以固定的參數陣列呼叫，不經 shell、不帶使用者輸入，
-而且都不會出貨到客戶機器，它們是 repo 的工具。
+`tools/check-privacy.py`、`tools/prepare-public-repo.py` 與
+`tools/check-terminology.py` 呼叫 `git` 取得已追蹤的檔案清單。
+**接受。** 三者都以固定的參數陣列呼叫，不經 shell、不帶使用者輸入，
+而且都不會出貨到客戶機器，它們是 repo 的工具。B607 是同一個呼叫再被挑一次，
+理由是寫 `git` 而不是絕對路徑。
 agent 本身完全不開子處理程序，那是專案的硬性規則。
 
 ---

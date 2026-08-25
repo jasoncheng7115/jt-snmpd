@@ -41,8 +41,8 @@ Authenticode 簽章做兩件事：證明檔案來自某個具名的發行者，�
 
 ```powershell
 # CLI，在同時放著兩個檔案的資料夾中執行
-Get-FileHash .\jt-snmpd-0.9.7-x64.msi -Algorithm SHA256
-Get-Content  .\jt-snmpd-0.9.7-x64.msi.sha256
+Get-FileHash .\jt-snmpd-0.9.8-x64.msi -Algorithm SHA256
+Get-Content  .\jt-snmpd-0.9.8-x64.msi.sha256
 ```
 
 兩個值必須相同（不分大小寫）。**不相同就停下來**，不要安裝，回到發行頁面重新下載。
@@ -59,7 +59,7 @@ Get-Content  .\jt-snmpd-0.9.7-x64.msi.sha256
 
 ```powershell
 # CLI
-Unblock-File .\jt-snmpd-0.9.7-x64.msi
+Unblock-File .\jt-snmpd-0.9.8-x64.msi
 ```
 
 圖形介面的做法是在檔案上按右鍵 → **內容** → 勾選「一般」分頁最下方的**解除封鎖**。
@@ -126,7 +126,7 @@ SmartScreen 不會攔截，而且 WDAC 與 AppLocker 的發行者規則也會直
 
 ```powershell
 # CLI，規則必須涵蓋的路徑
-.\jt-snmpd-0.9.7-x64.msi
+.\jt-snmpd-0.9.8-x64.msi
 C:\Program Files\jt-snmpd\jt-snmpd.exe
 ```
 
@@ -157,9 +157,9 @@ WDAC 與 AppLocker 發行者規則，而且 UAC 提示上出現的是貴單位�
 # CLI
 signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
   /f your-code-signing.pfx /p <密碼> `
-  .\jt-snmpd-0.9.7-x64.msi
+  .\jt-snmpd-0.9.8-x64.msi
 
-signtool verify /pa /v .\jt-snmpd-0.9.7-x64.msi
+signtool verify /pa /v .\jt-snmpd-0.9.8-x64.msi
 ```
 
 請在簽章**之前**先核對公布的 SHA-256。簽章會覆寫檔案，之後公布的雜湊就不再適用，

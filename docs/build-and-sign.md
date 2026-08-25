@@ -63,7 +63,7 @@ built from, and it is what the version number in the file name refers to.
 # CLI
 git clone https://github.com/jasoncheng7115/jt-snmpd.git
 cd jt-snmpd
-git checkout v0.9.7
+git checkout v0.9.8
 ```
 
 Do not edit `deploy/version.py`. The version is read from it by the executable,
@@ -180,12 +180,12 @@ $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
 ```
 
 The version comes from `deploy\version.py`; there is no argument to pass. The
-result is `dist\jt-snmpd-0.9.7-x64.msi`, its `.sha256`, and a per-version copy
-under `dist\releases\0.9.7\` alongside `BUILDINFO.txt`:
+result is `dist\jt-snmpd-0.9.8-x64.msi`, its `.sha256`, and a per-version copy
+under `dist\releases\0.9.8\` alongside `BUILDINFO.txt`:
 
 ```
 product   jt-snmpd
-version   0.9.7
+version   0.9.8
 built     <date and time of this build>
 builder   <machine> / <account>
 commit    <short commit of the tag you built>
@@ -213,7 +213,7 @@ nobody was editing.
 # CLI
 signtool sign /n "Your Organisation" /fd SHA256 `
   /tr http://timestamp.digicert.com /td SHA256 `
-  .\dist\jt-snmpd-0.9.7-x64.msi
+  .\dist\jt-snmpd-0.9.8-x64.msi
 ```
 
 Signing rewrites the file, so the `.sha256` produced in §5 no longer describes
@@ -222,7 +222,7 @@ distributes its own:
 
 ```powershell
 # CLI
-$msi = ".\dist\jt-snmpd-0.9.7-x64.msi"
+$msi = ".\dist\jt-snmpd-0.9.8-x64.msi"
 "$((Get-FileHash $msi -Algorithm SHA256).Hash.ToLower())  $(Split-Path $msi -Leaf)" |
   Set-Content "$msi.sha256" -Encoding ascii
 ```
@@ -233,7 +233,7 @@ $msi = ".\dist\jt-snmpd-0.9.7-x64.msi"
 
 ```powershell
 # CLI
-signtool verify /pa /v .\dist\jt-snmpd-0.9.7-x64.msi
+signtool verify /pa /v .\dist\jt-snmpd-0.9.8-x64.msi
 Get-AuthenticodeSignature .\build\jt-snmpd\jt-snmpd.exe | Format-List Status, SignerCertificate
 ```
 
