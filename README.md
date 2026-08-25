@@ -88,8 +88,12 @@ running processes, connection tables, ARP), while jt-snmpd adds inventory,
 disk I/O, sensors, disk SMART and self-health that the built-in service does not
 provide at all.
 
-Both hosts below are physical machines running Windows 10 22H2, polled by the
-same LibreNMS instance with no LibreNMS-side customisation.
+Both hosts below run Windows 10 22H2 and are polled by the same LibreNMS
+instance with no LibreNMS-side customisation. The host running the built-in
+service is a QEMU/KVM virtual machine; the one running jt-snmpd is a physical
+notebook. Being a virtual machine is not what empties the built-in service's
+inventory: another QEMU virtual machine running jt-snmpd reports a full
+`entPhysical` table.
 
 #### Sensors
 
