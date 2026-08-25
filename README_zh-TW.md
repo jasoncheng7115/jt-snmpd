@@ -82,8 +82,10 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 而 jt-snmpd 另外提供了內建服務完全沒有的 inventory、Disk I/O、感測器、
 磁碟 SMART 與自我健康。
 
-以下兩台都是實體機、都是 Windows 10 22H2，由同一套 LibreNMS 監控，
-LibreNMS 端未做任何客製。
+以下兩台都是 Windows 10 22H2，由同一套 LibreNMS 監控，LibreNMS 端未做任何客製。
+跑內建服務的那台是 QEMU/KVM 虛擬機，跑 jt-snmpd 的那台是實體筆記型電腦。
+內建服務的 inventory 是空的並不是因為它是虛擬機：另一台同樣是 QEMU 虛擬機、
+改跑 jt-snmpd 之後，`entPhysical` 一樣有完整內容。
 
 #### 感測器
 

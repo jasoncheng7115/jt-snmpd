@@ -13,6 +13,13 @@ machines**, and their absolute figures differ for that reason alone: 10 GiB of
 memory against 16. The comparison is about which tables LibreNMS receives, not
 about the numbers matching, so each bar now names its own hardware.
 
+The bar for the built-in service said "physical machine" and that was wrong: it
+is a QEMU/KVM virtual machine. The label has to be right even though it invites
+the objection that a virtual machine has no hardware to report, because the
+objection has an answer — another QEMU virtual machine running jt-snmpd reports
+a full entPhysical table. Writing "physical" to dodge the question would have
+been trading a real answer for a false premise.
+
 The bars are found by colour rather than by position, because the two pages have
 different heights in each image, and replaced in place. Running this twice is
 harmless: it finds the bars it drew last time and draws them again.
@@ -22,7 +29,8 @@ Hardware facts come from LibreNMS's own record of the two devices:
     jt-snmpd host   entPhysical, parsed from SMBIOS by the agent itself:
                     Dell Latitude E5270, Core i5-6300U, 16 GB DDR4-2133
     built-in host   sysDescr only, because the built-in service publishes no
-                    entPhysical at all: AMD64 Family 25, Windows 10 22H2
+                    entPhysical at all: a QEMU/KVM guest on an AMD Ryzen host,
+                    8 vCPUs, 10 GiB, Windows 10 22H2
 
 Usage::
 
@@ -53,8 +61,8 @@ PAD_LEFT = 26
 
 LABELS = {
     # colour -> (Traditional Chinese, English)
-    GREY: ("Windows 內建 SNMP Service　·　實體機（AMD）　·　Windows 10 22H2",
-           "Built-in SNMP Service  ·  physical machine (AMD)  ·  Windows 10 22H2"),
+    GREY: ("Windows 內建 SNMP Service　·　QEMU 虛擬機　·　Windows 10 22H2",
+           "Built-in SNMP Service  ·  QEMU virtual machine  ·  Windows 10 22H2"),
     GREEN: ("jt-snmpd　·　Dell Latitude E5270　·　Windows 10 22H2",
             "jt-snmpd  ·  Dell Latitude E5270  ·  Windows 10 22H2"),
 }

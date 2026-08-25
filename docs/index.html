@@ -289,26 +289,26 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
   <h2><span class="zh">與內建 SNMP Service 的實測對照</span><span class="en">Measured against the built-in service</span></h2>
   <div class="bed">
     <div class="bed-head">
-      <span class="zh">兩台都是<b>實體機</b>，都跑 <b>Windows 10 22H2</b>（build 19045），
-        由同一套 LibreNMS 監控，LibreNMS 端未做任何客製。</span>
-      <span class="en">Both hosts are <b>physical machines</b> running <b>Windows 10 22H2</b>
-        (build 19045), polled by the same LibreNMS instance, with no customisation on the LibreNMS
-        side.</span>
+      <span class="zh">兩台都跑 <b>Windows 10 22H2</b>（build 19045），由同一套 LibreNMS 監控，
+        LibreNMS 端未做任何客製。左邊那台是 <b>QEMU/KVM 虛擬機</b>，右邊那台是<b>實體筆記型電腦</b>。</span>
+      <span class="en">Both hosts run <b>Windows 10 22H2</b> (build 19045) and are polled by the same
+        LibreNMS instance, with no customisation on the LibreNMS side. The host on the left is a
+        <b>QEMU/KVM virtual machine</b>; the one on the right is a <b>physical notebook</b>.</span>
     </div>
     <div class="bed-pair">
       <div class="bed-box bed-a">
         <h4><span class="zh">內建 SNMP Service</span><span class="en">Built-in SNMP Service</span></h4>
         <dl>
           <dt><span class="zh">機器</span><span class="en">Machine</span></dt>
-          <dd><span class="zh">桌機，AMD Ryzen（Family 25）</span>
-              <span class="en">Desktop, AMD Ryzen (Family 25)</span></dd>
+          <dd><span class="zh">QEMU/KVM 虛擬機（SeaBIOS，i440fx），宿主為 AMD Ryzen</span>
+              <span class="en">QEMU/KVM virtual machine (SeaBIOS, i440fx) on an AMD Ryzen host</span></dd>
           <dt>CPU</dt>
-          <dd class="none"><span class="zh">4 核，型號不明（只回報 “Processor”）</span>
-              <span class="en">4 cores, model unknown (reported only as “Processor”)</span></dd>
+          <dd class="none"><span class="zh">8 vCPU，型號不明（只回報 “Processor”）</span>
+              <span class="en">8 vCPUs, model unknown (reported only as “Processor”)</span></dd>
           <dt><span class="zh">記憶體</span><span class="en">Memory</span></dt><dd>10 GiB</dd>
           <dt><span class="zh">磁碟</span><span class="en">Disk</span></dt>
-          <dd class="none"><span class="zh">型號不明（無 <code>entPhysical</code>）</span>
-              <span class="en">Model unknown (no <code>entPhysical</code>)</span></dd>
+          <dd class="none"><span class="zh">虛擬磁碟 100 GB + 80 GB，型號不明（無 <code>entPhysical</code>）</span>
+              <span class="en">Virtual disks, 100 GB + 80 GB, model unknown (no <code>entPhysical</code>)</span></dd>
         </dl>
       </div>
       <div class="bed-box bed-b">
@@ -329,13 +329,18 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
         右邊那台的規格全部由 jt-snmpd 自己從 SMBIOS 解析後經 SNMP 回報；
         左邊那台的內建服務連 <code>entPhysical</code> 都沒有，處理器也只回報 “Processor”
         四個字，所以兩欄標成型號不明的，是它問不出來，不是我們沒填。
+        <b>是虛擬機不是原因</b>：另一台同樣是 QEMU 虛擬機、改跑 jt-snmpd 之後，
+        <code>entPhysical</code> 就有機殼、CPU、記憶體與兩顆虛擬磁碟共六筆。
         截圖中的 MAC 位址已遮蔽。</span>
       <span class="en"><b>These are two different machines</b>, so absolute figures such as total memory
         naturally differ. What the comparison shows is <b>which tables LibreNMS receives</b>, not whether
         the numbers match. Everything listed on the right was parsed out of SMBIOS by jt-snmpd itself and
         reported over SNMP; the built-in service on the left has no <code>entPhysical</code> at all and
         describes each processor as nothing more than “Processor”, so the two rows marked unknown are
-        unknown to it, not left blank by us. MAC addresses in the screenshots are redacted.</span>
+        unknown to it, not left blank by us. <b>Being a virtual machine is not the reason</b>: another
+        QEMU virtual machine running jt-snmpd reports six <code>entPhysical</code> rows covering its
+        chassis, CPU, memory and both virtual disks. MAC addresses in the screenshots are
+        redacted.</span>
     </p>
   </div>
 
