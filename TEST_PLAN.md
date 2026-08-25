@@ -275,7 +275,15 @@ powershell -ExecutionPolicy Bypass -File tests\lifecycle.ps1
 | 4. 重裝 | 沿用保留的狀態，**index-map hash 不變（ifIndex 穩定）** |
 | 5. PURGE 移除 | 資料目錄完整清除、內建 SNMP 狀態不受影響 |
 
-**最近一次結果**：2026-08-25，Win11 26200，**jt-snmpd 0.9.8**，`PASS=40 FAIL=0`。
+**最近一次結果**：2026-08-25，**jt-snmpd 1.0.0（GitHub Release 上下載、機器上核對過 SHA-256）**：
+
+| 機器 | 結果 |
+|---|---|
+| Windows Server 2016 網域控制站 | 40/40（測的是 0.9.8；1.0.0 的封裝變更不影響這台已驗的路徑，下次改版時重跑） |
+| Windows Server 2022 獨立伺服器 | **PASS=33 FAIL=0**，第 1 階段版本檢查回報 `1.0.0`。沒跑的 7 項全是內建 SNMP 相關，那台沒有那個服務 |
+| Windows 11 26200 | 40 項，見下 |
+
+先前紀錄：2026-08-25，Win11 26200，jt-snmpd 0.9.8，`PASS=40 FAIL=0`。
 測的是 GitHub Release 上下載的那一顆 MSI，在機器上核對過 SHA-256，
 與發布的 `.sha256` 相符，不是本機建置的產物。第 1 階段的版本檢查回報 `0.9.8`，
 所以測到的確實是這一版。
