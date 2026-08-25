@@ -325,8 +325,8 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   驗證過、寫進 `config.json`。而 agent 宣告的 `CFG_PATH` 指向 `config.yaml`
 ，不同的檔案，而且兩個它都沒有打開過。每一次安裝跑的都是原始碼裡的預設值。
 
-  那組預設值是 `community="mon2"` 與 `allowed_networks=("192.168.1.0/24",)`，
-  正好就是開發實驗室用的值，這也是為什麼數個月的測試都沒發現。換成別的值安裝，
+  那組預設值就是開發實驗室自己的 community，以及它自己的
+  `allowed_networks=("192.168.1.0/24",)`，這也是為什麼數個月的測試都沒發現。換成別的值安裝，
   loopback 健康檢查會用操作者的 community 查詢、agent 卻在另一個上面回應，
   檢查逾時，MSI 以 1603 回滾整筆交易。失敗是徹底的，卻仍然看不見，
   因為唯一能成功的那組設定，正是唯一被試過的那組。

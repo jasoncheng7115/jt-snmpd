@@ -398,9 +398,9 @@ mutation: restoring the previous value turns it red.
   different file — and never opened either one. Every installation ran on the
   defaults compiled into the source.
 
-  Those defaults were `community="mon2"` and
-  `allowed_networks=("192.168.1.0/24",)`: exactly the values the development lab
-  used, which is why months of testing never noticed. Install with anything else
+  Those defaults were the development lab's own community string and its own
+  `allowed_networks=("192.168.1.0/24",)`: exactly the values the lab used, which
+  is why months of testing never noticed. Install with anything else
   and the loopback health check queries with the operator's community, the agent
   answers on a different one, the check times out, and MSI rolls the whole
   transaction back with error 1603. The failure was total, and still invisible,

@@ -43,6 +43,11 @@ NEVER_PUBLISH = {
     # only. Rewriting thirty-odd unresolvable references into standalone prose
     # would be a bigger job than the document is worth publishing for.
     "phase0-findings.md",
+    # Real credentials, read by check-privacy.py and by the config-loading guard
+    # so that both can look for them. .gitignore already covers it; naming it
+    # here is the second line, and this is the one file where a gap would hand
+    # over the thing everything else exists to protect.
+    ".privacy-secrets",
 }
 NEVER_PUBLISH_DIRS = {"reports", "state", "logs", ".venv", "build", "dist",
                       "__pycache__", ".pytest_cache", ".git"}

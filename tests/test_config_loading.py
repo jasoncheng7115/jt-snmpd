@@ -9,14 +9,14 @@ and neither could they be set *during* installation.
 The installer collected `COMMUNITY` and `MANAGEMENTNETWORKS`, validated them,
 and wrote them to `C:\\ProgramData\\jt-snmpd\\config.json`. The agent declared
 `CFG_PATH = ...\\config.yaml` — a different file — and never opened either one.
-`CFG` was a module-level dict with `community="mon2"` and
+`CFG` was a module-level dict with the development lab's own community and
 `allowed_networks=("192.168.1.0/24",)` baked in, and those were the values every
 installation actually ran with.
 
 Proven on a real machine:
 
     config.json:  "community": "zzz-proof-only", "allowed_networks": ["172.31.0.0/16"]
-    agent log:    community=mon2   networks=['192.168.1.0/24']
+    agent log:    community=<the lab's own>   networks=['192.168.1.0/24']
 
 **Why it survived every test**
 
@@ -95,13 +95,32 @@ def test_settings_are_validated_before_the_engine_is_configured():
         assert i_check < run.index(later), f"the configuration check has to come before {later}"
 
 
+def _lab_secrets() -> list[str]:
+    """Real community strings, read from an untracked file.
+
+    This assertion used to name the lab's community in its own source, which
+    published the string in order to check that it had not been published. The
+    values now live in `tools/.privacy-secrets`, which is git-ignored and
+    excluded from the public repository; when it is absent -- on CI, or for
+    anyone who cloned this -- the structural assertions above still run, and
+    they are the ones that matter.
+    """
+    f = DEPLOY.parent / "tools" / ".privacy-secrets"
+    if not f.exists():
+        return []
+    return [ln.strip() for ln in f.read_text(encoding="utf-8").splitlines()
+            if ln.strip() and not ln.startswith("#")]
+
+
 # --- a default must not hide the configuration having not been read ---------
 
 def test_no_usable_community_default():
     """A default that matches the test lab is what let the bug survive."""
     cfg = ast.literal_eval(ast.unparse(_assign("CFG").value))
     assert cfg["community"] == "", "community must have no default"
-    assert "mon2" not in CODE, "the lab community must not survive in executable code"
+    for secret in _lab_secrets():
+        assert secret not in CODE, \
+            "a real community string from tools/.privacy-secrets is in the agent source"
 
 
 def test_no_usable_network_default():

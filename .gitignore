@@ -87,3 +87,6 @@ docs/internal-*.md
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Real credentials used by the privacy scan and the config guard; never tracked
+tools/.privacy-secrets

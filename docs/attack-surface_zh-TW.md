@@ -103,9 +103,9 @@ LocalSystem 預設帶約 30 項權限，這裡只留 3 項。**已移除的包�
 ### 緩解：唯讀，且沒有 oracle
 
 ```
-$ snmpset -v2c -c mon2 192.0.2.63 .1.3.6.1.2.1.1.6.0 s "PWNED"
+$ snmpset -v2c -c <community> 192.0.2.63 .1.3.6.1.2.1.1.6.0 s "PWNED"
 Timeout: No Response from 192.0.2.63
-$ snmpget -v2c -c mon2 -Oqv 192.0.2.63 .1.3.6.1.2.1.1.6.0
+$ snmpget -v2c -c <community> -Oqv 192.0.2.63 .1.3.6.1.2.1.1.6.0
 "LAB"
 ```
 
