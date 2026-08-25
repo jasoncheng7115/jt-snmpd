@@ -339,7 +339,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   設定現在可以照文件一直以來暗示的方式修改：編輯
   `C:\ProgramData\jt-snmpd\config.json`，重新啟動服務。
 
-- **未設定來源 ACL 時等於放行所有來源。** 前置閘門把空的網段清單當成「不過濾」。
+- **未設定來源 ACL 時等於放行所有來源。** 前置閘門把空的網段清單當成「不篩選」。
   在安裝程式是設定檔唯一作者的時候，那個狀態到不了；但手動編輯設定檔現在是
   受支援的流程，一個被清空的清單會無聲地把 agent 暴露給整個網路。
   現在改為除 loopback 外一律拒絕，監控會明顯停掉，而不是安靜地過度分享。
@@ -411,7 +411,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 - **ACPI 溫度區溫度**，不需核心驅動的系統 / 主機板溫度，以
   `advapi32!WmiOpenBlock` + `WmiQueryAllDataW`（WMI 資料區塊 API，不是 WMI COM，
-  也不開子行程）讀取。實體機實測 25°C，臨界跳脫點 107°C；虛擬機回
+  也不開子處理程序）讀取。實體機實測 25°C，臨界跳脫點 107°C；虛擬機回
   `ERROR_WMI_GUID_NOT_FOUND`，該感測器直接不出現。
 
   CPU 封裝溫度仍然做不到，而且會一直做不到：它需要存取 MSR，而那需要核心驅動。
@@ -634,7 +634,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **非 ASCII OCTET STRING 編碼失敗**：pyasn1 預設以 latin-1 編碼字串，
   正體中文網路卡名（「乙太網路」）會直接拋出 `PyAsn1UnicodeEncodeError`
 - **含空白路徑未加引號會被截斷**：預設安裝路徑 `%ProgramFiles%\jt-snmpd\`
-  本身即含空白，未加引號時行程啟動失敗且無記錄
+  本身即含空白，未加引號時處理程序啟動失敗且無記錄
 - **PowerShell 指令碼需 UTF-8 BOM**：Windows PowerShell 5.1 在無 BOM 時
   以系統 ANSI 代碼頁讀取 `.ps1`，中文註解會打斷語法剖析
 - **建置產物新鮮度誤判**：僅以「exe 是否存在」判定建置成功，

@@ -30,11 +30,11 @@ jt-snmpd 填補這個缺口，並帶著幾條刻意的限制，全部來自目�
 
 - **唯讀。** 不支援 SNMP SET、不發 trap、不做任何寫入。
 - **不主動對外連線。** 不檢查更新、不回報遙測、不在執行時下載任何程式碼。
-  安裝檔完全自包含。
+  安裝檔把需要的東西全部包在裡面。
 - **不依賴核心驅動程式。** 磁碟溫度走 Windows 原生 IOCTL，**不用**
   LibreHardwareMonitor，它依賴的 WinRing0 驅動已列入 Microsoft
   vulnerable driver blocklist，在啟用 HVCI 的端點上會觸發 Defender 告警。
-- **資料路徑不用 WMI、不用 PowerShell 子行程。** collector 以 ctypes 直接呼叫
+- **資料路徑不用 WMI、不用 PowerShell 子處理程序。** collector 以 ctypes 直接呼叫
   Win32 API。
 - **從內建服務移轉設定。** community、允許的管理主機、sysContact、sysLocation
   都會從既有的 SNMP Service 登錄檔沿用，換過來不必在每台機器重新填一次。
@@ -213,7 +213,7 @@ pysnmp（只負責 message / USM / VACM / transport）
 | SNMP | pysnmp 7.1，只用它的 message / USM / VACM / transport 層，MIB 層由我們取代 |
 | 資料來源 | 以 ctypes 呼叫 Win32 API，iphlpapi、psapi、ntdll、kernel32 IOCTL、SMBIOS、登錄檔 |
 | 執行時相依 | `pysnmp` → `pyasn1`。就這樣 |
-| 打包 | PyInstaller one-folder → 自包含的 `jt-snmpd.exe`，目標機不需安裝 Python |
+| 打包 | PyInstaller one-folder → 完整一包的 `jt-snmpd.exe`，目標機不需安裝 Python |
 | 服務 | pywin32 服務框架，LocalSystem，自動啟動 |
 | 部署 | MSI（WiX v5）：點兩下有設定對話框、`/qn` 無訊息安裝、GPO / Intune / SCCM 派送 |
 

@@ -45,7 +45,7 @@
 | 1.16 | base OID 常數對照 RFC 標準值 | **[已實作]** `tests/test_oid_constants.py`（10 例）|
 | 1.17 | collector 失敗語意：回 default 不拋出、錯誤計數累計、恢復不歸零 | **[已實作]** `tests/test_collector_health.py`（8 例）|
 | 1.18 | sysObjectID 三分支與 Server Core / DC 判定 | **[已實作]** `tests/test_product_type.py`（9 例）|
-| 1.19 | SMBIOS 佔位字串過濾（`To Be Filled By O.E.M.` 等） | [待實作] |
+| 1.19 | SMBIOS 佔位字串篩選（`To Be Filled By O.E.M.` 等） | [待實作] |
 
 ---
 
@@ -132,9 +132,9 @@
 | 5.1 | 24 小時 boofuzz fuzzing（UDP/161） | 零 crash、零 hang、RSS 不成長 | [待實作] |
 | 5.2 | PROTOS c06-snmpv1 測試集 | 同上 | [待實作] |
 | 5.3 | VACM 逃逸：`librenms-minimal` 下 walk `.1.3.6`，被排除的 subtree 完全取不到 | GET 與 GETNEXT 皆測 | [待實作] |
-| 5.4 | **VACM 必須在走訪路徑上生效**（典型漏洞是 GET 有過濾、walk 直接跨過去） | 專項測試 | [待實作] |
+| 5.4 | **VACM 必須在走訪路徑上生效**（典型漏洞是 GET 有篩選、walk 直接跨過去） | 專項測試 | [待實作] |
 | 5.5 | 未認證封包風暴 | CPU 不超標、RSS 不成長、正常 manager 仍在 SLA 內 | [待實作] |
-| 5.6 | Pre-auth gate：來源 IP 不在白名單者零解析即丟棄 | 斷言未進入 BER decoder | **[已實作]** `tests/test_preauth_gate.py`（32 例）+ 真機驗證 |
+| 5.6 | Pre-auth gate：來源 IP 不在白名單者零解析即丟棄 | 斷言未進入 BER decoder | **[已實作]** `tests/test_preauth_gate.py`（32 例）+ 實機驗證 |
 | 5.6.1 | 閘門掛點正確性（覆寫不存在的方法會讓整個閘門無聲失效） | 突變測試證實可攔截 | **[已實作]** `tests/test_gate_hookpoint.py`（6 例）|
 | 5.6.2 | loopback 永遠放行（否則安裝程式健康檢查必定失敗） | 斷言 | **[已實作]** |
 | 5.6.3 | SAST / SCA / SBOM 基線 | Bandit HIGH=0、相依 CVE=0 | **[已實作]** 見 `docs/security-scanning_zh-TW.md` |
@@ -373,7 +373,7 @@ Windows 機器，能反覆重裝而不會影響到任何人。
 | 8.2 | 加入裝置後執行 discovery，確認完整 OID 被抓到 | [受阻] |
 | 8.3 | Overview / Processor / Memory / Storage / DiskIO / Ports 六個頁面全滿 | [受阻] |
 | 8.4 | Ports：speed / state / traffic / packets / errors / discards 皆有值 | [受阻] |
-| 8.5 | 連續 poll 24 小時後 RRD 無斷點、無孤兒 | [受阻] |
+| 8.5 | 連續 poll 24 小時後 RRD 無斷點、沒有失去對應的項目 | [受阻] |
 | 8.6 | 重新啟動 agent 後 LibreNMS 不得誤判 counter reset 或 device reboot | [受阻] |
 | 8.7 | 升級 agent 後 port / storage / processor 不得重新 discovery | [受阻] |
 | 8.8 | 自我健康 OID 的 alert rule 範本能正確觸發 | [受阻] |

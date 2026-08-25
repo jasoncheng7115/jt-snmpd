@@ -42,7 +42,13 @@ git push -u origin main
 
 ```bash
 python3 tools/check-privacy.py
+python3 tools/check-terminology.py
 ```
+
+第二支檢查台灣用語。這個專案已經有十幾個詞是靠人讀完成品才發現的，
+那是最貴的發現地點。一個詞是先在這裡出過錯，才會被列進清單，
+所以有發現就是真的有問題。完整清單用 `python3 tools/check-terminology.py --list` 看，
+不抄在這裡：把禁用詞逐一列出來的文件，自己就會被這支工具挑出來。
 
 **有 `HIGH` 就不要推。** 掃描範圍是「git 實際會推上去的檔案」
 （已追蹤 + 未被忽略的未追蹤檔），不是整個工作目錄。
