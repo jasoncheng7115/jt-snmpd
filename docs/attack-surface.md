@@ -61,8 +61,8 @@ attacker has to spoof a source address that lies **inside the management
 network**, and two layers stand in the way:
 
 ```
-JT SNMP Agent (UDP 161): Allow proto=UDP port=161 from=192.0.2.0/255.255.255.0
-JT SNMP Agent (ICMPv4):  Allow proto=ICMPv4         from=192.0.2.0/255.255.255.0
+jt-snmpd (UDP 161): Allow proto=UDP port=161 from=192.0.2.0/255.255.255.0
+jt-snmpd (ICMPv4):  Allow proto=ICMPv4         from=192.0.2.0/255.255.255.0
 ```
 
 - **Windows Firewall**: the installer requires the management networks up front
@@ -234,7 +234,7 @@ snmpget -v2c -c <community> -Oqv <target> .1.3.6.1.2.1.1.6.0        # should be 
 # Token privileges
 sc qprivs jt-snmpd
 # Firewall scope
-Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' | Get-NetFirewallAddressFilter
+Get-NetFirewallRule -DisplayName 'jt-snmpd*' | Get-NetFirewallAddressFilter
 ```
 
 ---

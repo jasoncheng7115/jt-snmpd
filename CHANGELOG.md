@@ -106,8 +106,8 @@ mutation: restoring the previous value turns it red.
   labelled could not keep the service; you had to untick it and tick it again.
   The property now starts empty, so unticked means disable and ticked means keep,
   and `KEEPMSSNMP=1` still works for a silent install.
-- **The title bar changed mid-wizard.** Our two pages announced "JT SNMP Agent"
-  while every WixUI page said "JT SNMP Agent Setup", which reads as a different
+- **The title bar changed mid-wizard.** Our two pages announced "jt-snmpd"
+  while every WixUI page said "jt-snmpd Setup", which reads as a different
   program taking over.
 
 ### Added
@@ -121,6 +121,36 @@ mutation: restoring the previous value turns it red.
 ---
 
 ## [0.9.6] - 2026-08-25
+
+### Changed
+
+- **Everything is called `jt-snmpd` now.** The product name, the installer
+  title, the install directory, the data directory, the service display name and
+  the firewall rules all used to say "JT SNMP Agent" or "JT-SNMP" while the
+  project, the repository and the service name said `jt-snmpd`. Splitting a
+  display name from a technical identifier is a normal Windows convention, but
+  here it just caused confusion: you find jt-snmpd on GitHub and then meet a
+  different name in Apps & Features, and a third spelling on disk.
+
+  `C:\Program Files\JT SNMP Agent\` becomes `C:\Program Files\jt-snmpd\`,
+  which also removes the space from the path and with it the whole class of
+  unquoted-service-path findings.
+
+  `C:\ProgramData\JT-SNMP\` becomes `C:\ProgramData\jt-snmpd\`, and **the
+  installer moves the existing directory across.** That step is not optional:
+  `state\index-map.json` holds the ifIndex assignments, and losing it makes
+  LibreNMS delete every port and rediscover, orphaning the historical RRDs;
+  `state\ms-snmp-restore.json` is the only record of what the built-in SNMP
+  service looked like before it was disabled. If the move fails it copies
+  instead and says so, because a duplicated directory is recoverable and a lost
+  one is not. A purge now clears both locations, or the next installation would
+  migrate the old one straight back in.
+
+  `tests/test_data_dir_migration.py` covers it, and it earned its place
+  immediately: a repository-wide replacement of the old directory name rewrote
+  the migration's own source path, leaving it pointing at its destination. It
+  would have run, found nothing, reported success, and started every upgraded
+  machine from an empty state directory.
 
 ### Fixed
 
@@ -322,7 +352,7 @@ mutation: restoring the previous value turns it red.
   `utf-8-sig` because PowerShell and Notepad both write a BOM.
 
   Settings can now be changed the way the documentation always implied: edit
-  `C:\ProgramData\JT-SNMP\config.json`, restart the service.
+  `C:\ProgramData\jt-snmpd\config.json`, restart the service.
 
 - **An unconfigured source ACL allowed every source.** The pre-auth gate treated
   an empty network list as "no filtering". While the installer was the config's
@@ -680,7 +710,7 @@ All of the following were found and fixed during deployment on real hardware:
   by default, so a Traditional Chinese adapter name raises
   `PyAsn1UnicodeEncodeError`
 - **Unquoted paths containing spaces are truncated**: the default installation
-  path `%ProgramFiles%\JT SNMP Agent\` contains a space, and without quoting the
+  path `%ProgramFiles%\jt-snmpd\` contains a space, and without quoting the
   process fails to start with no log output
 - **PowerShell scripts require a UTF-8 BOM**: Windows PowerShell 5.1 reads `.ps1`
   files using the system ANSI code page when no BOM is present, which corrupts

@@ -1,4 +1,4 @@
-"""jt-snmpd — JT SNMP Agent for Windows (Phase 0.5, deployable end to end)
+"""jt-snmpd — jt-snmpd for Windows (Phase 0.5, deployable end to end)
 
 Self-contained in one file. Runs in the foreground for debugging, or is
 registered by pywin32 as a Windows service (automatic start, LocalSystem).
@@ -39,7 +39,7 @@ from pysnmp.smi.instrum import AbstractMibInstrumController
 from preauth import PreAuthGate
 
 # ------------------------------------------------------------ config / logging
-STATE_DIR = r"C:\ProgramData\JT-SNMP"
+STATE_DIR = r"C:\ProgramData\jt-snmpd"
 LOG_DIR = os.path.join(STATE_DIR, "logs")
 STATE_FILE = os.path.join(STATE_DIR, "state", "index-map.json")
 
@@ -2905,7 +2905,7 @@ try:
 
     class JTSnmpdService(win32serviceutil.ServiceFramework):
         _svc_name_ = "jt-snmpd"
-        _svc_display_name_ = "JT SNMP Agent"
+        _svc_display_name_ = "jt-snmpd"
         _svc_description_ = ("SNMP agent serving Windows host monitoring data "
                              "over standard MIBs")
 

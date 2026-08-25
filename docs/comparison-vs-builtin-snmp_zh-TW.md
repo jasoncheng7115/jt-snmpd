@@ -142,7 +142,7 @@ Loopback、Teredo / IP-HTTPS / 6to4。
 這不再是「安全與功能的取捨」，而是單純沒有理由送出去。
 
 只有 ARP 是真的有用的那一項，它也**已經實作**，預設關閉。要開啟的話，
-編輯 `C:\ProgramData\JT-SNMP\config.json`：
+編輯 `C:\ProgramData\jt-snmpd\config.json`：
 
 ```json
 {

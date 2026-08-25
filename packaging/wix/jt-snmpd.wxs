@@ -29,7 +29,7 @@
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
-  <Package Name="JT SNMP Agent"
+  <Package Name="jt-snmpd"
            Manufacturer="Jason Tools"
            Version="$(var.ProductVersion)"
            UpgradeCode="7B3E9C24-5A61-4F8D-9E27-1C4A8B6D3F50"
@@ -44,7 +44,7 @@
          before the new files are copied, avoiding the classic MSI trap where
          removing the old version deletes the new files along with it. -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
-                  DowngradeErrorMessage="A newer version of JT SNMP Agent is already installed."
+                  DowngradeErrorMessage="A newer version of jt-snmpd is already installed."
                   Schedule="afterInstallInitialize" />
 
     <MediaTemplate EmbedCab="yes" />
@@ -53,7 +53,7 @@
     <Launch Condition="VersionNT >= 603"
             Message="Windows 10 / Server 2016 or newer is required." />
     <Launch Condition="Privileged"
-            Message="Installing JT SNMP Agent requires administrator rights." />
+            Message="Installing jt-snmpd requires administrator rights." />
 
     <!-- The management networks are mandatory. Deny by default, never Any/Any.
          Without them the installation stops rather than quietly opening the agent
@@ -108,7 +108,7 @@
     <Property Id="ARPNOREPAIR" Value="1" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="JT SNMP Agent" />
+      <Directory Id="INSTALLFOLDER" Name="jt-snmpd" />
     </StandardDirectory>
 
     <!-- The Add/Remove Programs icon.
@@ -129,7 +129,7 @@
                      Value="[INSTALLFOLDER]jt-snmpd.exe" KeyPath="yes" />
     </Component>
 
-    <Feature Id="Main" Title="JT SNMP Agent" Level="1" AllowAbsent="no">
+    <Feature Id="Main" Title="jt-snmpd" Level="1" AllowAbsent="no">
       <ComponentGroupRef Id="AgentFiles" />
       <ComponentRef Id="ArpDisplayIcon" />
     </Feature>
@@ -141,10 +141,10 @@
          the default on Windows 11. -->
 
     <!-- [INSTALLFOLDER] expands **with a trailing backslash**
-         ("C:\Program Files\JT SNMP Agent\"). Writing &quot;[INSTALLFOLDER]&quot;
+         ("C:\Program Files\jt-snmpd\"). Writing &quot;[INSTALLFOLDER]&quot;
          directly lets that backslash escape the closing quote,
          so PowerShell receives a path with a stray quote in it:
-             cannot find C:\Program Files\JT SNMP Agent"\jt-snmpd.exe
+             cannot find C:\Program Files\jt-snmpd"\jt-snmpd.exe
          A classic MSI trap, and one this hit. The fix is to assemble the full
          script path first, after which the argument needs no directory. -->
     <!-- This must come **after** CostFinalize: directory properties such as
@@ -219,7 +219,7 @@
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <UI>
-      <Dialog Id="JtSettingsDlg" Width="370" Height="270" Title="JT SNMP Agent Setup">
+      <Dialog Id="JtSettingsDlg" Width="370" Height="270" Title="jt-snmpd Setup">
         <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15"
                  Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Monitoring settings" />
         <!-- Width has to stop short of the banner icon. The banner bitmap is 370
@@ -280,7 +280,7 @@
         </Control>
       </Dialog>
 
-      <Dialog Id="JtNeedNetworksDlg" Width="260" Height="85" Title="JT SNMP Agent Setup"
+      <Dialog Id="JtNeedNetworksDlg" Width="260" Height="85" Title="jt-snmpd Setup"
               NoMinimize="yes">
         <Control Id="Text" Type="Text" X="20" Y="15" Width="220" Height="40"
                  NoPrefix="yes"

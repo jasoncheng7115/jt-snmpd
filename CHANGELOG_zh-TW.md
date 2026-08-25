@@ -91,8 +91,8 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   `"1"`（重新勾選、保留）。照標示使用這個方塊根本無法保留服務，
   必須先取消勾選再勾回來。屬性現在預設為空，未勾即停用、已勾即保留，
   而無訊息安裝的 `KEEPMSSNMP=1` 照樣有效。
-- **標題列在精靈中途換了名字。** 我們自己那兩頁寫「JT SNMP Agent」，
-  而 WixUI 的每一頁都寫「JT SNMP Agent Setup」，看起來像換了另一個程式接手。
+- **標題列在精靈中途換了名字。** 我們自己那兩頁寫「jt-snmpd」，
+  而 WixUI 的每一頁都寫「jt-snmpd Setup」，看起來像換了另一個程式接手。
 
 ### 新增
 
@@ -104,6 +104,30 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 ---
 
 ## [0.9.6] - 2026-08-25
+
+### 變更
+
+- **現在全部都叫 `jt-snmpd`。** 產品名稱、安裝精靈標題、安裝目錄、資料目錄、
+  服務顯示名稱與防火牆規則，原本寫的是「JT SNMP Agent」或「JT-SNMP」，
+  而專案、repo 與服務名稱寫的是 `jt-snmpd`。把顯示名稱與技術識別分開是 Windows
+  的常見慣例，但在這裡只造成誤會：使用者在 GitHub 上找到的是 jt-snmpd，
+  在「應用程式與功能」看到的是另一個名字，磁碟上還有第三種寫法。
+
+  `C:\Program Files\JT SNMP Agent\` 改為 `C:\Program Files\jt-snmpd\`，
+  順帶消除路徑中的空白，也就消除了 unquoted service path 這一整類稽核發現。
+
+  `C:\ProgramData\JT-SNMP\` 改為 `C:\ProgramData\jt-snmpd\`，
+  而且**安裝程式會把既有目錄搬過去**。這一步不能省：`state\index-map.json`
+  裡是 ifIndex 的配發結果，弄丟它，LibreNMS 會刪掉每一個 port 重新探索，
+  歷史 RRD 一起失去對應；`state\ms-snmp-restore.json` 則是「內建 SNMP 服務
+  被停用前長什麼樣」的唯一紀錄。搬移失敗時會退而複製並明白說出來，
+  因為多一份目錄可以救，少一份不行。清除移除現在會清掉兩個位置，
+  否則下一次安裝會把舊的又搬回來。
+
+  `tests/test_data_dir_migration.py` 守著這件事，而且它立刻就發揮作用了：
+  一次全庫取代把搬移的**來源路徑**也改掉了，讓它指向自己的目的地。
+  那樣會照跑、找不到東西、回報成功，然後每一台升級過的機器都從空的
+  狀態目錄開始。
 
 ### 修正
 
@@ -165,7 +189,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 ### 修正
 
 - **程式碼簽章文件寫錯了安裝目錄。** 它寫成 `C:\Program Files\jt-snmpd\`，
-  但 MSI 實際安裝到 `C:\Program Files\JT SNMP Agent\`，
+  但 MSI 實際安裝到 `C:\Program Files\jt-snmpd\`，
   導致 WDAC 掃描路徑與 Defender 排除路徑兩處都是錯的。
 
 - **`prepare-public-repo.py` 只保留 `dist/` 與 `build/` 裡的 `README.md`**，
@@ -262,7 +286,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   讀檔用 `utf-8-sig`，因為 PowerShell 與記事本都會寫 BOM。
 
   設定現在可以照文件一直以來暗示的方式修改：編輯
-  `C:\ProgramData\JT-SNMP\config.json`，重新啟動服務。
+  `C:\ProgramData\jt-snmpd\config.json`，重新啟動服務。
 
 - **未設定來源 ACL 時等於放行所有來源。** 前置閘門把空的網段清單當成「不過濾」。
   在安裝程式是設定檔唯一作者的時候，那個狀態到不了；但手動編輯設定檔現在是
@@ -556,7 +580,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   LibreNMS 的 `ifname: true` 依賴此表，錯誤時 Ports 頁缺名稱與 64-bit counters
 - **非 ASCII OCTET STRING 編碼失敗**：pyasn1 預設以 latin-1 編碼字串，
   正體中文網路卡名（「乙太網路」）會直接拋出 `PyAsn1UnicodeEncodeError`
-- **含空白路徑未加引號會被截斷**：預設安裝路徑 `%ProgramFiles%\JT SNMP Agent\`
+- **含空白路徑未加引號會被截斷**：預設安裝路徑 `%ProgramFiles%\jt-snmpd\`
   本身即含空白，未加引號時行程啟動失敗且無記錄
 - **PowerShell 指令碼需 UTF-8 BOM**：Windows PowerShell 5.1 在無 BOM 時
   以系統 ANSI 代碼頁讀取 `.ps1`，中文註解會打斷語法剖析

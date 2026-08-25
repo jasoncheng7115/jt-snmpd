@@ -3,7 +3,7 @@
 **這個 bug 怎麼被發現的**
 
 完整生命週期測試（安裝 → 升級 → 移除 → 重裝 → PURGE 移除）跑到最後一項失敗：
-`PURGE=1` 之後 `C:\\ProgramData\\JT-SNMP` 仍然存在，裡面剩下 `logs\\msi-configure.log`。
+`PURGE=1` 之後資料目錄仍然存在，裡面剩下 `logs\\msi-configure.log`。
 
 原因是自訂動作的記錄檔就放在**它自己要清除的目錄裡**。`Remove-Item` 確實刪掉了整個
 目錄，但緊接著的兩行 `Log` 又把 `logs\\` 重新建出來，清除動作被自己的收尾訊息推翻。

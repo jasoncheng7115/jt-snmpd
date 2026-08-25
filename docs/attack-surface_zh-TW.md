@@ -57,8 +57,8 @@ OID 的規模推算，回應會膨脹到數萬位元組，放大倍率進入 100
 攻擊者必須偽造一個**在管理網段內**的來源位址，而這被兩層擋住：
 
 ```
-JT SNMP Agent (UDP 161): Allow proto=UDP port=161 from=192.168.1.0/255.255.255.0
-JT SNMP Agent (ICMPv4):  Allow proto=ICMPv4         from=192.168.1.0/255.255.255.0
+jt-snmpd (UDP 161): Allow proto=UDP port=161 from=192.168.1.0/255.255.255.0
+jt-snmpd (ICMPv4):  Allow proto=ICMPv4         from=192.168.1.0/255.255.255.0
 ```
 
 - **Windows 防火牆**：安裝時強制輸入管理網段，預設拒絕其餘來源。
@@ -208,7 +208,7 @@ snmpget -v2c -c <community> -Oqv <目標> .1.3.6.1.2.1.1.6.0        # 應不變
 # 權杖權限
 sc qprivs jt-snmpd
 # 防火牆範圍
-Get-NetFirewallRule -DisplayName 'JT SNMP Agent*' | Get-NetFirewallAddressFilter
+Get-NetFirewallRule -DisplayName 'jt-snmpd*' | Get-NetFirewallAddressFilter
 ```
 
 ---

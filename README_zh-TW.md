@@ -143,7 +143,7 @@ Collectors（以 ctypes 呼叫 Win32 API）
         ▼
 Snapshot builder ──► 排序陣列 + 預先編碼好的 BER 位元組
         │
-        ▼ 原子換手（參考指派）
+        ▼ 一次換上（只改參考，走訪中的 walk 仍讀完整的舊那份）
 自訂 MibInstrumController        bisect
         │
         ▼
@@ -244,7 +244,7 @@ msiexec /i jt-snmpd-0.9.6-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNIT
 2. 讀取既有的 Microsoft SNMP Service 設定，沿用 community、允許的管理主機、
    sysContact 與 sysLocation
 3. 停止任何舊版本，並**等待其檔案控制代碼真的釋放**
-4. 安裝到 `%ProgramFiles%\JT SNMP Agent\`，建立 `%ProgramData%\JT-SNMP\`
+4. 安裝到 `%ProgramFiles%\jt-snmpd\`，建立 `%ProgramData%\jt-snmpd\`
    並收緊 ACL
 5. 停用內建 SNMP Service，是**停用，不是移除**，並記錄足以還原的資訊
 6. 註冊服務，設定失效自動復原與特權縮減
@@ -279,12 +279,12 @@ msiexec /x jt-snmpd-0.9.6-x64.msi /qn PURGE=1
 
 | 用途 | 位置 |
 |---|---|
-| 程式本體 | `%ProgramFiles%\JT SNMP Agent\` |
-| 設定檔 | `%ProgramData%\JT-SNMP\config.json` |
+| 程式本體 | `%ProgramFiles%\jt-snmpd\` |
+| 設定檔 | `%ProgramData%\jt-snmpd\config.json` |
 | 群組原則（優先於設定檔）| `HKLM\SOFTWARE\Policies\JasonTools\JTSNMPD` |
-| 介面索引映射 | `%ProgramData%\JT-SNMP\state\index-map.json` |
-| 還原資訊 | `%ProgramData%\JT-SNMP\state\ms-snmp-restore.json` |
-| 記錄檔 | `%ProgramData%\JT-SNMP\logs\` |
+| 介面索引映射 | `%ProgramData%\jt-snmpd\state\index-map.json` |
+| 還原資訊 | `%ProgramData%\jt-snmpd\state\ms-snmp-restore.json` |
+| 記錄檔 | `%ProgramData%\jt-snmpd\logs\` |
 | 服務名稱 | `jt-snmpd` |
 
 同一組路徑也透過 SNMP 回報（`jtAgentConfigPath`、`jtAgentLogPath`、
