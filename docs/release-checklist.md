@@ -39,6 +39,26 @@ The local development repository keeps its full history and is unaffected.
 
 ---
 
+## Pinned inputs
+
+Three things are pinned, and each was unpinned until an outside review pointed
+at it:
+
+- **`requirements-build.txt`** — every Python package a build installs. The
+  agent pre-computes BER on the wire, so the pysnmp and pyasn1 versions decide
+  what bytes go out; an unnoticed upgrade that changes an encoded length pushes
+  responses past the 1400-byte cap, and the symptom at the LibreNMS end is
+  intermittent missing data rather than an error.
+- **Pillow, to the version that generated the wizard artwork.** CI regenerates
+  the BMPs and compares hashes, so a different encoder fails that check for a
+  reason that has nothing to do with the release.
+- **Every GitHub Action, by commit SHA.** A tag is a moving pointer that the
+  action's owner can repoint; a commit cannot be changed under you. The tag is
+  kept in a trailing comment so the pin stays readable.
+
+Updating any of them is a deliberate commit with CI to back it, not something
+that happens because a build ran on a different morning.
+
 ## 1. Before every push
 
 ### 1.1 Privacy and secret scan
