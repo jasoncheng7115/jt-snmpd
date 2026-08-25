@@ -37,6 +37,14 @@ FONT_TC = 3
 BAR, FONT_SIZE, PAD_LEFT = 104, 46, 26
 GREY, GREEN, BG = (108, 117, 125), (25, 118, 96), (255, 255, 255)
 
+# The two halves used to sit flush against each other, and with the built-in
+# service's pages being mostly empty the result read as one long page rather
+# than two captures being compared. Each half is now a card: a margin around it,
+# a hairline border, and a gutter between the two wide enough to be a gap rather
+# than a seam.
+MARGIN, GUTTER, BORDER = 18, 40, 2
+LINE = (198, 205, 212)
+
 LABELS = {
     "zh-TW": {
         "builtin": "Windows 內建 SNMP Service　·　Dell Latitude E5270　·　Windows 10 22H2",
@@ -76,13 +84,22 @@ for name, cut in PAIRS.items():
     if not parts:
         continue
 
-    width = max(im.width for _, _, im in parts)
-    height = sum(BAR + im.height for _, _, im in parts)
+    inner = max(im.width for _, _, im in parts)
+    width = inner + 2 * (MARGIN + BORDER)
+    height = (2 * MARGIN + GUTTER
+              + sum(BAR + im.height + 2 * BORDER for _, _, im in parts))
     out = Image.new("RGB", (width, height), BG)
-    y = 0
-    for colour, text, im in parts:
-        out.paste(bar(width, colour, text), (0, y)); y += BAR
-        out.paste(im, (0, y)); y += im.height
+    d = ImageDraw.Draw(out)
+    y = MARGIN
+    for i, (colour, text, im) in enumerate(parts):
+        card_h = BAR + im.height + 2 * BORDER
+        d.rectangle([MARGIN, y, MARGIN + inner + 2 * BORDER - 1, y + card_h - 1],
+                    fill=LINE)
+        out.paste(bar(inner, colour, text), (MARGIN + BORDER, y + BORDER))
+        out.paste(im, (MARGIN + BORDER, y + BORDER + BAR))
+        y += card_h
+        if i == 0:
+            y += GUTTER
     dst = DST / f"{name}-{LOCALE}.png"
     out.save(dst, "PNG", optimize=True)
     print(f"  {dst.name:26} {out.width}x{out.height}  {dst.stat().st_size//1024} KB")

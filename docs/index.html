@@ -324,11 +324,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
     <p class="bed-note">
       <span class="zh">LibreNMS 端未做任何客製。MAC 位址在截圖之前就在頁面上改寫遮蔽；
         連接埠那張裁掉了 MAC 欄右側的鄰居裝置清單，那是網路上其他機器的名單，
-        跟這張圖要說的事情無關。其餘內容未經修圖。</span>
+        跟這張圖要說的事情無關。溫度圖上那幾次掉到 0 °C，是拍攝過程中把 161
+        交給另一個 agent 的那幾分鐘，感測器沒有資料可回報，不是量到的溫度。
+        其餘內容未經修圖。</span>
       <span class="en">Nothing was customised on the LibreNMS side. MAC addresses were rewritten in the
         page before each capture, and the ports figure is cropped at the MAC column, which drops the
         discovered-neighbour list: that is an inventory of other machines on the network and no part of
-        what the figure shows. Nothing else is retouched.</span>
+        what the figure shows. The dips to 0 °C in the temperature graphs are the minutes during
+        capture when UDP 161 belonged to the other agent and there was nothing to report; they are not
+        measurements. Nothing else is retouched.</span>
     </p>
   </div>
 

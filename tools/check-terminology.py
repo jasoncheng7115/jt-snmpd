@@ -5,10 +5,13 @@
 The customers are Taiwanese government agencies and hospitals. Documentation
 that reads as though it were translated from mainland Chinese usage undermines
 the rest of the work, and it has had to be corrected by hand a dozen times in
-this project: 靜默, 優化, 進程, 冗餘, 過濾, 實例, 持久化, 隧道, 孤兒, 剝除,
-阻塞, 行程, 安裝包, 熱區, 迭代, 自包含, 匹配, 真機. Every one of those was
-caught by a person reading the finished page, which is the most expensive place
-to catch it.
+this project -- the table below is the list, and every one of them was caught by
+a person reading the finished page, which is the most expensive place to catch
+it.
+
+The prose deliberately does not enumerate them. A document that lists the words
+it forbids is one this tool then flags, and the first draft of both this
+docstring and the release checklist did exactly that.
 
 This does not judge style, only vocabulary, and it is deliberately conservative:
 a word goes in the list once it has actually been wrong here, so that a finding
@@ -115,7 +118,14 @@ SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache",
 # as it was written, CLAUDE.md is internal notes, phase0-findings.md is a record
 # of what was true at the time. Correcting wording in any of the three would
 # falsify a record without improving anything a customer reads.
-SKIP_FILES = {"phase0-findings.md", "spec.md", "CLAUDE.md"}
+SKIP_FILES = {
+    "phase0-findings.md", "spec.md", "CLAUDE.md",
+    # This file. The table below has to contain every word it rejects, so
+    # scanning it can only ever produce one finding per entry. That is the whole
+    # of the exemption: nothing else here is excused, and the prose above is
+    # written so it would pass on its own.
+    "check-terminology.py",
+}
 
 
 def tracked_files() -> list[Path]:
