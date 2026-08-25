@@ -29,11 +29,12 @@ the review has to happen again.
 | `docs/brand/icon-512.png` | `4931f8579064d8454fb7f5c93121644a3767d4ee3ec7d5790dd6d148fb7008ef` |
 | `docs/brand/icon-64.png` | `ee7ef7dd67c750406f251590f21fe5eb6460a245ef4ec2f5fdd0fbc752e05899` |
 | `docs/brand/jt-snmpd.ico` | `dfcd3497f2f6745e14375a3472ca64b06658ffaf367477ac93d702608b3f5253` |
-| `docs/images/install-1-welcome.png` | `5a39589e7e506507ace4f293af37be58ce72ebc72a5f6d6942372d7a4a3d7428` |
-| `docs/images/install-2-license.png` | `5111457fb6046b39cfab2d5aeed64e064eb133d742d84e1ae20160bd4061f9b0` |
-| `docs/images/install-3-folder.png` | `baba8696080d6076754cfe437606780257cc1b0aed80a35da3694663bdf4ad7b` |
-| `docs/images/install-4-settings.png` | `a23038212e81991baeb7a0c978461f848e026898e7cb34fa2a49f287188309a6` |
-| `docs/images/install-5-ready.png` | `16f04da4ff69535f470d9363248ffda734df5ab4a0b950fdcaf43a334fbdd273` |
+| `docs/images/install-1-welcome.png` | `b889b2cea18d29056929157e76d764229bcb3bb2765aedaa151375fe52855be4` |
+| `docs/images/install-2-license.png` | `d9816320539558f179024661a41af9af3525327a5cf4a2b41504ae5ff60df3a0` |
+| `docs/images/install-3-folder.png` | `3795394ce1b54a561625e1d2ce68061209ceb7f210fb9eb8210885a10a7e7d9e` |
+| `docs/images/install-4-settings.png` | `0d99b7b52f19b4140897d0cf9d7f7df0c7ae89ba38980c83fef1013417961a3a` |
+| `docs/images/install-5-ready.png` | `b4def2b38b7f944705344ca12bcf9f673227e67cbcadbb0b1c1d3b727780d786` |
+| `docs/images/install-6-done.png` | `9d1426a41d836255180e3fccb0a1bd15a8e35ca47b896fb54b916cb13aaab62e` |
 | `docs/images/memory-en.png` | `602a3797bccad64b369dd870ec29117cf38b88f7b972d78a9755a2550bbcdebf` |
 | `docs/images/memory-zh-TW.png` | `10e0c3ae5666dc94f866d7566d6ada3d3485f7ca53dbeb4f0f774c45630daa1e` |
 | `docs/images/ports-en.png` | `3668e17341f1e0baba92bad0fbb0fe1bbccda8b228589bd004b87338dd75ff86` |
