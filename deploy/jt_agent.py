@@ -3173,7 +3173,16 @@ def _service_main() -> None:
     own exe (a hard rule) and there is no pythonservice.exe to host
     it.
     """
+    # Which branch this takes has been guesswork from the outside more than
+    # once, and every wrong branch here dies without writing anything: a
+    # SystemExit and a printed usage message both go to a console the SCM never
+    # gave us. One line costs nothing and answers it.
+    log(f"service entry: pywin32={_HAVE_SERVICE} frozen={_is_frozen()} "
+        f"argv={sys.argv!r}")
     if not _HAVE_SERVICE:
+        log("pywin32 could not be imported, so this cannot run as a service. "
+            "When this happens only under an installer, suspect the installed "
+            "files still being held open by it", error=True)
         raise SystemExit("pywin32 is required to run as a service")
 
     # --selftest and --foreground are intercepted in __main__; only
@@ -3202,7 +3211,13 @@ def _service_main() -> None:
         return
 
     if _is_frozen():
-        # install/remove/start/stop: let pywin32 point binPath at our own exe
+        # install/remove/start/stop: let pywin32 point binPath at our own exe.
+        # Reaching here with a single argument means the SCM started us but the
+        # frozen-dispatch branch above did not match, and HandleCommandLine
+        # would print usage to nowhere and exit looking like a crash.
+        if len(sys.argv) == 1:
+            log("started with no arguments but the dispatch branch was not "
+                "taken; this would print usage and exit", error=True)
         win32serviceutil.HandleCommandLine(
             JTSnmpdService, argv=sys.argv,
             customInstallOptions="", customOptionHandler=None)
