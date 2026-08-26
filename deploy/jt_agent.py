@@ -3180,10 +3180,25 @@ def _service_main() -> None:
     # service-related argv is handled here.
     if _is_frozen() and len(sys.argv) == 1:
         # The SCM launched our exe directly with no arguments: enter the
-        # service dispatch loop
-        servicemanager.Initialize()
-        servicemanager.PrepareToHostSingle(JTSnmpdService)
-        servicemanager.StartServiceCtrlDispatcher()
+        # service dispatch loop.
+        #
+        # Wrapped because a failure in here is otherwise completely silent. The
+        # three calls below run before SvcDoRun, so nothing this process has
+        # written to the log yet, and pywin32 reports the death to the SCM as a
+        # service-specific error with no text attached. What the operator sees
+        # is a service that goes to StartPending and then Stopped, and an event
+        # log entry with a hex number in it. That state cost a full session to
+        # diagnose once; it should never cost that again.
+        try:
+            servicemanager.Initialize()
+            servicemanager.PrepareToHostSingle(JTSnmpdService)
+            servicemanager.StartServiceCtrlDispatcher()
+        except Exception as exc:  # noqa: BLE001 - the whole point is to say why
+            import traceback
+            log(f"the service dispatcher failed to start: {exc!r}", error=True)
+            for line in traceback.format_exc().splitlines():
+                log(f"  {line}", error=True)
+            raise
         return
 
     if _is_frozen():
