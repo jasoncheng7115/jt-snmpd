@@ -80,6 +80,10 @@
 | 2.11 | 走訪中途快照換手：整趟 walk 必須讀同一份 snapshot，不得出現列數變動 | [待實作] |
 | 2.12 | 型別正確性：Counter64 用於 ifXTable、Gauge32 不得回負值、TimeTicks 單位為 1/100 秒 | [待實作] |
 | 2.13 | Golden `.snmprec` fixture 比對：各 Windows 版本一份，回歸時逐筆對照 | [待實作] |
+| 2.14 | **v3 與 v2c 的 walk 結果必須逐筆相同**（同一份快照，換一種安全模型不該換一組資料） | **[已驗]** `tests/test_usm_wire.py` 兩種版本各走一次 |
+| 2.15 | authPriv 下回應仍不得超過 1400 bytes。加密會為每個封包加上標頭與填補，**若預算用明文長度計算，walk 會在 v3 下提早結束**，而症狀是資料缺漏不是錯誤 | **[部分已驗]** 已確認 walk 未被截斷；逐封包量測待做 |
+| 2.16 | v3 的 GETBULK 與 v2c 行為一致（max-repetitions 截斷、endOfMibView 不得填塞） | [待實作] |
+| 2.17 | 唯讀在 v3 下同樣成立：authPriv 帳號送 SET 一律被拒 | [待實作]，與 2.10 同一組 |
 
 ---
 
@@ -116,6 +120,9 @@
 | 4.1.8 | RSS | < 80 MB（250 MB 觸發自我重新啟動） | [待實作] |
 | 4.1.9 | 合成規模回歸 1k / 10k / 50k varbind，退步 > 20% 即 fail build | 基準線比較 | **[已實作]** |
 | 4.1.10 | 併發：3 台 manager 同時 poll | 全部在 SLA 內 | [待實作] |
+| 4.1.11 | **v3 的每封包成本**：v2c / authNoPriv / authPriv 三者的每次請求 CPU 時間 | authPriv 不得超過 v2c 的 3 倍 | **[待做]** 本專案第一條要求是「不能拖慢 Windows」，沒有這組數字就不能宣稱 v3 做到了 |
+| 4.1.12 | v3 下的完整 `snmpbulkwalk .1.3.6` | < 15 秒（v2c 門檻的 1.5 倍） | [待實作] |
+| 4.1.13 | 偽造的 v3 封包風暴：閘門必須在 HMAC 之前就丟掉，CPU 不得隨攻擊流量線性上升 | 與 5.8 同一組斷言 | [待實作] |
 
 ### 4.2 Host impact（**spec 完全缺漏，本計劃新增**）
 
@@ -152,9 +159,9 @@
 | 5.7 | 深度巢狀 SEQUENCE | 事件迴圈上無未攔截的 RecursionError | [待實作] |
 | 5.8 | 速率限制在 USM 密碼學處理**之前**生效 | 斷言呼叫順序 | [待實作] |
 | 5.9 | 所有 HMAC 比對使用 `compare_digest` | 靜態檢查 + code review checklist | [待實作] |
-| 5.10 | 拒絕 MD5 / DES / 3DES，即使 library 提供 | 載入即拒 | [待實作] |
-| 5.11 | 金鑰明文不得出現在 config / log / Event Log / MSI 屬性 | 全文掃描 | [待實作] |
-| 5.12 | localized key 以 DPAPI machine scope 儲存 | 磁碟上找不到明文 passphrase | [待實作] |
+| 5.10 | 拒絕 MD5 / DES / 3DES，即使 library 提供 | 載入即拒 | **[已實作]** `tests/test_usm_store.py`；拒絕訊息必須指名替代品，因為「未知的通訊協定」對操作人員沒有任何可行動的資訊 |
+| 5.11 | 金鑰明文不得出現在 config / log / Event Log / MSI 屬性 | 全文掃描 | **[部分已實作]** 已斷言密碼不出現在儲存的位元組中；CLI 只接受互動輸入，不吃命令列參數。**Event Log 與 MSI 屬性的全文掃描仍待做** |
+| 5.12 | localized key 以 DPAPI machine scope 儲存 | 磁碟上找不到明文 passphrase | **[已實作，待實機驗證]** DPAPI 只能在 Windows 上執行，Linux 測試涵蓋不到；`.154` 的驗證見 5.20.7 |
 | 5.13 | 回應大小驗證 | 所有回應 < 1400 bytes，無 IP 分片 | **[已實作]** L1-2.5 |
 | 5.14 | 依賴弱點掃描 + SBOM 產出 | 零 High | [待實作] |
 | 5.15 | 未簽章檔案在 WDAC 強制模式下可用雜湊規則放行 | 服務可啟動 | [受阻] 缺 WDAC 端點 |
@@ -162,6 +169,34 @@
 | 5.17 | 服務 ImagePath 加引號（unquoted service path） | 斷言 | [待實作] |
 | 5.18 | `SO_EXCLUSIVEADDRUSE` 已設定 | 第二個程序綁定同一 port 失敗 | [待實作] |
 | 5.19 | 特權縮減生效：SeDebug / SeLoadDriver / SeTcb 等已放棄 | `sc qprivs` 比對 | [待實作] |
+
+### 5.20 SNMPv3（1.1.0 新增）
+
+**為什麼要跟真的 net-snmp 對打。** 代理服務自己做金鑰 localization，才能不保存密碼。
+只要這段推導有任何細微差異，每一次認證都會失敗，而錯誤訊息會是「密碼錯誤」——
+正好指向唯一不是問題的地方。pysnmp 對 pysnmp 談得通，證明不了什麼；
+LibreNMS 用的是 net-snmp，所以測試的另一端就必須是 net-snmp。
+
+| # | 項目 | 狀態 |
+|---|---|---|
+| 5.20.1 | authPriv 能取得資料（SHA-256 + AES-128，金鑰在本地 localize） | **[已驗]** `tests/test_usm_wire.py`，另一端是 net-snmp |
+| 5.20.2 | 認證密碼錯誤必須被拒 | **[已驗]** 同上 |
+| 5.20.3 | 加密密碼錯誤必須被拒 | **[已驗]** 同上 |
+| 5.20.4 | 未知帳號必須被拒 | **[已驗]** 同上 |
+| 5.20.5 | noAuthNoPriv 不得取得 authPriv 帳號的資料（不得無聲降級） | **[已驗]** 同上 |
+| 5.20.6 | v2c 必須與 v3 並存（升級不得讓既有部署斷線） | **[已驗]** 同上 |
+| 5.20.7 | DPAPI 儲存在實機上可寫可讀，服務重啟後帳號仍在 | [待驗] 需 `.154` + MSI |
+| 5.20.8 | 加密之後回應仍不得超過 1400 bytes（authPriv 每個封包多出標頭與填補；若預算用明文計算，walk 會在加密下提早結束，症狀是資料缺漏而非錯誤） | **[部分已驗]** 上線測試確認 walk 未被截斷；1400 上限本身尚未在 v3 下逐封包量測 |
+| 5.20.9 | engineID 在服務重啟後不變 | **[已驗]** `tests/test_engine_identity.py` |
+| 5.20.10 | 機器被複製（MachineGuid 改變）→ 產生新 engineID、boots 歸零、且訊息要告訴操作人員必須重新布建 | **[已驗]** 同上 |
+| 5.20.11 | 從 1.0.0 的 schema 1 升級不得讓 boots 倒退 | **[已驗]** 同上。**這一項是先寫測試才發現缺陷的**：原本的實作把「沒有 engine_id」當成新機器而把計數歸零 |
+| 5.20.12 | engine.json 損毀時讀 `.bak`，不得從 1 重新開始 | **[已驗]** 同上 |
+| 5.20.13 | boots 觸頂（2^31-1）必須換 engineID，不得回捲 | **[已驗]** 同上 |
+| 5.20.14 | 別台機器的 usm.dat 複製過來必須被拒，且說明原因 | **[已驗]** `tests/test_usm_store.py` |
+| 5.20.15 | `v3_only` 開啟但沒有可用帳號時，服務必須拒絕啟動 | [待驗] 需實機 |
+| 5.20.16 | v3 的每封包 CPU 成本（v2c / authNoPriv / authPriv 三者比較） | **[待做]** 沒有數字就不能說「不會拖慢主機」，見 L3 |
+| 5.20.17 | 時鐘漂移或休眠喚醒後，engineTime 的 150 秒視窗行為 | [待驗] `.163` 是筆電，正好是這個情境 |
+| 5.20.18 | LibreNMS 以 v3 加入裝置並完成探索與輪詢 | [待驗] 需 `.154` + MSI |
 
 ---
 
@@ -433,6 +468,12 @@ Windows Installer 轉而去列舉並關閉與我們無關的服務（`nxlog`、`
 | 7.12 | 期間內完成：NTP 校時、NIC 熱插拔、磁碟熱插拔、config reload、服務重新啟動、主機重開機、快照還原 | [受阻] |
 | 7.13 | LibreNMS 端無 counter reset 誤判、無 port 重複、無 storage 重複 | [受阻] |
 | 7.14 | 動態 IP 增減時 socket 正確增減（ P1 路徑） | [受阻] 需多網路卡 |
+| 7.15 | **服務重新啟動後 v3 帳號仍可認證**（金鑰在 DPAPI 裡，engineID 未變） | [待驗] 需實機 |
+| 7.16 | **主機重開機後 v3 仍可認證**，且 snmpEngineBoots 恰好 +1 | [待驗] 需實機 |
+| 7.17 | **升級不得使 v3 帳號失效**：engineID 必須與升級前逐位元組相同 | [待驗] `.154` 升級前的值已記錄：`8001869F04 4970F1C39580BA208C5413513C7D059A` |
+| 7.18 | **睡眠恢復後 v3 仍可認證**：USM 的重放保護有 150 秒時間視窗，筆電喚醒後時鐘跳動正是它的天敵 | [待驗] `.163` 是實體筆電，天然就是這個情境 |
+| 7.19 | `v3_only` 開啟但無可用帳號 → 服務拒絕啟動，且訊息說得出原因 | [待驗] 需實機 |
+| 7.20 | 移除最後一個 v3 帳號後，v2c 仍照常運作（非 `v3_only` 時） | [待實作] |
 
 ---
 
@@ -450,6 +491,10 @@ Windows Installer 轉而去列舉並關閉與我們無關的服務（`nxlog`、`
 | 8.6 | 重新啟動 agent 後 LibreNMS 不得誤判 counter reset 或 device reboot | [受阻] |
 | 8.7 | 升級 agent 後 port / storage / processor 不得重新 discovery | [受阻] |
 | 8.8 | 自我健康 OID 的 alert rule 範本能正確觸發 | [受阻] |
+| 8.9 | **以 v3 加入裝置**（authPriv、SHA-256、AES）並完成 discovery | [待驗] 需 `.154` 或 `.163` + MSI |
+| 8.10 | **同一台機器由 v2c 改為 v3 之後，不得重新 discovery**：ports / storage / processor 的既有項目必須留著，RRD 不得斷 | [待驗]。這一項比 8.9 重要 —— 客戶是在既有部署上切換，不是重新佈署 |
+| 8.11 | v3 下六個頁面（Overview / Processor / Memory / Storage / DiskIO / Ports）同樣全滿 | [待驗] |
+| 8.12 | v3 連續 poll 24 小時，RRD 無斷點，且無間歇性認證失敗 | [待驗]。間歇性失敗正是 engineID 重複時的症狀，這一項是它的守門員 |
 
 > **注意**：deploy 到目標機器後必須主動觸發 LibreNMS discovery，
 > 否則只會跑 poll 而抓不到新增的完整 OID 集合。此步驟要寫進部署 SOP 與 8.2。
@@ -510,6 +555,8 @@ release notes 中列為「未驗證項目與風險」，
 □ L5 MS SNMP 移轉 10 個情境全數通過
 □ L6 生命週期全數通過；major 版本另需 30 天穩定性驗證
 □ L7 LibreNMS 端對端六個頁面全滿，且不需任何 LibreNMS patch
+□ SNMPv3：5.20 全數通過，且 4.1.11 的每封包成本已量測並記錄
+□ SNMPv3：至少一台實機完成「v2c 切換為 v3 後不重新 discovery」（8.10）
 □ 已公布 SHA-256，且下載後核對相符
 □ 「未驗證項目與風險」清單已更新並隨版本發布
 □ CHANGELOG 已列出所有行為變更與需要人工介入的升級步驟

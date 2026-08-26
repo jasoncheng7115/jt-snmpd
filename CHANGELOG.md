@@ -9,6 +9,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **SNMPv3.** The agent answers `authPriv` alongside v2c. Verified on the wire
+  against net-snmp rather than against pysnmp, since net-snmp is what LibreNMS
+  polls with and an agreement between pysnmp and pysnmp would prove less than it
+  appears to. Correct credentials return data; a wrong authentication
+  passphrase, a wrong privacy passphrase and an unknown user are all refused;
+  `noAuthNoPriv` does not reach an `authPriv` user's data.
+
+  - `jt-snmpd.exe user add|list|remove` provisions accounts. Passphrases are
+    prompted for and never accepted as arguments: an argument is visible in the
+    process list to every user on the machine and lands in console history. The
+    same reasoning already keeps keys out of MSI properties, which end up in the
+    msiexec log and in Event IDs 1033 and 11707.
+  - Defaults are SHA-256 and AES-128. SHA-224/384/512 and AES-192/256 are
+    selectable. **MD5, SHA-1, DES and 3DES are refused outright** — pysnmp
+    implements all four, so naming one would otherwise work, and working is the
+    wrong outcome. AES-192 and AES-256 warn: neither was standardised for USM,
+    and Debian and Ubuntu build net-snmp without the key-extension scheme pysnmp
+    uses, so an agent set that way can be unreachable from LibreNMS.
+  - Keys are localized in the agent and stored under DPAPI machine scope, so
+    what reaches the disk is bound to one engineID and the passphrase is never
+    written down. Reading one machine's secrets file buys an account on that
+    machine rather than on every machine sharing the credential.
+  - A `v3_only` switch for sites that have to certify no v2c. It refuses to
+    start when no v3 user loaded, rather than listening with no way in — which
+    would look healthy from Windows while answering nobody.
+  - `docs/snmpv3.md`.
+
+### Changed
+
+- **The engine identity is persisted and the cloned-machine case is detected.**
+  `engine.json` goes to schema 2 and records the MachineGuid its engineID was
+  derived from. A MachineGuid that no longer matches means the machine was
+  cloned from a template or reimaged: the agent regenerates the engineID, resets
+  snmpEngineBoots and says so, including that SNMPv3 users localized against the
+  old engineID have to be provisioned again. Without this, fifty clones answer
+  with one engineID and v3 authentication fails intermittently across the estate
+  for reasons nothing in the logs explains.
+
+- The engineID and boot count are resolved once per process instead of on every
+  snapshot build. Both are constant for the lifetime of the service and the
+  snapshot is rebuilt every five seconds, so the agent was reading the registry,
+  hashing and touching the disk twelve times a minute to reach the same two
+  values.
+
+### Fixed
+
+- **A damaged `engine.json` no longer restarts snmpEngineBoots at 1**, which
+  would reopen the replay window the counter exists to close. The `.bak` is read
+  before giving up, and a bool, a negative or an over-large value can no longer
+  drag the counter backwards. The counter now also stops at 2^31-1 and
+  regenerates the engineID, as RFC 3414 §2.2 requires.
+
+- **Upgrading from 1.0.0 no longer loses the boot count.** 1.0.0 wrote schema 1,
+  which carried the count but no identity. Treating that as "no identity" reset
+  the counter. The engineID derivation is unchanged, so an upgrade produces the
+  identical identity and the count carries across. Found by writing the test
+  first.
+
+### Security
+
+- `cryptography` is pinned. It arrives through pysnmp and was already inside the
+  1.0.0 MSI, but nothing on the serving path touched it. Every `authPriv` packet
+  now runs through its AES, so it is load-bearing and belongs under the same
+  pinning rule as everything else in `requirements-build.txt`.
+
+---
+
 ## [1.0.0] - 2026-08-25
 
 First release tested on Windows Server. Everything below was measured on real
