@@ -83,7 +83,7 @@ LibreNMS 會刪掉每一個 port 重新探索，歷史 RRD 一起失去對應；
 
 3. **非 ASCII 路徑必須支援**。客戶可能裝在中文路徑。已實測通過（見下）。
 
-## 已實測驗證（2026-08-24，Win11 build 26200 正體中文）
+## 已實測驗證（2026-08-24，Win11 build 26200 台灣繁體中文）
 
 從 `C:\程式集測試\JT SNMP 代理程式\`（**中文 + 空白**）執行 agent：
 
@@ -108,12 +108,12 @@ diskIODevice = PhysicalDrive0            ← UCD-DISKIO
 ### 編碼規則（從實測 bug 得出）
 
 **SNMP OCTET STRING 是位元組串，不是文字。** pyasn1 預設以 latin-1 編碼 `str`，
-遇到非 ASCII 直接丟 `PyAsn1UnicodeEncodeError`。正體中文 Windows 的網路卡別名就是
+遇到非 ASCII 直接丟 `PyAsn1UnicodeEncodeError`。台灣繁體中文 Windows 的網路卡別名就是
 中文（「乙太網路」），所以這在台灣環境是**必踩**的，不是邊緣案例。
 
 一律經過 `octet()` 包裝明確編成 UTF-8，禁止裸用 `rfc1902.OctetString(str)`。
 同理，所有檔案 I/O 一律明確 `encoding="utf-8"`，Windows 的 `open()` 預設是系統
-ANSI 代碼頁（正體中文為 cp950），寫入非 cp950 字元會丟 `UnicodeEncodeError`。
+ANSI 代碼頁（台灣繁體中文為 cp950），寫入非 cp950 字元會丟 `UnicodeEncodeError`。
 
 ---
 

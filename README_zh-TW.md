@@ -252,15 +252,20 @@ msiexec /i jt-snmpd-1.0.0-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNIT
 以 GPO 派送時，把 MSI 放在網域內的共用資料夾，並確保電腦帳戶對該資料夾有讀取權限。
 從內部共用資料夾安裝也不會帶網頁標記，因此不會遇到 SmartScreen。
 
+**不需要事先安裝 Windows 內建的 SNMP Service。** 把 community 填進安裝程式
+（或在精靈的設定頁輸入）就能用，機器上沒有內建服務也一樣。
+下面第 2 與第 5 步只有在**已經有**內建服務時才會發生。
+
 安裝程式會：
 
 1. 檢查 OS 版本、架構、磁碟空間，以及 UDP/161 目前由誰佔用
-2. 讀取既有的 Microsoft SNMP Service 設定，沿用 community、允許的管理主機、
-   sysContact 與 sysLocation
+2. **如果**機器上有 Microsoft SNMP Service，讀取它的設定，沿用 community、
+   允許的管理主機、sysContact 與 sysLocation。沒有的話就用你提供的 community；
+   兩者皆無時安裝程式會中止並說明，不會自己編一個
 3. 停止任何舊版本，並**等待其檔案控制代碼真的釋放**
 4. 安裝到 `%ProgramFiles%\jt-snmpd\`，建立 `%ProgramData%\jt-snmpd\`
    並收緊 ACL
-5. 停用內建 SNMP Service，是**停用，不是移除**，並記錄足以還原的資訊
+5. **如果**有內建 SNMP Service，把它停用，是**停用，不是移除**，並記錄足以還原的資訊
 6. 註冊服務，設定失效自動復原與特權縮減
 7. 建立僅限管理網段的防火牆規則
 8. 啟動服務並**確認它真的回應 loopback SNMP 查詢**，
