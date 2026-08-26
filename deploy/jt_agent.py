@@ -3249,6 +3249,31 @@ def _usm_cli(argv: list[str]) -> int:
     """
     import getpass
 
+    def _secret(prompt: str, confirm: str | None = None) -> str:
+        """Read a passphrase without it ever becoming a command-line argument.
+
+        At a console this prompts with echo off. When standard input is not a
+        console it reads one line from it instead, which is what makes
+        unattended provisioning possible: a scripted install has no console to
+        prompt at, and the alternative people reach for is putting the
+        passphrase in an argument. Standard input is not the same risk. An
+        argument is visible in the process list to every user on the machine for
+        as long as the command runs and is kept in console history; a pipe is
+        visible to neither.
+
+        The confirmation step exists to catch a typo, so it is skipped when
+        there is nobody typing.
+        """
+        if sys.stdin is not None and sys.stdin.isatty():
+            value = getpass.getpass(prompt)
+            if confirm is not None and getpass.getpass(confirm) != value:
+                raise usm.UsmError("the passphrases did not match")
+            return value
+        line = sys.stdin.readline()
+        if not line:
+            raise usm.UsmError(f"no value on standard input for: {prompt.strip()}")
+        return line.rstrip("\r\n")
+
     action = argv[0] if argv else "list"
     engine_id = _engine_id()
     try:
@@ -3283,7 +3308,7 @@ def _usm_cli(argv: list[str]) -> int:
         print("usage: user add|list|remove")
         return 2
 
-    name = argv[1] if len(argv) > 1 else input("user name: ").strip()
+    name = (argv[1] if len(argv) > 1 else input("user name: ")).strip()
     auth = _arg("--auth", usm.DEFAULT_AUTH)
     priv = _arg("--priv", usm.DEFAULT_PRIV)
     try:
@@ -3293,14 +3318,10 @@ def _usm_cli(argv: list[str]) -> int:
             raise usm.UsmError("a user name is required")
         if any(u.name == name for u in users):
             raise usm.UsmError(f"{name!r} already exists; remove it first")
-        auth_pass = getpass.getpass("authentication passphrase: ")
+        auth_pass = _secret("authentication passphrase: ", "confirm: ")
         usm.check_passphrase("authentication", auth_pass)
-        if getpass.getpass("confirm: ") != auth_pass:
-            raise usm.UsmError("the passphrases did not match")
-        priv_pass = getpass.getpass("privacy passphrase: ")
+        priv_pass = _secret("privacy passphrase: ", "confirm: ")
         usm.check_passphrase("privacy", priv_pass)
-        if getpass.getpass("confirm: ") != priv_pass:
-            raise usm.UsmError("the passphrases did not match")
         if priv_pass == auth_pass:
             raise usm.UsmError("use different passphrases for authentication "
                                "and privacy; one compromise should not be two")

@@ -147,3 +147,31 @@ def test_one_bad_entry_does_not_discard_the_good_ones():
     users, problems = usm.store_from_json(payload.encode(), ENGINE_A)
     assert [u.name for u in users] == ["librenms"]
     assert problems
+
+
+# --- The provisioning CLI ---------------------------------------------------
+
+def test_the_cli_never_takes_a_passphrase_as_an_argument():
+    """An argument is visible in the process list to every user on the machine
+    while the command runs, and stays in console history. This is the same
+    reasoning that keeps keys out of MSI properties, which land in the msiexec
+    log and in Event IDs 1033 and 11707."""
+    import ast
+    agent = (Path(__file__).resolve().parents[1] / "deploy" / "jt_agent.py")
+    fn = next(n for n in ast.walk(ast.parse(agent.read_text(encoding="utf-8")))
+              if isinstance(n, ast.FunctionDef) and n.name == "_usm_cli")
+    body = ast.unparse(fn)
+    assert "getpass" in body, "a console prompt has to be the interactive path"
+    assert "sys.stdin" in body, (
+        "an unattended install has no console to prompt at; without a stdin "
+        "path the next person reaches for an argument instead")
+    for forbidden in ("--auth-pass", "--authkey", "--password", "--passphrase"):
+        assert forbidden not in body, f"{forbidden} would put a secret in argv"
+
+
+def test_the_two_passphrases_must_differ():
+    agent = (Path(__file__).resolve().parents[1] / "deploy" / "jt_agent.py")
+    src = agent.read_text(encoding="utf-8")
+    assert "one compromise should not be two" in src, (
+        "reusing one passphrase for authentication and privacy turns a single "
+        "disclosure into both")
