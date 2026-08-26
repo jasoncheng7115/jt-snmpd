@@ -14,6 +14,16 @@
 pysnmp==7.1.29
 pyasn1==0.6.4
 
+# Pulled in by pysnmp, not imported by us directly, and it is already inside
+# the 1.0.0 MSI: importing pysnmp.entity.config reaches the DES and AES
+# modules, which is where this comes from. It was left unpinned while v2c
+# was the only thing shipping, because nothing on the serving path touched
+# it. SNMPv3 turns it into a load-bearing dependency -- every authPriv
+# packet runs through its AES -- so a version that changes behaviour would
+# be a functional outage, not dead weight. Pinned for the same reason as
+# everything else in this file.
+cryptography==50.0.0
+
 # Windows-only. Listed with a marker so the same file works on the Linux test
 # job, which does not need them.
 pywin32==312 ; sys_platform == "win32"

@@ -269,12 +269,20 @@ def test_engine_time_is_clamped_to_int32():
 
 def test_engine_boots_is_persisted():
     """RFC 3414 requires the pair (boots, time) never to repeat. A reboot resets
-    time to zero, so boots has to increase, which means it has to be kept."""
-    fn = next(n for n in ast.walk(ast.parse(AGENT_SRC))
-              if isinstance(n, ast.FunctionDef) and n.name == "_engine_boots")
-    body = ast.unparse(fn)
-    assert "ENGINE_FILE" in body and "os.replace" in body, "the boot count has to be written atomically"
-    assert "boot_key" in body, "a new boot has to be identified by the boot instant"
+    time to zero, so boots has to increase, which means it has to be kept.
+
+    The write and the decision live in separate functions since 1.1.0, so this
+    checks both halves. What the counter does across boots, clones, damaged
+    files and its ceiling is covered behaviourally in test_engine_identity.py.
+    """
+    tree = ast.parse(AGENT_SRC)
+    fns = {n.name: ast.unparse(n) for n in ast.walk(tree)
+           if isinstance(n, ast.FunctionDef)}
+    save = fns["_save_engine_state"]
+    assert "ENGINE_FILE" in save and "os.replace" in save, "the boot count has to be written atomically"
+    assert "fsync" in save, "an unflushed write can lose the count in a power cut"
+    assert "_engine_state" in fns["_engine_boots"], "the counter has to come from the persisted state"
+    assert "boot_key" in fns["_plan_engine_state"], "a new boot has to be identified by the boot instant"
 
 
 def test_engine_id_is_stable_across_restarts():
@@ -282,7 +290,7 @@ def test_engine_id_is_stable_across_restarts():
     them stops working."""
     # The source text rather than ast.unparse, which normalises 0x80 to 128. What
     # is being asserted is the intent to set that top bit.
-    i = AGENT_SRC.index("def _engine_id()")
+    i = AGENT_SRC.index("def _new_engine_id(")
     body = AGENT_SRC[i:AGENT_SRC.index("\ndef ", i + 1)]
     assert "MachineGuid" in AGENT_SRC, "the engineID should derive from a stable machine-level identifier"
     assert "hashlib" in body, "the GUID text exceeds the 27-byte limit and has to be hashed"

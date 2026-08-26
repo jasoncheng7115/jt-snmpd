@@ -36,6 +36,8 @@ from pysnmp.proto import rfc1902, rfc1905
 from pysnmp.proto.api import v2c
 from pysnmp.smi.instrum import AbstractMibInstrumController
 
+import usm
+
 from preauth import PreAuthGate
 
 # ------------------------------------------------------------ config / logging
@@ -58,6 +60,11 @@ CFG = {"port": 161, "community": "", "contact": "", "location": "",
        # and is treated as deny-all (loopback excepted); to serve every source
        # deliberately, set 0.0.0.0/0 and ::/0 explicitly.
        "allowed_networks": (), "rate_pps": 50, "rate_burst": 100,
+       # SNMPv3 is added beside v2c, not in place of it: an upgrade that stopped
+       # answering v2c would take every existing deployment off the map at the
+       # moment it was installed. Sites that have to certify "no v2c" set this
+       # once their v3 users are provisioned.
+       "v3_only": False,
        # ipNetToPhysicalTable is the local ARP table, which is a
        # ready-made target list for lateral movement. Off unless asked for.
        "enable_arp_table": False}
@@ -1309,6 +1316,7 @@ IF_TYPE_SOFTWARE_LOOPBACK = 24
 
 # ------------------------------------------- SNMP engine identity and time
 ENGINE_FILE = os.path.join(STATE_DIR, "state", "engine.json")
+USM_STORE = os.path.join(STATE_DIR, "secrets", "usm.dat")
 
 
 def _extend_index(token: str) -> tuple[int, ...]:
@@ -1341,8 +1349,20 @@ def _machine_guid() -> str:
         return socket.gethostname()
 
 
-def _engine_id() -> bytes:
-    """SnmpEngineID as defined in RFC 3411 §5.
+# RFC 3414 §2.2: snmpEngineBoots saturates here, and a new engineID is required
+# once it does.
+ENGINE_BOOTS_MAX = 2147483647
+
+# The enterprise number is not registered. IANA has assigned up to 66639 and
+# issues them in sequence, so 99999 is unclaimed today and will stay unclaimed
+# for years, but it is a squat and docs/snmpv3.md says so plainly. Note that the
+# uniqueness of an engineID does not rest on it: two hosts are told apart by the
+# MachineGuid digest below, not by the enterprise number they share.
+ENGINE_PEN = 99999
+
+
+def _new_engine_id(machine_guid: str) -> str:
+    """A fresh SnmpEngineID, hex encoded, as defined in RFC 3411 §5.
 
     Format: the top bit set marks the RFC 3411 format, the remaining 31 bits are
     the enterprise number, the fifth byte is a format code (4 = administratively
@@ -1350,55 +1370,210 @@ def _engine_id() -> bytes:
 
     A hash of the MachineGuid is used rather than the GUID itself: the GUID is 36
     characters, past the length limit, while the hash is equally stable and a
-    fixed size. The PEN here is a placeholder; once a real one is assigned this
-    value changes, v3 users will have to be reconfigured, and that needs to be in
-    the upgrade notes.
+    fixed size.
     """
-    pen = 99999
-    head = bytes([(pen >> 24) & 0xFF | 0x80, (pen >> 16) & 0xFF,
-                  (pen >> 8) & 0xFF, pen & 0xFF, 4])
-    digest = hashlib.sha256(_machine_guid().encode("utf-8")).digest()[:16]
-    return head + digest
+    head = bytes([(ENGINE_PEN >> 24) & 0xFF | 0x80, (ENGINE_PEN >> 16) & 0xFF,
+                  (ENGINE_PEN >> 8) & 0xFF, ENGINE_PEN & 0xFF, 4])
+    digest = hashlib.sha256(machine_guid.encode("utf-8")).digest()[:16]
+    return (head + digest).hex()
+
+
+def _plan_engine_state(prev: object, machine_guid: str, boot_key: int,
+                       fresh_engine_id: str) -> tuple[dict, list[str]]:
+    """Decide what engine.json should contain next.
+
+    Pure on purpose: no registry, no clock, no disk. The awkward cases here are
+    a cloned VM, a corrupted state file and a saturated counter, none of which
+    can be produced on demand on a real machine, so the decision is separated
+    from the I/O and tested directly.
+
+    Three properties have to hold at once.
+
+    **An engineID must not be shared between machines.** Customer estates are
+    built from Proxmox and Hyper-V templates. Capture a template after the agent
+    has run once and every clone answers with the same engineID; the manager's
+    USM cache then holds one boots/time pair for what it believes is a single
+    engine, and authentication fails intermittently across the whole estate for
+    reasons nothing in the logs explains. Recording the MachineGuid the identity
+    was generated for is what makes the clone detectable.
+
+    **snmpEngineBoots must never go backwards.** It is half of the pair RFC 3414
+    uses for replay protection; restarting the count reopens a window that was
+    already closed.
+
+    **The counter must stop at 2^31-1**, at which point RFC 3414 requires a new
+    engineID rather than a wrap.
+    """
+    prev = prev if isinstance(prev, dict) else {}
+    reasons: list[str] = []
+
+    def _whole(value: object) -> int:
+        # bool is an int subclass; a JSON `true` here would otherwise count as 1
+        return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+    engine_id = prev.get("engine_id")
+    boots = max(0, _whole(prev.get("boots")))
+
+    if not isinstance(engine_id, str) or not engine_id:
+        # Note what is *not* reset here. Up to 1.0.0 the file was schema 1: it
+        # carried the boot count but no identity, because the engineID was
+        # derived from the MachineGuid on every snapshot instead of being
+        # written down. That derivation is the one still used, so an upgrade
+        # produces the identical engineID and the machine's identity has not
+        # changed. Restarting its counter would hand back the replay window for
+        # nothing.
+        engine_id = fresh_engine_id
+        reasons.append("no engine identity on file, generated one")
+    elif prev.get("machine_guid") != machine_guid:
+        # Resetting the counter is right rather than merely tidy: the identity
+        # is new, so its counter has never been used and cannot be replayed.
+        engine_id, boots = fresh_engine_id, 0
+        reasons.append(
+            "MachineGuid does not match the one this engineID was generated "
+            "for, so the machine was cloned or reimaged; generated a new "
+            "engineID and reset snmpEngineBoots. Any SNMPv3 user localised "
+            "against the old engineID has to be provisioned again")
+    elif boots >= ENGINE_BOOTS_MAX:
+        engine_id, boots = fresh_engine_id, 0
+        reasons.append("snmpEngineBoots reached its ceiling, so RFC 3414 "
+                       "requires a new engineID; generated one")
+
+    # A change of boot instant is what marks a new boot, so the counter moves
+    # then and not on a service restart. snmpEngineTime is measured from the
+    # boot instant too, so the pair still increases strictly across a restart.
+    if prev.get("boot_key") != boot_key:
+        boots += 1
+
+    return ({"schema_version": 2, "machine_guid": machine_guid,
+             "engine_id": engine_id, "boot_key": boot_key,
+             "boots": max(1, min(boots, ENGINE_BOOTS_MAX))}, reasons)
+
+
+def _load_engine_state() -> dict:
+    """Read engine.json, falling back to the .bak when the main file is damaged.
+
+    Falling back matters more here than for most state: treating a corrupt file
+    as "no state" would restart snmpEngineBoots at 1, which is precisely the
+    replay window the counter exists to close.
+    """
+    for path in (ENGINE_FILE, ENGINE_FILE + ".bak"):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                if path.endswith(".bak"):
+                    log("engine.json was unreadable; recovered from engine.json.bak")
+                return data
+        except (OSError, ValueError, UnicodeError):
+            continue
+    return {}
+
+
+def _save_engine_state(data: dict) -> None:
+    """temp file, flush, fsync, atomic replace, keep a .bak."""
+    os.makedirs(os.path.dirname(ENGINE_FILE), exist_ok=True)
+    tmp = ENGINE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1)
+        fh.flush()
+        os.fsync(fh.fileno())
+    if os.path.exists(ENGINE_FILE):
+        try:
+            os.replace(ENGINE_FILE, ENGINE_FILE + ".bak")
+        except OSError:
+            pass
+    os.replace(tmp, ENGINE_FILE)
+
+
+_engine_cache: dict | None = None
+
+
+def _engine_state() -> dict:
+    """The engine identity and boot counter, resolved once per process.
+
+    Both values are constant for the lifetime of the service, and the snapshot
+    is rebuilt every five seconds. Reading the registry, hashing and touching
+    the disk on every rebuild bought nothing; this is resolved on the first
+    rebuild and reused, which is also what keeps the agent off the disk while
+    it is only answering queries.
+    """
+    global _engine_cache
+    if _engine_cache is not None:
+        return _engine_cache
+    try:
+        guid = _machine_guid()
+        # Tolerate sub-second jitter, or every sample would look like a new boot
+        boot_key = (int(time.time() * 1000) - int(_k32.GetTickCount64())) // 10000
+        prev = _load_engine_state()
+        state, reasons = _plan_engine_state(prev, guid, boot_key,
+                                            _new_engine_id(guid))
+        for reason in reasons:
+            log(f"engine identity: {reason}")
+        if state != prev:
+            _save_engine_state(state)
+        _engine_cache = state
+    except Exception as exc:  # noqa: BLE001 - must never stop a snapshot build
+        log(f"engine state read/write failed, serving a volatile identity: {exc!r}")
+        guid = "unknown"
+        try:
+            guid = _machine_guid()
+        except Exception:  # noqa: BLE001
+            pass
+        _engine_cache = {"schema_version": 2, "machine_guid": guid,
+                         "engine_id": _new_engine_id(guid), "boot_key": 0,
+                         "boots": 1}
+    return _engine_cache
+
+
+def _engine_id() -> bytes:
+    """SnmpEngineID, stable for as long as the machine keeps its MachineGuid."""
+    return bytes.fromhex(_engine_state()["engine_id"])
 
 
 def _engine_boots() -> int:
-    """snmpEngineBoots: incremented once per **system boot**.
+    """snmpEngineBoots, incremented once per system boot."""
+    return int(_engine_state()["boots"])
 
-    RFC 3414 requires the pair (snmpEngineBoots, snmpEngineTime) never to repeat.
-    snmpEngineTime here is "seconds since the system booted" rather than "since
-    the service started" — see where it is emitted for why. Because the time does
-    not reset when the service restarts, the boot count does not need to
-    increment then either, and the pair still increases strictly.
 
-    A change of boot instant is what marks a new boot, so the counter increments
-    when that changes. Any read or write failure falls back to 1; this must never
-    interrupt building the snapshot.
+def _register_v3_users(eng) -> int:
+    """Load the SNMPv3 users and register them. Returns how many are usable.
+
+    Nothing here is fatal on its own. A site that has not provisioned v3 yet is
+    the normal case, and a store that cannot be used is reported rather than
+    allowed to stop an agent that is still serving v2c perfectly well. What is
+    not acceptable is silence: every reason a user did not load is logged,
+    because the symptom at the other end is an authentication failure that says
+    nothing about the cause.
     """
     try:
-        boot_ms = int(time.time() * 1000) - int(_k32.GetTickCount64())
-        # Tolerate sub-second jitter, or every sample would look like a new boot
-        boot_key = boot_ms // 10000
-        data = {}
+        users, problems = usm.load_store(USM_STORE, _engine_id())
+    except Exception as exc:  # noqa: BLE001 - never stop the agent starting
+        log(f"[!] the SNMPv3 store could not be loaded: {exc!r}")
+        return 0
+    for problem in problems:
+        log(f"[!] SNMPv3: {problem}")
+    registered = 0
+    for user in users:
         try:
-            with open(ENGINE_FILE, encoding="utf-8") as fh:
-                data = json.load(fh)
-        except (OSError, ValueError, UnicodeError):
-            pass
-        if data.get("boot_key") != boot_key:
-            data = {"schema_version": 1, "boot_key": boot_key,
-                    "boots": int(data.get("boots", 0)) + 1}
-            os.makedirs(os.path.dirname(ENGINE_FILE), exist_ok=True)
-            tmp = ENGINE_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(data, fh)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp, ENGINE_FILE)
-        return max(1, min(int(data.get("boots", 1)), 2147483647))
-    except Exception as exc:  # noqa: BLE001
-        log(f"snmpEngineBoots read/write failed, falling back to 1: {exc!r}")
-        return 1
-
+            for warning in usm.check_algorithms(user.auth, user.priv):
+                log(f"[!] SNMPv3 user {user.name!r}: {warning}")
+            config.add_v3_user(
+                eng, user.name,
+                usm.AUTH_PROTOCOLS[user.auth], user.auth_key,
+                usm.PRIV_PROTOCOLS[user.priv], user.priv_key,
+                authKeyType=config.USM_KEY_TYPE_LOCALIZED,
+                privKeyType=config.USM_KEY_TYPE_LOCALIZED)
+            # authPriv only. A read-only agent still discloses an inventory, a
+            # software list and an ARP table, so there is no level below this
+            # worth offering.
+            config.add_vacm_user(eng, 3, user.name, "authPriv", (1, 3, 6))
+            registered += 1
+            log(f"SNMPv3 user {user.name!r} registered ({user.auth} + {user.priv})")
+        except Exception as exc:  # noqa: BLE001
+            log(f"[!] SNMPv3 user {user.name!r} could not be registered: {exc!r}")
+    if not users and not problems:
+        log("SNMPv3: no users provisioned; run `jt-snmpd.exe user add` to add one")
+    return registered
 
 MAXTEMP_FILE = os.path.join(STATE_DIR, "state", "disk-maxtemp.json")
 _maxtemp_cache: dict[str, int] | None = None
@@ -2841,7 +3016,11 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
         _health["snapshot_build_ms"] = int((time.monotonic() - _t0) * 1000)
         _health["snapshot_built_monotonic"] = time.monotonic()
         _health["snapshot_generation"] = 1
-        eng = engine.SnmpEngine()
+        # The engineID is handed over rather than left to pysnmp: SNMPv3 keys
+        # are localized against it, and a pysnmp-generated one would not be
+        # the value served as snmpEngineID or the value the keys were made
+        # for. It also has to be the persisted one so it survives a restart.
+        eng = engine.SnmpEngine(rfc1902.OctetString(_engine_id()))
         global _gate
         _gate = PreAuthGate(
             allowed_networks=PreAuthGate.parse_networks(CFG["allowed_networks"]),
@@ -2851,8 +3030,19 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
             f"rate={CFG['rate_pps']}pps burst={CFG['rate_burst']}")
         config.add_transport(eng, udp.DOMAIN_NAME,
                              GatedUdpTransport().open_server_mode((host, port)))
-        config.add_v1_system(eng, "area", community)
-        config.add_vacm_user(eng, 2, "area", "noAuthNoPriv", (1, 3, 6))
+        if CFG["v3_only"]:
+            log("v3_only is set: SNMPv2c is not registered on this agent")
+        else:
+            config.add_v1_system(eng, "area", community)
+            config.add_vacm_user(eng, 2, "area", "noAuthNoPriv", (1, 3, 6))
+        v3_count = _register_v3_users(eng)
+        if CFG["v3_only"] and not v3_count:
+            # Refusing to start is the lesser harm. Listening with no way in
+            # would look healthy from Windows while answering nobody, and the
+            # operator would go looking at the network for a fault that is
+            # in a configuration file.
+            raise SystemExit("v3_only is set but no SNMPv3 user could be "
+                             "loaded; the agent would answer nobody")
         ctx = context.SnmpContext(eng)
         ctrl = SnapshotController(oids, vals)
         ctx.context_names[b""] = ctrl
@@ -3047,12 +3237,105 @@ def selftest() -> int:
         return 1
 
 
+def _usm_cli(argv: list[str]) -> int:
+    """`jt-snmpd.exe user add|list|remove` — SNMPv3 account management.
+
+    **Passphrases are prompted for, never taken from the command line.** A
+    passphrase in an argument is visible in the process list to every user on
+    the machine while the command runs, and lands in the console history and in
+    the transcripts some sites turn on by policy. This is the same reason the
+    installer does not accept keys as MSI properties: those end up in the
+    msiexec log and in Event IDs 1033 and 11707.
+    """
+    import getpass
+
+    action = argv[0] if argv else "list"
+    engine_id = _engine_id()
+    try:
+        users, problems = usm.load_store(USM_STORE, engine_id)
+    except OSError as exc:
+        print(f"the SNMPv3 store could not be read: {exc}")
+        return 1
+    for problem in problems:
+        print(f"[!] {problem}")
+
+    if action == "list":
+        print(f"engineID {engine_id.hex()}")
+        if not users:
+            print("no SNMPv3 users are provisioned")
+        for user in users:
+            print(f"  {user.name}  {user.auth} + {user.priv}")
+        return 0
+
+    if action == "remove":
+        if len(argv) < 2:
+            print("usage: user remove <name>")
+            return 2
+        kept = [u for u in users if u.name != argv[1]]
+        if len(kept) == len(users):
+            print(f"no such user: {argv[1]}")
+            return 1
+        usm.save_store(USM_STORE, engine_id, kept)
+        print(f"removed {argv[1]}")
+        return 0
+
+    if action != "add":
+        print("usage: user add|list|remove")
+        return 2
+
+    name = argv[1] if len(argv) > 1 else input("user name: ").strip()
+    auth = _arg("--auth", usm.DEFAULT_AUTH)
+    priv = _arg("--priv", usm.DEFAULT_PRIV)
+    try:
+        for warning in usm.check_algorithms(auth, priv):
+            print(f"[!] {warning}")
+        if not name:
+            raise usm.UsmError("a user name is required")
+        if any(u.name == name for u in users):
+            raise usm.UsmError(f"{name!r} already exists; remove it first")
+        auth_pass = getpass.getpass("authentication passphrase: ")
+        usm.check_passphrase("authentication", auth_pass)
+        if getpass.getpass("confirm: ") != auth_pass:
+            raise usm.UsmError("the passphrases did not match")
+        priv_pass = getpass.getpass("privacy passphrase: ")
+        usm.check_passphrase("privacy", priv_pass)
+        if getpass.getpass("confirm: ") != priv_pass:
+            raise usm.UsmError("the passphrases did not match")
+        if priv_pass == auth_pass:
+            raise usm.UsmError("use different passphrases for authentication "
+                               "and privacy; one compromise should not be two")
+        auth_key, priv_key = usm.localize(auth, priv, auth_pass, priv_pass,
+                                          engine_id)
+    except usm.UsmError as exc:
+        print(f"[!] {exc}")
+        return 1
+    except (KeyboardInterrupt, EOFError):
+        print("\ncancelled")
+        return 1
+
+    users.append(usm.UsmUser(name, auth, priv, auth_key, priv_key))
+    try:
+        usm.save_store(USM_STORE, engine_id, users)
+    except OSError as exc:
+        print(f"[!] the SNMPv3 store could not be written: {exc}")
+        return 1
+    print(f"added {name} ({auth} + {priv}).")
+    print("Only the localized keys were stored; the passphrases were not.")
+    print("Restart the service for it to take effect: sc stop jt-snmpd && "
+          "sc start jt-snmpd")
+    return 0
+
+
 if __name__ == "__main__":
     # These two have to be intercepted before _service_main(). Once frozen,
     # letting them reach win32serviceutil.HandleCommandLine produces "option not
     # recognized" and a printout of the service usage — which happened.
     if "--selftest" in sys.argv:
         raise SystemExit(selftest())
+
+    if len(sys.argv) > 1 and sys.argv[1] == "user":
+        load_config()
+        raise SystemExit(_usm_cli(sys.argv[2:]))
 
     # Config file first, command line second — the command line is an override,
     # so it has to be applied after the file has been read.
