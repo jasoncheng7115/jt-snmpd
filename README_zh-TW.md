@@ -331,7 +331,7 @@ jt-snmpd/
 | Windows 服務、開機自啟、從內建服務移轉 | ✅ 已在 Windows 10 與 11 驗證 |
 | 磁碟溫度與 SMART 健康度 | ✅ 已在實體硬體驗證 |
 | **MSI 安裝程式**（點兩下的圖形介面、`/qn` 無訊息安裝、GPO / Intune / SCCM 派送）| ✅ 已發版；安裝、升級、解除安裝、重裝、清除移除共 40 項生命週期檢查在實機全綠 |
-| SNMPv3（SHA-256 + AES-128）| ⛔ 未實作，目前只有 v2c |
+| SNMPv3（SHA-256 + AES-128）| 🚧 開發中，目前只有 v2c |
 | OID 檢視範圍預設集（VACM）| ⛔ 未實作 |
 | Authenticode 簽章 | ⏳ 日後規劃申請開源專案憑證，見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | **Windows Server** | ✅ **2016（網域控制站）與 2022 已實機驗證**，含安裝生命週期、內建 SNMP 移轉、LibreNMS 端對端；見[部署到 Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes_zh-TW.html) |

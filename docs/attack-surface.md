@@ -200,7 +200,7 @@ never appear.
 
 | Risk | Today | Plan |
 |---|---|---|
-| **Community string in clear text** | v2c has neither encryption nor authentication and can be sniffed | SNMPv3 (SHA-256 + AES-128, keys stored with DPAPI) is a v1.0 requirement |
+| **Community string in clear text** | v2c has neither encryption nor authentication and can be sniffed | SNMPv3 (SHA-256 + AES-128, keys stored with DPAPI) is in development |
 | **Source addresses can be spoofed** | UDP is connectionless; the allow-list stops reflection but not blind sends | v3 authentication resolves it; for now rate limiting and read-only bound the impact |
 | **The executable is unsigned** | No Authenticode certificate yet | A certificate through an open-source code-signing programme is planned. Until then integrity comes from the published SHA-256 — [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) covers trusting it manually, WDAC hash rules, and signing with your own certificate |
 | **pysnmp's BER decoder** | The pre-parse gate sits in front of it, but authorised sources still reach it | A small purpose-built parser (Phase 1) to shrink this surface |

@@ -172,7 +172,7 @@ ctypes 是 Python 記憶體安全性失效之處：緩衝區配小了，核心�
 
 | 風險 | 現況 | 計畫 |
 |---|---|---|
-| **community 明文傳輸** | v2c 沒有加密或認證，網路上可嗅探 | SNMPv3（SHA-256 + AES-128，金鑰以 DPAPI 儲存）為 v1.0 需求 |
+| **community 明文傳輸** | v2c 沒有加密或認證，網路上可嗅探 | SNMPv3（SHA-256 + AES-128，金鑰以 DPAPI 儲存）開發中 |
 | **來源 IP 可偽造** | UDP 無連線，白名單擋得住反射但擋不住盲送 | v3 的認證可根治；目前靠速率限制與唯讀降低影響 |
 | **執行檔未簽章** | 目前沒有 Authenticode 憑證 | 日後規劃透過開源專案憑證方案申請。在那之前完整性以公布的 SHA-256 建立，手動信任、WDAC 雜湊規則與自行簽章見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | **pysnmp BER 解碼器** | 前置閘門擋在它之前，但授權來源仍會走到它 | 專用小解析器（Phase 1），縮小這塊攻擊面 |
