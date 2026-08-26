@@ -12,16 +12,24 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 import time
+from pathlib import Path
 from bisect import bisect_right
 
 from pysnmp.carrier.asyncio.dgram import udp
 from pysnmp.entity import config, engine
+from pysnmp.proto import rfc1902
 from pysnmp.entity.rfc3413 import cmdrsp, context
 from pysnmp.proto import rfc1905
 from pysnmp.proto.api import v2c
 
 from .snapshot import Snapshot, SnapshotMibInstrumController, build_synthetic_snapshot
+
+# The agent's own USM helper, so this serves v3 the same way the real one
+# does rather than an approximation of it.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "deploy"))
+import usm  # noqa: E402
 
 # Responses are capped at 1400 bytes to avoid IP fragmentation. The allowance
 # （version / community / PDU header / request-id / error status+index /
@@ -119,13 +127,30 @@ class BatchedBulkCommandResponder(cmdrsp.BulkCommandResponder):
             self.release_state_information(stateReference)
 
 
-def build_agent(snapshot: Snapshot, host: str, port: int, community: str, stock_bulk: bool):
-    snmpEngine = engine.SnmpEngine()
+def build_agent(snapshot: Snapshot, host: str, port: int, community: str,
+                stock_bulk: bool, v3: dict | None = None):
+    # The engineID is supplied rather than left to pysnmp when v3 is in play:
+    # keys are localized against it, so the two have to be the same value.
+    snmpEngine = engine.SnmpEngine(
+        rfc1902.OctetString(v3["engine_id"]) if v3 else None)
     config.add_transport(
         snmpEngine, udp.DOMAIN_NAME, udp.UdpTransport().open_server_mode((host, port))
 )
     config.add_v1_system(snmpEngine, "bench-area", community)
     config.add_vacm_user(snmpEngine, 2, "bench-area", "noAuthNoPriv", (1, 3, 6))
+
+    if v3:
+        # Exactly the path the agent uses: keys localized outside pysnmp and
+        # handed over already localized, so the passphrase need never be stored.
+        auth_key, priv_key = usm.localize(v3["auth"], v3["priv"], v3["auth_pass"],
+                                          v3["priv_pass"], v3["engine_id"])
+        config.add_v3_user(
+            snmpEngine, v3["user"],
+            usm.AUTH_PROTOCOLS[v3["auth"]], auth_key,
+            usm.PRIV_PROTOCOLS[v3["priv"]], priv_key,
+            authKeyType=config.USM_KEY_TYPE_LOCALIZED,
+            privKeyType=config.USM_KEY_TYPE_LOCALIZED)
+        config.add_vacm_user(snmpEngine, 3, v3["user"], "authPriv", (1, 3, 6))
 
     instrum = SliceableSnapshotController(snapshot)
     snmpCtx = context.SnmpContext(snmpEngine)
@@ -147,6 +172,12 @@ async def main() -> None:
     ap.add_argument("--port", type=int, default=11161)
     ap.add_argument("--community", default="bench")
     ap.add_argument("--stock-bulk", action="store_true")
+    ap.add_argument("--v3-user")
+    ap.add_argument("--v3-auth", default="SHA-256")
+    ap.add_argument("--v3-priv", default="AES-128")
+    ap.add_argument("--v3-auth-pass", default="")
+    ap.add_argument("--v3-priv-pass", default="")
+    ap.add_argument("--v3-engine-id", default="8000270104626e6368", help="hex")
     ap.add_argument("--profile-seconds", type=float, default=0.0,
                     help="profile the request path for N seconds, print the hot spots and exit")
     args = ap.parse_args()
@@ -155,7 +186,12 @@ async def main() -> None:
     snap = build_synthetic_snapshot(args.varbinds)
     build_ms = (time.perf_counter() - t) * 1000
 
-    build_agent(snap, args.host, args.port, args.community, args.stock_bulk)
+    v3 = None
+    if args.v3_user:
+        v3 = {"user": args.v3_user, "auth": args.v3_auth, "priv": args.v3_priv,
+              "auth_pass": args.v3_auth_pass, "priv_pass": args.v3_priv_pass,
+              "engine_id": bytes.fromhex(args.v3_engine_id)}
+    build_agent(snap, args.host, args.port, args.community, args.stock_bulk, v3)
     mode = "stock" if args.stock_bulk else "batched"
     print(
         f"READY varbinds={len(snap)} build_ms={build_ms:.1f} "
