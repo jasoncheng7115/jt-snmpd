@@ -206,7 +206,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
   因為直譯完全沒解釋到）、網頁標記（Mark of the Web）。
   絕對化的說法（絕不、永不）改為平實描述，中文也不再使用破折號。
 
-- **非台灣用語**，依微軟正體中文用語更正：filter driver 應為
+- **非台灣用語**，依微軟台灣繁體中文用語更正：filter driver 應為
   篩選器驅動程式而非過濾驅動、tunnel 為通道、instance 為執行個體。
   詞與詞之間的全形斜線一律改為前後加半形空格的半形斜線，
   這才是台灣技術文件的寫法。
@@ -727,7 +727,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **ifXTable OID 錯誤**：`1.3.6.1.31.1.1.1` 少了 `2.1`，整張表掛在無效分支。
   LibreNMS 的 `ifname: true` 依賴此表，錯誤時 Ports 頁缺名稱與 64-bit counters
 - **非 ASCII OCTET STRING 編碼失敗**：pyasn1 預設以 latin-1 編碼字串，
-  正體中文網路卡名（「乙太網路」）會直接拋出 `PyAsn1UnicodeEncodeError`
+  台灣繁體中文網路卡名（「乙太網路」）會直接拋出 `PyAsn1UnicodeEncodeError`
 - **含空白路徑未加引號會被截斷**：預設安裝路徑 `%ProgramFiles%\jt-snmpd\`
   本身即含空白，未加引號時處理程序啟動失敗且無記錄
 - **PowerShell 指令碼需 UTF-8 BOM**：Windows PowerShell 5.1 在無 BOM 時

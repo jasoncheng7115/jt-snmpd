@@ -265,16 +265,23 @@ For GPO, place the MSI on a domain file share and make sure computer accounts ca
 read it. Installing from an internal share also avoids the Mark of the Web, so
 SmartScreen never appears.
 
+**The built-in Windows SNMP Service is not a prerequisite.** Give the installer a
+community — on the command line, or on the wizard's settings page — and it works
+on a machine that has never had the built-in service. Steps 2 and 5 below happen
+only when one is already there.
+
 The installer will:
 
 1. Check OS version, architecture, disk space and who owns UDP/161
-2. Read the existing Microsoft SNMP Service configuration and carry over the
-   community string, permitted managers, sysContact and sysLocation
+2. **If** a Microsoft SNMP Service is present, read its configuration and carry
+   over the community string, permitted managers, sysContact and sysLocation. If
+   not, use the community you supplied; with neither, the installer stops and
+   says so rather than inventing one
 3. Stop any previous version and wait for its file handles to be released
 4. Install to `%ProgramFiles%\jt-snmpd\` and create `%ProgramData%\jt-snmpd\`
    with hardened ACLs
-5. Disable the built-in SNMP Service — **disable, not remove**, and record enough
-   state to restore it
+5. **If** the built-in SNMP Service is present, disable it — **disable, not
+   remove** — and record enough state to restore it
 6. Register the service with failure-recovery actions and reduced privileges
 7. Create the firewall rule scoped to the management network
 8. Start the service and **verify it answers a loopback SNMP query** — a service

@@ -450,12 +450,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
 <section id="install"><div class="wrap">
   <h2><span class="zh">安裝</span><span class="en">Install</span></h2>
   <p class="sub">
-    <span class="zh">MSI 把需要的東西全部包在裡面，安裝時不上網抓任何東西。安裝程式會偵測內建 SNMP Service，
-      沿用它的 community 與 sysContact / sysLocation，然後停用它（<b>停用，不移除</b>），
-      解除安裝時自動還原。</span>
-    <span class="en">The MSI is fully self-contained — it downloads nothing during installation. It detects the
-      built-in SNMP Service, carries over its community and sysContact/sysLocation, then disables it
-      (<b>disabled, not removed</b>) and restores it on uninstall.</span>
+    <span class="zh">MSI 把需要的東西全部包在裡面，安裝時不上網抓任何東西。
+      <b>不需要事先安裝 Windows 內建的 SNMP Service</b> —— 填上 community 就能用。
+      機器上<b>如果</b>已經有內建服務在跑，安裝程式會沿用它的 community 與
+      sysContact / sysLocation，然後把它停用（<b>停用，不移除</b>），解除安裝時自動還原。</span>
+    <span class="en">The MSI is fully self-contained — it downloads nothing during installation.
+      <b>The built-in Windows SNMP Service is not a prerequisite</b>: supply a community and that is all
+      it needs. <b>If</b> one is already running, the installer carries over its community and
+      sysContact/sysLocation, then disables it (<b>disabled, not removed</b>) and restores it on
+      uninstall.</span>
   </p>
 
   <div class="dl">
