@@ -69,7 +69,7 @@ do not exist yet.
     state\disk-maxtemp.json             the highest disk temperature actually observed, kept across restarts
     logs\jt-snmpd.log                   rotated, 5 MB across 5 generations
     logs\msi-configure.log              the installer's own log
-    secrets\                            created with a tightened ACL; SNMPv3 keys (planned)
+    secrets\                            created with a tightened ACL; SNMPv3 keys (in development)
 ```
 
 > This listing once named `config.yaml`, `engine-state.json` and

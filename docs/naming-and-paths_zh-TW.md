@@ -64,7 +64,7 @@ LibreNMS 會刪掉每一個 port 重新探索，歷史 RRD 一起失去對應；
     state\disk-maxtemp.json             實際觀測到的磁碟最高溫，跨重新啟動保存
     logs\jt-snmpd.log                   輪替：5 MB × 5 份
     logs\msi-configure.log              安裝程式自己的記錄
-    secrets\                            目錄已建立且 ACL 已收緊；SNMPv3 金鑰（規劃）
+    secrets\                            目錄已建立且 ACL 已收緊；SNMPv3 金鑰（開發中）
 ```
 
 > 這份清單曾經寫著 `config.yaml`、`engine-state.json`、`ms-snmp-migration.json`，

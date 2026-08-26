@@ -348,7 +348,7 @@ jt-snmpd/
 | Windows service, boot start, migration from the built-in service | ✅ verified on Windows 10 and 11 |
 | Disk temperature and SMART health | ✅ verified on physical hardware |
 | **MSI installer** (double-click with a settings dialog, `/qn` unattended, GPO / Intune / SCCM deployment) | ✅ released; 40 lifecycle assertions covering install, upgrade, uninstall, reinstall and purge, all green on real hardware |
-| SNMPv3 (SHA-256 + AES-128) | ⛔ not implemented; v2c only today |
+| SNMPv3 (SHA-256 + AES-128) | 🚧 in development; v2c only today |
 | OID view presets (VACM) | ⛔ not implemented |
 | Authenticode signing | ⏳ planned via an open-source certificate programme — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
 | **Windows Server** | ✅ **2016 (a domain controller) and 2022 verified on real machines** — installation lifecycle, migration from the built-in service, and end to end through LibreNMS; see [Deploying to Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes.html) |
