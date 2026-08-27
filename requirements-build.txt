@@ -22,6 +22,14 @@ pyasn1==0.6.4
 # packet runs through its AES -- so a version that changes behaviour would
 # be a functional outage, not dead weight. Pinned for the same reason as
 # everything else in this file.
+#
+# There is a second, sharper reason to pin it. SNMPv3 privacy is AES in CFB
+# mode, and cryptography is moving CFB out of primitives.ciphers.modes into
+# decrepit, warning on every use. pysnmp 7.1.29 still imports the deprecated
+# path. The day that removal completes, every authPriv packet stops working --
+# not degrades, stops -- and the fix would have to come from pysnmp. Raising
+# this pin is therefore not routine: run tests/test_usm_wire.py against a real
+# net-snmp before believing an upgrade is safe.
 cryptography==50.0.0
 
 # Windows-only. Listed with a marker so the same file works on the Linux test

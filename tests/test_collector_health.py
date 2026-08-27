@@ -182,3 +182,26 @@ def test_each_collector_tracked_independently(health_ns):
     assert health["collectors"]["bad"]["status"] == 3
     assert health["collectors"]["good"]["errors"] == 0
     assert health["collectors"]["bad"]["errors"] == 1
+
+
+def test_a_failed_rotation_truncates_rather_than_growing_forever():
+    """The 20 MB ceiling has to hold even when rotation cannot happen.
+
+    Rotation fails when something else holds a handle on the file, and on a
+    customer's machine that is antivirus or a backup agent — which every
+    customer machine has. Swallowing the failure made the cap conditional on
+    nothing else touching the directory, and a repeated collector failure writes
+    a line every five seconds: seventeen thousand lines a day, on a service the
+    customer expects to run for six months.
+    """
+    import ast as _ast
+    from pathlib import Path as _Path
+
+    src = (_Path(__file__).resolve().parents[1] / "deploy" / "jt_agent.py").read_text(
+        encoding="utf-8")
+    fn = next(_ast.unparse(n) for n in _ast.walk(_ast.parse(src))
+              if isinstance(n, _ast.FunctionDef) and n.name == "_rotate_log")
+    assert "open(path, 'w'" in fn or 'open(path, "w"' in fn, (
+        "a failed rotation has to truncate; leaving it to grow makes the size "
+        "cap conditional on nothing else holding the file")
+    assert "could not rotate" in fn, "say it happened, in the file itself"

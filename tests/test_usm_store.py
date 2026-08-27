@@ -191,3 +191,29 @@ def test_refusing_to_start_says_why_in_the_log():
     assert "refusing to start" in window, (
         "the refusal has to reach the log, not only the exception")
     assert "user add" in window, "say how to fix it, not only what went wrong"
+
+
+def test_aes_cfb_privacy_still_works_in_this_cryptography():
+    """SNMPv3 privacy is AES in CFB mode, and `cryptography` is moving CFB out of
+    `primitives.ciphers.modes` into `decrepit`, warning on every use. pysnmp
+    still imports the deprecated path, so the day that removal completes, every
+    authPriv packet stops working — not degrades, stops.
+
+    This is why cryptography is pinned. If you are here because this test failed
+    after raising the pin, that is the reason, and the fix is upstream in pysnmp
+    rather than in this file.
+    """
+    from pysnmp.entity import config as _cfg  # import first; circular otherwise
+    from pysnmp.proto.secmod.rfc3826.priv import aes
+
+    svc = _cfg.PRIV_SERVICES[_cfg.USM_PRIV_CFB128_AES]
+    assert isinstance(svc, aes.Aes)
+    assert svc.KEY_SIZE == 16
+
+    # The real check: a round trip through the cipher this depends on
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    key, iv, plain = b"k" * 16, b"i" * 16, b"varbind payload"
+    enc = Cipher(algorithms.AES(key), modes.CFB(iv)).encryptor()
+    ct = enc.update(plain) + enc.finalize()
+    dec = Cipher(algorithms.AES(key), modes.CFB(iv)).decryptor()
+    assert dec.update(ct) + dec.finalize() == plain
