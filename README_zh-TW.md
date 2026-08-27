@@ -362,7 +362,6 @@ jt-snmpd/
 | SNMPv3（SHA-256 + AES-128、authPriv）| ✅ **已在四台實機與正式 LibreNMS 驗證**；與 v2c 並存，另有 `v3_only` 開關 |
 | Authenticode 簽章 | ⏳ 日後規劃申請開源專案憑證，見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | **Windows Server** | ✅ **2016（網域控制站）與 2022 已實機驗證**，含安裝生命週期、內建 SNMP 移轉、LibreNMS 端對端；見[部署到 Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes_zh-TW.html) |
-| 唯讀網域控制站 | ⛔ 尚未驗證，無環境 |
 | 升級時的「使用中的檔案」對話框 | ✅ **已規範的行為**。圖形安裝會問，**由操作人員決定** —— 沒有人應該在別人看著的時候把監控代理服務悄悄關掉。無訊息安裝沒有人可問，由 Windows Installer 自行關閉、安裝、再啟動回來，**而且會寫進安裝記錄** |
 | 多網路卡來源位址選擇 | ⛔ 尚未驗證 |
 
