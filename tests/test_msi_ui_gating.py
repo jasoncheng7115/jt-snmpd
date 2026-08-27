@@ -447,13 +447,14 @@ def test_the_installer_records_which_mode_it_ran_in():
     wxs = (ROOT / "packaging" / "wix" / "jt-snmpd.wxs").read_text(encoding="utf-8")
     assert "[UILevel]" in wxs, (
         "the configure action has to know whether anyone was asked")
-    assert "[MsiRestartManagerSessionKey]" in wxs, (
-        "and whether Restart Manager was the thing that stopped the agent")
+    assert "[MsiRestartManagerSessionKey]" not in wxs, (
+        "that property is gone by the time a deferred action runs: measured "
+        "added at 14:08:38.528 and deleted 165 ms later, and reading it made "
+        "the log contradict msiexec's own")
 
     cfg = (ROOT / "packaging" / "msi-configure.ps1").read_text(encoding="utf-8")
     assert "installation mode:" in cfg, "the mode has to reach our own log"
-    assert "Restart Manager session" in cfg, (
-        "say whether Restart Manager stopped and restarted the agent; the "
-        "operator's only other source for that is a log that was never written")
     for level in ('"2"', '"5"'):
         assert level in cfg, f"UI level {level} has to be distinguished"
+    assert "$RestartManagerKey" not in cfg, (
+        "the script must not take a value it cannot rely on")

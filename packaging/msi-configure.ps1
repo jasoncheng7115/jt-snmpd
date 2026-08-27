@@ -23,10 +23,14 @@ param(
     # Windows Installer's UI level: 2 = /qn, 3 = /qb, 4 = reduced, 5 = full.
     # Which one it is decides who gets to answer the "files in use" question,
     # and the answer has to be visible afterwards either way.
+    #
+    # MsiRestartManagerSessionKey is deliberately **not** taken. It exists only
+    # while Windows Installer is costing files: measured on a real machine, it
+    # was added at 14:08:38.528 and deleted 165 ms later, well before this
+    # deferred action runs. Reading it made the log say one thing while the
+    # msiexec log said the opposite, and a log line that misleads is worse than
+    # no log line. The UI level is what is actually knowable here.
     [string]$UILevel = "",
-    # Non-empty when Windows Installer opened a Restart Manager session, which
-    # is what shuts down and restarts whatever was holding the files.
-    [string]$RestartManagerKey = "",
 
     [switch]$Uninstall,
     [string]$Purge = "0"
@@ -176,19 +180,15 @@ $uiName = switch ($UILevel) {
     default { "unknown ($UILevel)" }
 }
 Log "installation mode: $uiName"
-if ($RestartManagerKey) {
-    if ($UILevel -eq "2" -or $UILevel -eq "3") {
-        Log ("Restart Manager session $RestartManagerKey is active. With no UI to " +
-             "ask, Windows Installer shuts down whatever holds the files and " +
-             "restarts it afterwards; if jt-snmpd was running it was stopped and " +
-             "will be started again by the installer.")
-    } else {
-        Log ("Restart Manager session $RestartManagerKey is active. At this UI " +
-             "level the operator was shown the Files in use page and chose how " +
-             "to proceed.")
-    }
+if ($UILevel -eq "2" -or $UILevel -eq "3") {
+    Log ("no UI to ask, so Windows Installer closes whatever holds the files " +
+         "and restarts it afterwards. If jt-snmpd was running it was stopped " +
+         "without anyone being asked; the loopback check at the end of this " +
+         "log is what confirms it came back.")
 } else {
-    Log "no Restart Manager session: nothing held the files being replaced"
+    Log ("at this UI level the operator is shown the Files in use page if " +
+         "anything holds the files, and decides.")
+}
 }
 $exe = Join-Path $InstallDir $EXE_NAME
 if (-not (Test-Path $exe)) { Log "FAIL $exe not found"; exit 1 }
