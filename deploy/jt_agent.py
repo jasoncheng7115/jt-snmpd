@@ -643,6 +643,35 @@ _health = {
 }
 
 
+# Ceiling on the processor count, for the same reason every other ceiling in
+# this file exists: the number comes from the kernel and sizes an allocation.
+MAX_PROCESSORS = 512
+
+
+def active_cpu_count() -> int:
+    """The number of logical processors, across **all** processor groups.
+
+    Not os.cpu_count(). Windows splits machines with more than 64 logical
+    processors into groups, and the older APIs report only the group the caller
+    happens to be in — so a 128-core host reads as 64. Every use of this number
+    here sizes a buffer that the kernel then writes into, and one that is too
+    small makes NtQuerySystemInformation fail rather than fill it: the effect is
+    not a crash but a host reporting no CPU data at all.
+
+    sensors.py has always done this correctly. This is the same call, moved to
+    where the rest of the file can reach it.
+    """
+    try:
+        _k32.GetActiveProcessorCount.argtypes = [ctypes.c_ushort]
+        _k32.GetActiveProcessorCount.restype = ctypes.c_ulong
+        n = int(_k32.GetActiveProcessorCount(0xFFFF))   # ALL_PROCESSOR_GROUPS
+    except Exception:  # noqa: BLE001
+        n = 0
+    if not 0 < n <= MAX_PROCESSORS:
+        n = min(max(os.cpu_count() or 1, 1), MAX_PROCESSORS)
+    return n
+
+
 def _collector(name: str, fn, default):
     """Run one collector and record its health.
 
@@ -673,12 +702,17 @@ def get_cpu_loads() -> list[int]:
     """Per-core utilisation as a percentage. NtQuerySystemInformation
     returns every CPU in one call, far cheaper than PDH wildcard expansion on a
     many-core machine."""
-    ncpu = os.cpu_count() or 1
+    ncpu = active_cpu_count()
     buf = (_SPPI * ncpu)()
     ret = wintypes.ULONG(0)
     if _ntdll.NtQuerySystemInformation(8, ctypes.byref(buf), ctypes.sizeof(buf),
                                        ctypes.byref(ret)) != 0:
-        return [0] * ncpu
+        # Not [0] * ncpu. Every core reading zero per cent is a plausible
+        # number and a false one, and the collector would be recorded as
+        # healthy while reporting it. Raising makes the rows disappear from the
+        # snapshot and marks the collector failed, which is what rule 4 asks
+        # for: what cannot be measured is not reported.
+        raise OSError("NtQuerySystemInformation(SystemProcessorPerformanceInformation) failed")
     loads = []
     for i in range(ncpu):
         idle = buf[i].IdleTime.QuadPart
@@ -1101,7 +1135,7 @@ def get_cpu_times_total() -> dict | None:
     differs from Windows' 100 ns unit by a factor of 10^5. Getting the conversion
     wrong makes LibreNMS's Detailed Processor Usage show nonsensical percentages.
     """
-    ncpu = os.cpu_count() or 1
+    ncpu = active_cpu_count()
     arr = (_SPPI * ncpu)()
     ret = wintypes.ULONG(0)
     if _ntdll.NtQuerySystemInformation(8, ctypes.byref(arr),
@@ -1869,7 +1903,7 @@ def build_sysdescr() -> str:
         build = str(_reg(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuildNumber"))
     except OSError:
         build = "0"
-    smp = "Multiprocessor Free" if (os.cpu_count() or 1) > 1 else "Uniprocessor Free"
+    smp = "Multiprocessor Free" if active_cpu_count() > 1 else "Uniprocessor Free"
     return (f"Hardware: {cpu} AT/AT COMPATIBLE - "
             f"Software: Windows Version 6.3 (Build {build} {smp})")
 
