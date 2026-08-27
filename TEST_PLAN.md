@@ -360,6 +360,56 @@ LibreNMS 用的是 net-snmp，所以測試的另一端就必須是 net-snmp。
 | 5.21.3 | 升級後 v3 帳號必須存活(DPAPI 保管跨安裝程式) | **[已驗]** `user list` 升級後仍為 `librenms SHA-256 + AES-128`,engineID 未變 |
 | 5.21.4 | 服務啟動路徑的每一個岔路都要留下記錄 | **[已實作]** `service entry: pywin32=… frozen=… argv=…` |
 
+### 5.23 帶著被保留的設定再升級一次(1.1.2 新增)
+
+**這一節存在的原因是 1.1.1 漏掉了它。** 1.1.1 修好「升級保留操作人員的設定」,
+四台機器各 21 項全綠;但那 21 項每一輪升級都是在 `v3_only=false` 之下做的。
+**設定被保留有測,「保留之後還能不能再升一次」沒有測。**
+結果是設了 `v3_only` 的主機用 1.1.1 升級必定 1603 回滾 —— 安裝程式結尾的健康檢查
+送的是 SNMPv2c GET,而那台主機刻意不註冊 v2c。
+
+這個缺陷比 1.1.1 老,但在 1.1.1 之前碰不到:舊版會在探測之前把 `v3_only` 重設為
+false,探測永遠有 v2c 可以問。**是修好保留,才讓舊缺陷第一次現形。**
+
+**通則:凡是升級會被保留的設定,測試都要有一輪「帶著這個設定再升級一次」。**
+
+| 編號 | 項目 | 狀態 |
+|---|---|---|
+| 5.23.1 | `v3_only=true` 的主機以 `/qn` 升級必須 `exit 0`,且設定仍在 | **[已驗]** 四台,見下表 |
+| 5.23.2 | 安裝記錄必須寫出它選了哪一種探測與哪個連接埠 | **[已驗]** `health check: SNMPv3 engine discovery ... on 127.0.0.1:161` |
+| 5.23.3 | `v3_only=false` 的主機仍走 v2c 探測且通過 | **[已驗]** `.154` 重裝 `exit 0`,記錄寫 `SNMPv2c GET of sysUpTime` |
+| 5.23.4 | 探測不得寬鬆到「怎樣都會過」 | **[已驗]** `.154`:community 打錯時 v2c 探測 no answer |
+| 5.23.5 | 健康檢查不得寫死連接埠 | **[已驗]** 取自剛寫出的設定;變異測試把它改回 161 會讓 `tests/test_installer_health_probe.py` 變紅 |
+
+以 **GitHub 上發行的 `jt-snmpd-1.1.2-x64.msi`** 實測(每台都在機器上核對過
+SHA-256 `a5056592…589c05`,與發行檔逐位元組相同):
+
+| 機器 | 升級前 | `msiexec` | 升級後 | 保留的設定 |
+|---|---|---|---|---|
+| Windows 11 `.154` | 1.1.0,`v3_only=true` | **0** | 1.1.2 | `v3_only=True` `rate_burst=777` `rate_pps=42` |
+| Windows 10 `.163` 實體機 | 1.1.0,`v3_only=true` | **0** | 1.1.2 | `v3_only=True` `rate_burst=444` |
+| **Server 2016 `.49` 網域控制站** | 1.1.0,`v3_only=true` | **0** | 1.1.2 | `v3_only=True` `rate_burst=333` |
+| **Server 2022 `.187`** | 1.1.0,`v3_only=true` | **0** | 1.1.2 | `v3_only=True` `rate_burst=555` |
+
+對照:同一個情境用 **1.1.1** 在 `.154` 上跑,`msiexec exit = 1603`,版本停在 1.1.0,
+記錄寫 `FAIL the service started but did not answer a loopback SNMP query within 30 seconds`。
+
+替代的探測是 **SNMPv3 engine 探索**:空使用者名稱、noAuthNoPriv,
+RFC 3414 §4 要求代理服務在對方出示任何憑證之前就得以 report PDU 回應。
+不需要帳號密碼,所以安裝程式沒見過那台機器的 v3 帳號也驗得了,
+而且仍然是一次真正的 SNMP 往返,不是退化成去看服務狀態。
+封包 64 位元組,與 net-snmp 送的探索同長。
+
+實機並排量測(`.154`,同一個 agent,只切換 `v3_only`):
+
+| 探測 | `v3_only=false` | `v3_only=true` |
+|---|---|---|
+| SNMPv2c GET(1.1.1 用的) | ANSWERED | **NO ANSWER** |
+| SNMPv3 engine 探索(1.1.2 改用的) | ANSWERED | **ANSWERED** |
+| SNMPv2c 但 community 打錯 | no answer | — |
+
+---
+
 ### 5.22 1.1.0 發版前的實機驗證(2026-08-27)
 
 **客戶大多裝在 Windows Server**,所以兩台 Server 是主要平台,不是附帶項目。
