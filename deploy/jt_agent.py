@@ -175,9 +175,31 @@ def _rotate_log(path: str) -> None:
             if os.path.exists(src):
                 os.replace(src, f"{path}.{n + 1}")
         os.replace(path, f"{path}.1")
+        return
     except OSError:
-        # A failed rotation only means the log keeps growing; it must not
-        # affect the agent itself.
+        pass
+
+    # Rotation failed. The likely cause is something else holding a handle on
+    # the file, and on a customer's machine that means antivirus or a backup
+    # agent — which every customer machine has. Leaving it at "the log keeps
+    # growing" makes the cap conditional on nothing else touching the directory,
+    # and a repeated collector failure writes a line every five seconds:
+    # seventeen thousand lines a day, unbounded, on a service expected to run
+    # for six months.
+    #
+    # Truncating loses the old lines, which is the lesser harm. A monitoring
+    # agent must not be able to fill the disk of the host it monitors, and that
+    # has to hold even when rotation cannot.
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} pid={os.getpid()} "
+                     f"ERROR could not rotate the log, so it was truncated "
+                     f"instead. Something is holding a handle on "
+                     f"{os.path.basename(path)}.1; antivirus and backup agents "
+                     f"are the usual reason\n")
+    except OSError:
+        # Nothing further can be done from here without risking the agent
+        # itself, which matters more than the log.
         pass
 
 
@@ -2888,6 +2910,73 @@ def build_snapshot() -> tuple[tuple, tuple]:
 
 
 # ------------------------------------------------------------- MIB controller
+# --------------------------------------------------- Response size budgeting
+#
+# Responses are capped at 1400 bytes so they never fragment. snmpEngineMaxMessageSize
+# advertises that number, and until 1.1.0 nothing enforced it: a GETBULK that
+# landed on the SMART table returned 1902 bytes on a real machine and the
+# datagram fragmented. Behind a firewall that drops IP fragments, the symptom is
+# SMART data going missing intermittently with nothing in any log.
+#
+# The sizes are calculated rather than encoded. Encoding speculatively and
+# backing off was measured at 115 µs per varbind in the prototype; this is
+# arithmetic, and only the varbinds that go into one response are measured.
+MAX_RESPONSE_BYTES = 1400
+# Room for the message envelope: version, community or the v3 security
+# parameters, the PDU header and the request id. v3 authPriv is the expensive
+# case, carrying the USM parameters and the privacy padding.
+MESSAGE_OVERHEAD_RESERVE = 240
+
+
+def _tlv_len(content_len: int) -> int:
+    """tag(1) + the BER length field + the content. Under 128 the length is one byte."""
+    if content_len < 0x80:
+        return 1 + 1 + content_len
+    return 1 + 1 + (content_len.bit_length() + 7) // 8 + content_len
+
+
+def _oid_content_len(oid: tuple) -> int:
+    """The first two sub-identifiers combine as 40*a+b; the rest are base-128."""
+    if len(oid) < 2:
+        return 1
+    total = 0
+    for sub in (oid[0] * 40 + oid[1], *oid[2:]):
+        total += 1 if sub < 0x80 else (sub.bit_length() + 6) // 7
+    return total
+
+
+def _int_content_len(v: int) -> int:
+    """Tracks what pyasn1 actually emits, not DER's shortest form. At negative
+    boundaries pyasn1 emits a redundant leading byte: -128 encodes as `ff 80`.
+    The point is to predict pyasn1's output so the response can be truncated
+    before the cap, which means following pyasn1 rather than the standard."""
+    return v.bit_length() // 8 + 1
+
+
+def _varbind_size(oid: tuple, val) -> int:
+    """BER size of one varbind, including the enclosing SEQUENCE."""
+    if isinstance(val, rfc1902.OctetString):
+        vlen = len(val.asOctets())
+    elif isinstance(val, (rfc1902.Counter64, rfc1902.Counter32,
+                          rfc1902.Gauge32, rfc1902.TimeTicks)):
+        vlen = _int_content_len(int(val))
+    elif isinstance(val, rfc1902.ObjectIdentifier):
+        vlen = _oid_content_len(tuple(val))
+    elif isinstance(val, (rfc1902.Integer32, rfc1902.Integer)):
+        vlen = _int_content_len(int(val))
+    else:
+        # Unknown type: encode it for real rather than guess low. Rare, and
+        # guessing low is what would put a response over the cap.
+        try:
+            from pyasn1.codec.ber import encoder as _ber
+            vb = v2c.VarBind()
+            v2c.apiVarBind.set_oid_value(vb, (v2c.ObjectIdentifier(oid), val))
+            return len(_ber.encode(vb))
+        except Exception:  # noqa: BLE001
+            return 128      # deliberately generous; better short than over
+    return _tlv_len(_tlv_len(_oid_content_len(oid)) + _tlv_len(vlen))
+
+
 class SnapshotController(AbstractMibInstrumController):
     """Not overriding write_variables makes this a read-only agent by
     construction."""
@@ -2918,26 +3007,94 @@ class SnapshotController(AbstractMibInstrumController):
                 out.append((vb[0], rfc1905.endOfMibView))
         return out
 
+    def read_next_slice(self, name, max_count: int, max_bytes: int, acFun, context):
+        """Take up to max_count entries after `name`, stopping before max_bytes.
+
+        This is what "GETBULK degenerates to an array slice" means: one bisect to
+        find the start, then walking the array — not one bisect per repetition.
+
+        Two things happen here that pysnmp's own GETBULK does not do. It stops on
+        a byte budget, so a response cannot exceed the size this agent advertises
+        and cannot fragment. And when the walk runs out it returns **one**
+        endOfMibView rather than padding the response to max-repetitions with
+        them; returning fewer varbinds than asked for is what every manager
+        already handles at the end of a subtree.
+        """
+        oids, vals, n = self.oids, self.vals, len(self.oids)
+        i = bisect_right(oids, tuple(name))
+        out, used = [], 0
+        while i < n and len(out) < max_count:
+            oid, val = oids[i], vals[i]
+            if acFun is not None:
+                # A denied row is skipped, not returned as an error: stopping
+                # here would end the walk early and hide everything after it.
+                if acFun("read", (v2c.ObjectIdentifier(oid), val), **context) is False:
+                    i += 1
+                    continue
+            size = _varbind_size(oid, val)
+            if out and used + size > max_bytes:
+                break
+            used += size
+            out.append((v2c.ObjectIdentifier(oid), val))
+            i += 1
+        if not out:
+            out.append((name, rfc1905.endOfMibView))
+        return out
+
 
 class CappedBulkResponder(cmdrsp.BulkCommandResponder):
-    """cap max-repetitions server-side (25 by default), ignoring any
-    larger value a request asks for.
+    """GETBULK, capped in three ways pysnmp's own implementation is not.
 
-    pysnmp's own implementation caps only the varbind count (max_varbinds=64),
-    has no byte cap, and pads the response with endOfMibView up to
-    max-repetitions once it reaches the end of the MIB.
+    pysnmp caps only the varbind count (max_varbinds=64). It has **no byte
+    cap**, it pads the response with endOfMibView up to max-repetitions once it
+    reaches the end of the MIB, and it calls read_next_variables once per
+    repetition — its own source carries a `TODO: manage all PDU var-binds in a
+    single call` beside that loop.
+
+    Until 1.1.0 this class capped max-repetitions and delegated the rest, so it
+    inherited all three. That was measured, not theorised: a GETBULK landing on
+    the SMART table returned 1902 bytes on a real machine and the datagram
+    fragmented, while the agent's own snmpEngineMaxMessageSize advertised 1400.
+    Behind a firewall that drops IP fragments — which is the normal
+    configuration in the environments this ships into — the symptom would be
+    SMART data going missing intermittently, with nothing in any log to explain
+    it.
     """
     MAXREP_CAP = 25
 
     def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
         try:
+            non_repeaters = max(int(v2c.apiBulkPDU.get_non_repeaters(PDU)), 0)
+            max_reps = max(int(v2c.apiBulkPDU.get_max_repetitions(PDU)), 0)
+            req = v2c.apiPDU.get_varbinds(PDU)
+            n = min(non_repeaters, len(req))
+            r = max(len(req) - n, 0)
+            m = min(max_reps, self.MAXREP_CAP)
+            instrum = self.snmpContext.get_mib_instrum(contextName)
+            budget = MAX_RESPONSE_BYTES - MESSAGE_OVERHEAD_RESERVE
+            ctx = dict(snmpEngine=snmpEngine, acFun=self.verify_access,
+                       cbCtx=self.cbCtx)
+
+            # One repeater and no non-repeaters is what a walk sends, and it is
+            # the case the slice path exists for. Several repeaters have to
+            # interleave their output, which is more involved and rare in
+            # practice, so that falls back to pysnmp.
+            if n == 0 and r == 1 and hasattr(instrum, "read_next_slice"):
+                rsp = instrum.read_next_slice(req[0][0], m, budget,
+                                              self.verify_access, ctx)
+                if rsp:
+                    self.send_varbinds(snmpEngine, stateReference, 0, 0, rsp)
+                    self.release_state_information(stateReference)
+                    return
+        except Exception as exc:  # noqa: BLE001 - a failure here must not fail
+                                  # the request; fall through to pysnmp
+            log(f"bulk slice path failed, falling back: {exc!r}", error=True)
+
+        try:
             cur = int(v2c.apiBulkPDU.get_max_repetitions(PDU))
             if cur > self.MAXREP_CAP:
                 v2c.apiBulkPDU.set_max_repetitions(PDU, self.MAXREP_CAP)
-        except Exception as exc:  # noqa: BLE001 - failing to apply the cap must
-                                  # not fail the request
-            # Log and continue: pysnmp's max_varbinds and the response size
-            # limit still bound the result
+        except Exception as exc:  # noqa: BLE001
             log(f"failed to apply max-repetitions cap: {exc!r}")
         return super().handle_management_operation(snmpEngine, stateReference, contextName, PDU)
 
