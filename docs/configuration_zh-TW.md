@@ -149,6 +149,126 @@ HKLM\SOFTWARE\Policies\JasonTools\JTSNMPD
 
 ---
 
+## 6. 完整範例
+
+### 只用 SNMPv2c（最常見）
+
+`C:\ProgramData\jt-snmpd\config.json`：
+
+```json
+{
+  "schema_version": 1,
+  "community": "mon-readonly-2026",
+  "allowed_networks": ["192.168.1.0/24", "10.20.0.0/16"],
+  "port": 161,
+  "enable_arp_table": false,
+  "rate_pps": 50,
+  "rate_burst": 300,
+  "v3_only": false
+}
+```
+
+LibreNMS 端：Devices → Add Device，SNMP Version 選 **v2c**，Community 填
+`mon-readonly-2026`。
+
+從 LibreNMS 主機先確認：
+
+```
+snmpwalk -v2c -c mon-readonly-2026 <主機> 1.3.6.1.2.1.1
+```
+
+---
+
+### v2c 與 v3 並存（切換期間）
+
+設定檔跟上面一樣（`v3_only` 維持 `false`），另外在被監控主機上建帳號：
+
+```
+"C:\Program Files\jt-snmpd\jt-snmpd.exe" user add librenms
+  authentication passphrase: ****************
+  confirm:                   ****************
+  privacy passphrase:        ****************
+  confirm:                   ****************
+
+added librenms (SHA-256 + AES-128).
+Only the localized keys were stored; the passphrases were not.
+
+sc stop jt-snmpd && sc start jt-snmpd
+```
+
+兩種都會回應。這是**升級與切換期間該待的狀態** —— 舊的監控設定還在運作，
+新的可以逐台驗證。
+
+先在 LibreNMS 主機上確認 v3 通得了，再去改裝置設定：
+
+```
+snmpwalk -v3 -l authPriv -u librenms \
+  -a SHA-256 -A '<認證密碼>' \
+  -x AES     -X '<加密密碼>' \
+  <主機> 1.3.6.1.2.1.1
+```
+
+LibreNMS 端改成 v3：裝置頁 → 齒輪 → Edit → SNMP
+
+| 欄位 | 填入 |
+|---|---|
+| SNMP Version | v3 |
+| Auth Level | authPriv |
+| Auth User Name | `librenms` |
+| Auth Password | 認證密碼 |
+| Auth Algorithm | SHA-256 |
+| Crypto Password | 加密密碼 |
+| Crypto Algorithm | AES |
+
+**切換不會讓 LibreNMS 重新探索**，連接埠、儲存、感測器的既有項目與歷史圖表都保留。
+
+---
+
+### 只用 SNMPv3、完全排除 v2c
+
+**順序很重要:先確認 v3 通了，最後才設 `v3_only`。**
+
+```json
+{
+  "schema_version": 1,
+  "community": "",
+  "allowed_networks": ["192.168.1.0/24"],
+  "port": 161,
+  "enable_arp_table": false,
+  "rate_pps": 50,
+  "rate_burst": 300,
+  "v3_only": true
+}
+```
+
+重啟之後記錄會寫：
+
+```
+v3_only is set: SNMPv2c is not registered on this agent
+SNMPv3 user 'librenms' registered (SHA-256 + AES-128)
+LISTENING 0.0.0.0:161 varbinds=652
+```
+
+驗證：v2c 應該完全不回應，v3 正常。
+
+```
+snmpget -v2c -c anything <主機> 1.3.6.1.2.1.1.5.0
+  → Timeout: No Response
+
+snmpget -v3 -l authPriv -u librenms -a SHA-256 -A '...' -x AES -X '...' <主機> 1.3.6.1.2.1.1.5.0
+  → STRING: "WIN11-PRO-1"
+```
+
+**設了 `v3_only` 卻沒有帳號時，服務會拒絕啟動**，記錄會寫：
+
+```
+ERROR refusing to start: v3_only is set but no SNMPv3 user could be loaded,
+so nothing could authenticate. Provision one with `jt-snmpd.exe user add <name>`,
+or clear v3_only in config.json to serve v2c again
+```
+
+---
+
 ## 相關文件
 
 - [SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3_zh-TW.html)

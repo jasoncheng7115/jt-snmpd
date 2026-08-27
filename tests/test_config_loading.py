@@ -336,3 +336,31 @@ def test_the_installer_writes_every_setting_the_agent_reads():
     assert not missing, (
         "the installer does not write these, so an operator reading config.json "
         f"cannot tell they exist: {missing}")
+
+
+def test_an_upgrade_keeps_what_the_operator_set():
+    """The installer used to build config.json from scratch and write over
+    whatever was there, so an upgrade reset every value it does not collect.
+
+    The worst of those was v3_only: a site that had turned SNMPv2c off got it
+    back, silently, by installing a newer version. That is a security setting
+    being undone by a routine action, with nothing in the process saying so.
+    Others were quieter but still wrong — a tuned rate limit, a non-standard
+    port, a deliberately enabled ARP table.
+
+    community and allowed_networks are excluded on purpose: they arrive as MSI
+    properties, which are mandatory, so an upgrade always states them.
+    """
+    from pathlib import Path as _P
+
+    script = (_P(__file__).resolve().parents[1] / "packaging" / "msi-configure.ps1"
+              ).read_text(encoding="utf-8-sig")
+    assert "ConvertFrom-Json" in script, "the existing file has to be read first"
+    for key in ("port", "enable_arp_table", "rate_pps", "rate_burst", "v3_only"):
+        assert f"'{key}'" in script, f"{key} has to survive an upgrade"
+    assert "Keep 'v3_only'" in script, (
+        "v3_only above all: an upgrade must not re-enable v2c on a site that "
+        "turned it off")
+    # And it has to say what it kept, or the operator cannot tell an upgrade
+    # preserved their settings from one that quietly reset them.
+    assert "keeping settings from the existing configuration" in script
