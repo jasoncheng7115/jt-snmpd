@@ -292,3 +292,43 @@ def test_a_failed_cpu_read_is_not_reported_as_zero_per_cent():
         "the collector healthy")
     assert "raise" in fn, (
         "raising is what makes the rows disappear and the collector show failed")
+
+
+def test_no_collector_default_fabricates_a_measurement():
+    """_collector returns its default when a collector fails, so the default is
+    where rule 4 is either kept or broken.
+
+    A list or a dict default makes the rows disappear, and None makes the caller
+    skip the OID — both honest. A number is not: hrSystemProcesses stood at
+    nought when the process count could not be read, and a machine with no
+    processes does not exist. A monitoring system draws that as a line to the
+    floor rather than as a gap, so the graph looks like a measurement instead of
+    a failure.
+    """
+    import ast as _ast
+    from pathlib import Path as _P
+
+    src = (_P(__file__).resolve().parents[1] / "deploy" / "jt_agent.py").read_text(
+        encoding="utf-8")
+
+    # Placeholder text is fine: a name is not a measurement, and something has
+    # to be published for the row to exist at all.
+    allowed_literals = {"CPU"}
+    offenders = []
+    for node in _ast.walk(_ast.parse(src)):
+        if not (isinstance(node, _ast.Call)
+                and getattr(node.func, "id", "") == "_collector"):
+            continue
+        if len(node.args) < 3:
+            continue
+        default = node.args[2]
+        if isinstance(default, (_ast.List, _ast.Dict, _ast.Tuple)):
+            continue
+        if isinstance(default, _ast.Constant):
+            if default.value is None or default.value in allowed_literals:
+                continue
+            name = node.args[0].value if isinstance(node.args[0], _ast.Constant) else "?"
+            offenders.append(f"{name} defaults to {default.value!r}")
+    assert not offenders, (
+        "these collectors publish a made-up number when they fail: "
+        + "; ".join(offenders))
