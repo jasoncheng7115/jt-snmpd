@@ -1648,11 +1648,36 @@ def observed_max_temp(name: str, current: int | None) -> int | None:
 
 
 def _load_index_map() -> dict:
-    try:
-        with open(STATE_FILE, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, ValueError, UnicodeError):
-        return {"schema_version": 1, "interfaces": {}, "next_if_index": 1}
+    """Read index-map.json, falling back to the .bak when the main file is
+    damaged.
+
+    _save_index_map has always kept a .bak and called a corrupted index-map
+    "the most expensive way this can fail" — and until 1.1.0 this function
+    never looked at it. A damaged file silently became an empty map.
+
+    Empty is not harmless. ifIndex is handed out from a counter and recorded
+    here against the LUID; it is not derived from the LUID. Starting empty means
+    the next enumeration assigns indices in whatever order GetIfTable2 returns,
+    which is not guaranteed stable. On a single-NIC machine the first interface
+    gets 1 either way, which is why a purge test never showed it. On a machine
+    with several, the ports are renumbered, and LibreNMS orphans the RRDs of
+    every port whose index moved.
+    """
+    for path in (STATE_FILE, STATE_FILE + ".bak"):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict) and isinstance(data.get("interfaces"), dict):
+                if path.endswith(".bak"):
+                    log("index-map.json was unreadable; recovered the interface "
+                        "index assignments from index-map.json.bak", error=True)
+                return data
+        except (OSError, ValueError, UnicodeError):
+            continue
+    log("no usable index-map: interface indices will be assigned afresh. On a "
+        "host with more than one adapter this can renumber ports, and a "
+        "monitoring system will treat the renumbered ones as new", error=True)
+    return {"schema_version": 1, "interfaces": {}, "next_if_index": 1}
 
 
 def _save_index_map(m: dict) -> None:

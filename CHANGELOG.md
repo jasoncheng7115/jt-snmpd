@@ -133,6 +133,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   writes what happened into its own log — the msiexec log that otherwise records
   it exists only when somebody passes `/l*v`, which GPO deployment does not.
 
+- **A damaged `index-map.json` no longer discards the interface index
+  assignments.** The writer had always kept a `.bak` and called a corrupted
+  index-map "the most expensive way this can fail"; the reader never looked at
+  it and silently started from an empty map. ifIndex is handed out from a
+  counter and recorded there against the adapter's LUID — it is not derived from
+  the LUID — so starting empty renumbers ports in whatever order the enumeration
+  returns. A single-adapter machine gets 1 either way, which is why a purge test
+  never showed it; a machine with several has the graphs of every renumbered
+  port orphaned.
+
 ### Security
 
 - `cryptography` is pinned. It arrives through pysnmp and was already inside the
