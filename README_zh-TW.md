@@ -209,6 +209,34 @@ pysnmp（只負責 message / USM / VACM / transport）
 | 資訊揭露 | 已安裝軟體、執行中程序、ARP 表、監聽埠一律預設停用 |
 | 掃描 | Bandit / Semgrep / Ruff-S / pip-audit / CycloneDX SBOM，加上協定層 fuzzing 與 Windows 專屬檢查，見 [`docs/security-scanning_zh-TW.md`](docs/security-scanning_zh-TW.md) |
 
+### SNMPv3
+
+與 v2c 並存,不取代它 —— 升級不會讓既有部署從監控上消失。要完全排除 v2c,
+在 `config.json` 設 `v3_only`;設了卻沒有可用帳號時,服務會**拒絕啟動**,
+而不是開著卻沒有人進得來。
+
+安全等級只提供 **authPriv**。唯讀代理服務照樣會揭露設備清單、軟體版本與 ARP 表,
+所以沒有比這更低的等級值得提供。
+
+| | 可用值 |
+|---|---|
+| 認證(雜湊) | `SHA-224` / **`SHA-256`(預設)** / `SHA-384` / `SHA-512` |
+| 加密 | **`AES-128`(預設)** / `AES-192` / `AES-256` |
+| **一律拒絕** | `MD5`、`SHA-1`、`DES`、`3DES` |
+
+拒絕不是遺漏:pysnmp 四種都有實作,所以指定它們原本是「會動」的,
+而**會動正是最糟的結果** —— 操作人員會以為流量受到保護。
+
+`AES-192` 與 `AES-256` 可以選,但啟動時會警告。那是互通性風險不是密碼弱點:
+兩者從未被 SNMPv3 標準化,存在兩套互不相容的金鑰延伸方式,
+而 Debian 與 Ubuntu 編譯 net-snmp 時並未啟用 pysnmp 用的那一套 ——
+這樣設定的代理服務**可能連不上當初要接的那台 LibreNMS**。
+
+金鑰以 **localized key** 形式存放(綁定本機 engineID),不保存密碼,
+再以 **DPAPI machine scope** 加密。讀到一台的秘密檔案只換到那一台的帳號,
+不是每一台共用密碼的機器。完整說明見
+[SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3_zh-TW.html)。
+
 ## 技術組成
 
 | 層 | 選擇 |
@@ -331,7 +359,7 @@ jt-snmpd/
 | Windows 服務、開機自啟、從內建服務移轉 | ✅ 已在 Windows 10 與 11 驗證 |
 | 磁碟溫度與 SMART 健康度 | ✅ 已在實體硬體驗證 |
 | **MSI 安裝程式**（點兩下的圖形介面、`/qn` 無訊息安裝、GPO / Intune / SCCM 派送）| ✅ 已發版；安裝、升級、解除安裝、重裝、清除移除共 40 項生命週期檢查在實機全綠 |
-| SNMPv3（SHA-256 + AES-128）| 🚧 開發中，目前只有 v2c |
+| SNMPv3（SHA-256 + AES-128、authPriv）| ✅ **已在四台實機與正式 LibreNMS 驗證**；與 v2c 並存，另有 `v3_only` 開關 |
 | OID 檢視範圍預設集（VACM）| ⛔ 未實作 |
 | Authenticode 簽章 | ⏳ 日後規劃申請開源專案憑證，見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | **Windows Server** | ✅ **2016（網域控制站）與 2022 已實機驗證**，含安裝生命週期、內建 SNMP 移轉、LibreNMS 端對端；見[部署到 Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes_zh-TW.html) |
