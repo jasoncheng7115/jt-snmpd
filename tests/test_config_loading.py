@@ -235,9 +235,14 @@ def test_config_is_loaded_before_the_entry_point_reads_cfg():
     line, `LISTENING ... community=` (empty) in the next. The load has to happen
     at the entry point, before CFG is read for anything.
     """
-    src = AGENT
-    i_svc = src.index("def SvcDoRun(self):")
-    body = src[i_svc:i_svc + 900]
+    # The whole method, taken by parsing rather than by slicing a fixed number
+    # of characters. The fixed window broke once when a comment was added above
+    # the load, which said nothing about the ordering this test protects, and
+    # SvcDoRun is the last method in its class so there is no "next def" to
+    # stop at either.
+    import ast as _ast
+    body = next(_ast.unparse(n) for n in _ast.walk(_ast.parse(AGENT))
+                if isinstance(n, _ast.FunctionDef) and n.name == "SvcDoRun")
     i_load = body.index("load_config()")
     i_use = body.index("run_agent(")
     assert i_load < i_use, "SvcDoRun has to load the configuration before calling run_agent"

@@ -3114,8 +3114,24 @@ try:
             win32event.SetEvent(self.hstop)
 
         def SvcDoRun(self):
-            servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
-                                  servicemanager.PYS_SERVICE_STARTED, (self._svc_name_, ""))
+            # **Our own log first, and nothing before it.** This used to open
+            # with servicemanager.LogMsg, and anything that throws before the
+            # first file write is invisible twice over: pywin32 catches it,
+            # reports a service-specific error to the SCM with no text, and the
+            # operator gets StartPending, then Stopped, and a hex number in the
+            # event log. That is the "alive but dead" case this file warns about
+            # elsewhere, arriving before there is anything to read.
+            log("SvcDoRun entered")
+            try:
+                servicemanager.LogMsg(
+                    servicemanager.EVENTLOG_INFORMATION_TYPE,
+                    servicemanager.PYS_SERVICE_STARTED, (self._svc_name_, ""))
+            except Exception as exc:  # noqa: BLE001
+                # Writing our start to the event log is a courtesy, not a
+                # requirement. Failing to serve SNMP because a log write failed
+                # would be the wrong trade every time.
+                log(f"could not write the service start event, continuing: {exc!r}",
+                    error=True)
             # Before anything reads CFG. Everything below — including the values
             # handed to run_agent — must see the operator's settings, not the
             # built-in defaults.
