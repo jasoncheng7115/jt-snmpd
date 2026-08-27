@@ -189,7 +189,7 @@ if ($UILevel -eq "2" -or $UILevel -eq "3") {
     Log ("at this UI level the operator is shown the Files in use page if " +
          "anything holds the files, and decides.")
 }
-}
+
 $exe = Join-Path $InstallDir $EXE_NAME
 if (-not (Test-Path $exe)) { Log "FAIL $exe not found"; exit 1 }
 
