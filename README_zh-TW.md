@@ -356,25 +356,25 @@ jt-snmpd/
 | 項目 | 狀態 |
 |---|---|
 | SNMPv2c、IF-MIB、HOST-RESOURCES、UCD-DISKIO、ENTITY-MIB、ENTITY-SENSOR、IP / TCP / UDP / ICMP、自我健康 OID | ✅ 已在正式 LibreNMS 驗證 |
-| Windows 服務、開機自啟、從內建服務移轉 | ✅ 已在 Windows 10 與 11 驗證 |
+| Windows 服務、開機時自動啟動、從內建服務移轉 | ✅ 已在 Windows 10 與 11 驗證 |
 | 磁碟溫度與 SMART 健康度 | ✅ 已在實體硬體驗證 |
 | **MSI 安裝程式**（點兩下的圖形介面、`/qn` 無訊息安裝、GPO / Intune / SCCM 派送）| ✅ 已發版；安裝、升級、解除安裝、重裝、清除移除共 40 項生命週期檢查在實機全綠 |
 | SNMPv3（SHA-256 + AES-128、authPriv）| ✅ **已在四台實機與正式 LibreNMS 驗證**；與 v2c 並存，另有 `v3_only` 開關 |
-| OID 檢視範圍預設集（VACM）| ⛔ 未實作 |
 | Authenticode 簽章 | ⏳ 日後規劃申請開源專案憑證，見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | **Windows Server** | ✅ **2016（網域控制站）與 2022 已實機驗證**，含安裝生命週期、內建 SNMP 移轉、LibreNMS 端對端；見[部署到 Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes_zh-TW.html) |
-| Server 2019 / 2025、唯讀網域控制站 | ⛔ 尚未驗證，無環境 |
+| 唯讀網域控制站 | ⛔ 尚未驗證，無環境 |
 | 圖形升級的「使用中的檔案」對話框 | ⚠️ **已知缺陷**。無訊息安裝與 GPO 派送不受影響;兩種修法都實測後撤回，原因見 `TEST_PLAN.md` 6.1c.12 |
 | 多網路卡來源位址選擇 | ⛔ 尚未驗證 |
 
 v1.0 不列入計畫：SNMP trap 與 inform、SNMP SET、ARM64、純 IPv6 部署、
 叢集感知。
 
-**VACM** 是 SNMP 標準裡的檢視型存取控制（RFC 3415），用來限制某一組憑證
-「看得到 OID 樹的哪幾段」。目前 jt-snmpd 的做法是整棵樹唯讀，
-資訊揭露則以「哪些子樹預設不輸出」來控制。VACM 預設集要做的是更細的一層：
-例如一組 `librenms-minimal` 檢視，只開放 LibreNMS 實際會取用的子樹，
-其餘一律取不到。這在多個監控系統共用同一台主機時才有意義，因此排在 SNMPv3 之後。
+**不做 VACM 檢視預設集。** VACM（RFC 3415）是用來限制某一組憑證
+「看得到 OID 樹的哪幾段」，而它要解決的問題在這裡不存在：本代理服務**完全唯讀**，
+而且輸出什麼**由快照決定** —— 沒有被放進快照的東西，沒有任何憑證取得到。
+會揭露資訊的那幾張表（已安裝軟體、執行中程序、ARP 表、監聽埠）
+本來就預設關閉。再加一層檢視,是在一個已經篩選過的集合上重複篩選,
+只增加設定面積,不增加實際控制。
 
 ## 授權
 

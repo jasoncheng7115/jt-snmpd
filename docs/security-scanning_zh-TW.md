@@ -105,7 +105,6 @@ Secret 掃描是這條的自動化守門。
 | 前置解析閘門有效性 | 白名單外來源必須零回應；`tests/test_preauth_gate.py` 27 例對抗式測試 |
 | 未認證封包風暴 | CPU 不超標、RSS 不成長、正常 manager 仍在 SLA 內 |
 | 回應大小 | 所有回應 < 1400 bytes，無 IP 分片 |
-| VACM 逃逸 | `librenms-minimal` 下 walk `.1.3.6`，被排除的 subtree 完全取不到（GET 與 GETNEXT 皆測）|
 
 ---
 

@@ -381,23 +381,23 @@ jt-snmpd/
 | Disk temperature and SMART health | ✅ verified on physical hardware |
 | **MSI installer** (double-click with a settings dialog, `/qn` unattended, GPO / Intune / SCCM deployment) | ✅ released; 40 lifecycle assertions covering install, upgrade, uninstall, reinstall and purge, all green on real hardware |
 | SNMPv3 (SHA-256 + AES-128, authPriv) | ✅ **verified on four real machines and against a production LibreNMS**; served alongside v2c, with a `v3_only` switch |
-| OID view presets (VACM) | ⛔ not implemented |
 | Authenticode signing | ⏳ planned via an open-source certificate programme — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
 | **Windows Server** | ✅ **2016 (a domain controller) and 2022 verified on real machines** — installation lifecycle, migration from the built-in service, and end to end through LibreNMS; see [Deploying to Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes.html) |
-| Server 2019 / 2025, read-only domain controllers | ⛔ not yet verified, no machine |
+| Read-only domain controllers | ⛔ not yet verified, no machine |
 | The "Files in use" page on graphical upgrades | ⚠️ **Known defect.** Silent installation and GPO deployment are unaffected; two fixes were measured and withdrawn, see `TEST_PLAN.md` 6.1c.12 |
 | Multi-homed source address selection | ⛔ not yet verified |
 
 Not planned for v1.0: SNMP traps and informs, SNMP SET, ARM64, IPv6-only
 deployments, cluster awareness.
 
-**VACM** is the SNMP standard's View-based Access Control Model (RFC 3415),
-which restricts *which parts of the OID tree* a given set of credentials can
-reach. Today jt-snmpd serves the whole tree read-only and controls disclosure by
-choosing which subtrees to publish at all. View presets would add a finer layer:
-a `librenms-minimal` view, for instance, exposing only the subtrees LibreNMS
-actually reads and nothing else. That matters when several monitoring systems
-share one host, which is why it sits behind SNMPv3 in priority.
+**VACM view presets are not planned.** VACM (RFC 3415) restricts *which parts
+of the OID tree* a given set of credentials can reach, and the problem it solves
+does not arise here: the agent is **entirely read-only**, and what it publishes
+is decided by the snapshot — no credential can reach anything that was not put
+there. The tables that actually disclose something (installed software, running
+processes, the ARP table, listening ports) are off by default already. A view
+layer would filter a set that has already been filtered: more configuration
+surface, no more control.
 
 ## License
 
