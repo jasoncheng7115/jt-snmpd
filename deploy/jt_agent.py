@@ -2921,6 +2921,8 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(JTAGENT + (33, 0), rfc1902.Counter32(_c.get("rate_limit", 0) & U32))
     add(JTAGENT + (34, 0), rfc1902.Counter32(_c.get("malformed", 0) & U32))
     add(JTAGENT + (35, 0), rfc1902.Counter32(_c.get("passed", 0) & U32))
+    add(JTAGENT + (36, 0),
+        rfc1902.Counter32(_c.get("source_table_full", 0) & U32))
 
     # jtAgentCollectorTable: the health of each collector
     now = time.monotonic()
