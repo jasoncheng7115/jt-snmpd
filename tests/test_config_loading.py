@@ -269,3 +269,37 @@ def test_loading_twice_is_harmless():
     body = _func("load_config")
     assert 'CFG_SOURCE != "defaults"' in body or "CFG_SOURCE != 'defaults'" in body, \
         "load_config has to be idempotent"
+
+
+def test_every_setting_in_cfg_is_actually_read_from_the_file():
+    """A key that exists in CFG but that load_config never reads is silently
+    ignored, and the operator has no way to tell: the file accepts the value,
+    the agent logs "config loaded", and the setting does nothing.
+
+    That happened to `v3_only`. It was added to the defaults, the installer's
+    file carried `"v3_only": true`, the log line listed the four keys it did
+    read without mentioning it, and the agent went on answering v2c. A security
+    switch that quietly does nothing is worse than not having the switch, because
+    someone will certify against it.
+
+    Anything genuinely not settable from the file belongs in the exemption list
+    below, with a reason.
+    """
+    import ast as _ast
+
+    tree = _ast.parse(AGENT)
+    cfg = next(n.value for n in _ast.walk(tree)
+               if isinstance(n, _ast.Assign)
+               and any(getattr(t, "id", "") == "CFG" for t in n.targets))
+    keys = {k.value for k in cfg.keys if isinstance(k, _ast.Constant)}
+
+    loader = next(_ast.unparse(n) for n in _ast.walk(tree)
+                  if isinstance(n, _ast.FunctionDef) and n.name == "load_config")
+
+    # Set from the command line or derived, never from the file
+    exempt = {"contact", "location"}   # read from the built-in SNMP registry
+
+    missing = {k for k in keys - exempt if f"'{k}'" not in loader and f'"{k}"' not in loader}
+    assert not missing, (
+        f"these settings exist in CFG but load_config never reads them, so a "
+        f"value in config.json is silently ignored: {sorted(missing)}")

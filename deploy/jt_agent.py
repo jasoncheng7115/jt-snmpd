@@ -121,9 +121,10 @@ def load_config() -> None:
     if isinstance(port, int) and 1 <= port <= 65535:
         CFG["port"] = port
         applied.append("port")
-    if isinstance(data.get("enable_arp_table"), bool):
-        CFG["enable_arp_table"] = data["enable_arp_table"]
-        applied.append("enable_arp_table")
+    for key in ("enable_arp_table", "v3_only"):
+        if isinstance(data.get(key), bool):
+            CFG[key] = data[key]
+            applied.append(key)
     for key in ("rate_pps", "rate_burst"):
         v = data.get(key)
         if isinstance(v, int) and 0 < v <= 100000:
