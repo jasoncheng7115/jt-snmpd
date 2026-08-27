@@ -59,7 +59,7 @@ CFG = {"port": 161, "community": "", "contact": "", "location": "",
        # deny by default, never Any/Any. Empty means "not configured"
        # and is treated as deny-all (loopback excepted); to serve every source
        # deliberately, set 0.0.0.0/0 and ::/0 explicitly.
-       "allowed_networks": (), "rate_pps": 50, "rate_burst": 100,
+       "allowed_networks": (), "rate_pps": 50, "rate_burst": 300,
        # SNMPv3 is added beside v2c, not in place of it: an upgrade that stopped
        # answering v2c would take every existing deployment off the map at the
        # moment it was installed. Sites that have to certify "no v2c" set this
@@ -2883,6 +2883,19 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(JTAGENT + (22, 0), octet(_install_dir()))                    # jtAgentInstallPath
     add(JTAGENT + (23, 0), octet(_config_warnings()))                # jtAgentConfigWarnings
     add(JTAGENT + (30, 0), rfc1902.Counter32(_health["snapshot_failures"] & U32))
+
+    # Per-reason gate counters. Until 1.1.0 the drops were summed into
+    # snmpInASNParseErrs, which says "ASN.1 parse error" and so describes only
+    # one of the four reasons. An operator whose walks were being rate limited
+    # had no way to see it from SNMP, and rate limiting looks exactly like a
+    # network fault from the manager's end.
+    _g = _gate
+    _c = _g.counters if _g else {}
+    add(JTAGENT + (31, 0), rfc1902.Counter32(_c.get("acl", 0) & U32))
+    add(JTAGENT + (32, 0), rfc1902.Counter32(_c.get("oversize", 0) & U32))
+    add(JTAGENT + (33, 0), rfc1902.Counter32(_c.get("rate_limit", 0) & U32))
+    add(JTAGENT + (34, 0), rfc1902.Counter32(_c.get("malformed", 0) & U32))
+    add(JTAGENT + (35, 0), rfc1902.Counter32(_c.get("passed", 0) & U32))
 
     # jtAgentCollectorTable: the health of each collector
     now = time.monotonic()
