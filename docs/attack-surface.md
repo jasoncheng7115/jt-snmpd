@@ -16,6 +16,12 @@ description: What installing jt-snmpd adds to a Windows host, measured
 | Host under test | Dell Latitude E5270 / Windows 10 22H2 |
 | Poller | LibreNMS 26.8.1 |
 
+> **Scope note.** The measurements below were taken against 1.0.0, which served
+> SNMPv2c only. SNMPv3 arrived in 1.1.0; the one figure it could have changed
+> was re-measured on 2026-08-27 and is in §1. Everything else on this page is
+> unchanged by it, because v3 adds a second way to authenticate, not a second
+> thing to read.
+
 > Addresses in this document use the RFC 5737 documentation range
 > (`192.0.2.0/24`). The measurements were taken on a real internal network; only
 > the addresses were changed, never the numbers.
@@ -53,6 +59,21 @@ down:
 | Response byte cap | 1400 | No fragmentation; the response is truncated instead |
 
 **The theoretical ceiling is therefore 1400/39 ≈ 36×, and 19.8× was measured.**
+
+**SNMPv3 does not raise that ceiling.** RFC 3414 requires an agent to answer an
+engine discovery before any credential has been presented, so there is one
+unauthenticated exchange no configuration can remove. Measured on 2026-08-27:
+
+```
+20:58:25.394461 192.0.2.10.55736 > 192.0.2.63.161: UDP, length 64
+20:58:25.396923 192.0.2.63.161 > 192.0.2.10.55736: UDP, length 125
+```
+
+**64 → 125 bytes = 1.95×**, against 19.8× for the v2c case above. The reply is a
+report PDU carrying an engine ID and two counters, and its size does not depend
+on anything the sender asks for — there is no `max-repetitions` to inflate. An
+attacker looking for amplification has no reason to prefer it over v2c, and a
+site running `v3_only` has traded a 19.8× reflector for a 1.95× one.
 
 ### The reflection cannot actually leave the host
 

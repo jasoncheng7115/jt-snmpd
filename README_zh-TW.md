@@ -1,9 +1,9 @@
-# jt-snmpd v1.0.0
+# jt-snmpd v1.1.1
 
 [![License](https://img.shields.io/badge/License-GPL--3.0--or--later-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011%20%2F%20Server%202016%2B-0078D6?logo=windows&logoColor=white)
-![SNMP](https://img.shields.io/badge/SNMP-v2c-orange)
+![SNMP](https://img.shields.io/badge/SNMP-v2c%20%2B%20v3-orange)
 ![LibreNMS](https://img.shields.io/badge/LibreNMS-ready-1e88e5)
 ![Read only](https://img.shields.io/badge/agent-%E5%94%AF%E8%AE%80-success)
 ![No outbound](https://img.shields.io/badge/%E5%B0%8D%E5%A4%96%E9%80%A3%E7%B7%9A-%E7%84%A1-success)
@@ -274,7 +274,7 @@ pysnmp（只負責 message / USM / VACM / transport）
 安裝過程以 SYSTEM 身分執行，不會有任何提示。
 
 ```powershell
-msiexec /i jt-snmpd-1.0.0-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=你的community
+msiexec /i jt-snmpd-1.1.1-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=你的community
 ```
 
 以 GPO 派送時，把 MSI 放在網域內的共用資料夾，並確保電腦帳戶對該資料夾有讀取權限。
@@ -309,10 +309,10 @@ msiexec /i jt-snmpd-1.0.0-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNIT
 
 ```powershell
 # 解除安裝（還原內建 SNMP Service，保留設定與狀態）
-msiexec /x jt-snmpd-1.0.0-x64.msi /qn
+msiexec /x jt-snmpd-1.1.1-x64.msi /qn
 
 # 解除安裝並清除全部資料
-msiexec /x jt-snmpd-1.0.0-x64.msi /qn PURGE=1
+msiexec /x jt-snmpd-1.1.1-x64.msi /qn PURGE=1
 ```
 
 萬一安裝或解除安裝走不完，[手動移除](https://jasoncheng7115.github.io/jt-snmpd/manual-removal_zh-TW.html)

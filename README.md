@@ -1,9 +1,9 @@
-# jt-snmpd v1.0.0
+# jt-snmpd v1.1.1
 
 [![License](https://img.shields.io/badge/License-GPL--3.0--or--later-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011%20%2F%20Server%202016%2B-0078D6?logo=windows&logoColor=white)
-![SNMP](https://img.shields.io/badge/SNMP-v2c-orange)
+![SNMP](https://img.shields.io/badge/SNMP-v2c%20%2B%20v3-orange)
 ![LibreNMS](https://img.shields.io/badge/LibreNMS-ready-1e88e5)
 ![Read only](https://img.shields.io/badge/agent-read--only-success)
 ![No outbound](https://img.shields.io/badge/outbound%20connections-none-success)
@@ -290,7 +290,7 @@ The same MSI and the same properties are what **Group Policy software
 deployment** uses, where the installation runs as SYSTEM with no prompts.
 
 ```powershell
-msiexec /i jt-snmpd-1.0.0-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=your-community
+msiexec /i jt-snmpd-1.1.1-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=your-community
 ```
 
 For GPO, place the MSI on a domain file share and make sure computer accounts can
@@ -329,10 +329,10 @@ Through Apps & Features, or from the command line:
 
 ```powershell
 # Uninstall (restores the built-in SNMP Service, keeps configuration and state)
-msiexec /x jt-snmpd-1.0.0-x64.msi /qn
+msiexec /x jt-snmpd-1.1.1-x64.msi /qn
 
 # Uninstall and remove everything
-msiexec /x jt-snmpd-1.0.0-x64.msi /qn PURGE=1
+msiexec /x jt-snmpd-1.1.1-x64.msi /qn PURGE=1
 ```
 
 If an install or uninstall will not complete,

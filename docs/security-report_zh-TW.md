@@ -17,9 +17,9 @@ description: The current scan baseline, with a verdict on every finding
 
 | | |
 |---|---|
-| 日期 | 2026-08-25 |
-| 版本 | jt-snmpd 1.0.0 |
-| 掃描範圍 | `deploy/`、`tools/`、`packaging/`，共 13 個檔案、4,279 行 |
+| 日期 | 2026-08-27 |
+| 版本 | jt-snmpd 1.1.1 |
+| 掃描範圍 | `deploy/`、`tools/`、`packaging/`，共 14 個檔案、4,967 行 |
 
 ---
 
@@ -27,10 +27,10 @@ description: The current scan baseline, with a verdict on every finding
 
 | 檢查項目 | 工具 | 結果 |
 |---|---|---|
-| 原始碼靜態分析（SAST） | Bandit 1.9.4 | **HIGH 0**、MEDIUM 3、LOW 11，全部逐條交代於下 |
+| 原始碼靜態分析（SAST） | Bandit 1.9.4 | **HIGH 0**、MEDIUM 3、LOW 12，全部逐條交代於下 |
 | 相依弱點（SCA） | pip-audit 2.10.1 | **70 個套件，0 個已知弱點** |
 | 個資與機密 | `tools/check-privacy.py` | **HIGH 0**，每次推送都跑 |
-| 測試套件 | pytest | 830 通過、1 略過，每次推送都跑 |
+| 測試套件 | pytest | 963 通過、1 略過，每次推送都跑 |
 | 安裝檔產物檢查 | 直接讀 Windows Installer 表格 | 5 項，每次推送都跑 |
 
 **執行時期的相依只有兩個套件。** `pysnmp 7.1.29` 依賴 `pyasn1 0.6.4`，
@@ -41,14 +41,19 @@ description: The current scan baseline, with a verdict on every finding
 
 ## 靜態分析：逐條交代
 
-Bandit 沒有 HIGH。以下十四條為 MEDIUM 與 LOW，每一條不是誤判就是有紀錄的決定。
+Bandit 沒有 HIGH。以下十五條為 MEDIUM 與 LOW，每一條不是誤判就是有紀錄的決定。
+
+**SNMPv3 那批程式一條都沒有。** `deploy/usm.py`,也就是金鑰 localization、
+DPAPI 保護的儲存區、演算法允許清單所在的檔案,是最新的一個檔案,
+也是唯一經手機密資料的,掃出來是乾淨的。這件事值得直接寫出來,
+而不是留給讀者從一個總數去推。
 
 ### B104，「可能綁定到所有介面」（MEDIUM ×3）
 
 | 位置 | 判定 |
 |---|---|
-| `deploy/jt_agent.py:2938`、`:3069` | **接受，這是設計。** agent 刻意綁 `0.0.0.0`。綁定位址不會篩選發送端，它只決定哪些本機位址收得到封包。來源限制由另外兩處把關，而且是把在對的地方：Windows 防火牆規則只開放管理網段，前置解析閘門在 pysnmp 讀到任何一個位元組之前就檢查來源位址。綁單一位址會讓多網路卡主機失效，而且不會增加任何安全性。見[安全性評估 §1](https://jasoncheng7115.github.io/jt-snmpd/attack-surface_zh-TW.html)。 |
-| `tools/check-privacy.py:151` | **誤判。** `"0.0.0.0"` 出現在 IP 規則的**排除**清單裡，用意正是不要把萬用位址報成外洩。 |
+| `deploy/jt_agent.py:3441`、`:3716` | **接受，這是設計。** agent 刻意綁 `0.0.0.0`。綁定位址不會篩選發送端，它只決定哪些本機位址收得到封包。來源限制由另外兩處把關，而且是把在對的地方：Windows 防火牆規則只開放管理網段，前置解析閘門在 pysnmp 讀到任何一個位元組之前就檢查來源位址。綁單一位址會讓多網路卡主機失效，而且不會增加任何安全性。見[安全性評估 §1](https://jasoncheng7115.github.io/jt-snmpd/attack-surface_zh-TW.html)。 |
+| `tools/check-privacy.py:163` | **誤判。** `"0.0.0.0"` 出現在 IP 規則的**排除**清單裡，用意正是不要把萬用位址報成外洩。 |
 
 ### B105，「可能寫死的密碼」（LOW ×2）
 
@@ -56,14 +61,15 @@ Bandit 沒有 HIGH。以下十四條為 MEDIUM 與 LOW，每一條不是誤判�
 `{"health_pass": True}` 裡的布林值。Bandit 的啟發式規則會比對任何含 `pass`
 的名稱，而 `health_pass` 是 SMART 的判定結果，不是憑證。
 
-### B110 / B112，try/except pass 與 continue（LOW ×2）
+### B110 / B112，try/except pass 與 continue（LOW ×3）
 
 | 位置 | 判定 |
 |---|---|
-| `deploy/jt_agent.py:190` | **接受。** 寫入 Windows 事件記錄可能因權限或事件來源未註冊而失敗。一個因為「記不了錯誤」就掛掉的監控 agent，比繼續跑的更糟；同一則訊息已經寫進記錄檔了。 |
+| `deploy/jt_agent.py:220` | **接受。** 寫入 Windows 事件記錄可能因權限或事件來源未註冊而失敗。一個因為「記不了錯誤」就掛掉的監控 agent，比繼續跑的更糟；同一則訊息已經寫進記錄檔了。 |
+| `deploy/jt_agent.py:1613` | **接受。** 這是在一條已經失敗的路徑裡的最後手段:讀取 engine 身分時拋了例外，外層已經把原因記下來，這裡是第二次嘗試取得 machine GUID。這裡再失敗就留下 `"unknown"`，會產生一個不穩定的 engine ID，比穩定的差，但遠比整個 agent 起不來好。 |
 | `deploy/diskhealth.py:413` | **接受。** 不回應 SMART 指令的磁碟會被略過，而不是捏造數值。一個沒反應的 USB 橋接器不該讓其餘所有磁碟從快照裡消失。 |
 
-兩處都是窄範圍、都只攔一種預期得到的失敗，而且都有註解說明原因。
+三處都是窄範圍、每一處都只攔一種預期得到的失敗，而且都有註解說明原因。
 
 ### B404 / B603 / B607，使用 subprocess（LOW ×7）
 

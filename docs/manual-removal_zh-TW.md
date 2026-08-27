@@ -228,7 +228,7 @@ Get-NetUDPEndpoint -LocalPort 161 | ForEach-Object {
 
 ```powershell
 # CLI
-msiexec /i jt-snmpd-1.0.0-x64.msi /qn /l*v "$env:TEMP\jt-install.log" `
+msiexec /i jt-snmpd-1.1.1-x64.msi /qn /l*v "$env:TEMP\jt-install.log" `
   MANAGEMENTNETWORKS=10.0.0.0/24 COMMUNITY=你的community
 ```
 

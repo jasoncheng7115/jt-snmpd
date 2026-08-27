@@ -360,7 +360,7 @@ def test_a_known_source_keeps_working_while_the_table_is_full():
     else."""
     g = _open_gate()
     pkt = b"\x30\x02\x02\x00"
-    manager = "192.168.1.68"
+    manager = "192.0.2.63"   # RFC 5737 documentation range, as the docs use
     assert g.check(pkt, manager, now=100.0)[0] is True
 
     for i in range(MAX_TRACKED_SOURCES + 500):

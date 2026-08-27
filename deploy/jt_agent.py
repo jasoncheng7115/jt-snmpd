@@ -1610,7 +1610,10 @@ def _engine_state() -> dict:
         guid, source = "unknown", "unknown"
         try:
             guid, source = _machine_guid()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
+            # Last resort inside an already-failed path. The outer handler has
+            # logged the reason; "unknown" then feeds a volatile engine ID,
+            # which is worse than a stable one but far better than no agent.
             pass
         _engine_cache = {"schema_version": 2, "machine_guid": guid,
                          "engine_id": _new_engine_id(guid), "boot_key": 0,

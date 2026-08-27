@@ -167,7 +167,7 @@ $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
 ```
 
 版本號從 `deploy\version.py` 讀，不需要傳參數。
-產出是 `dist\jt-snmpd-1.0.0-x64.msi` 與它的 `.sha256`，
+產出是 `dist\jt-snmpd-1.1.1-x64.msi` 與它的 `.sha256`，
 另外在 `dist\releases\1.0.0\` 留一份，旁邊放 `BUILDINFO.txt`：
 
 ```
@@ -199,7 +199,7 @@ agent     <deploy\jt_agent.py 的 SHA-256 前 16 碼>
 # CLI
 signtool sign /n "貴單位名稱" /fd SHA256 `
   /tr http://timestamp.digicert.com /td SHA256 `
-  .\dist\jt-snmpd-1.0.0-x64.msi
+  .\dist\jt-snmpd-1.1.1-x64.msi
 ```
 
 簽章會改寫檔案，所以第 5 節產生的 `.sha256` 已經不再對應它。
@@ -207,7 +207,7 @@ signtool sign /n "貴單位名稱" /fd SHA256 `
 
 ```powershell
 # CLI
-$msi = ".\dist\jt-snmpd-1.0.0-x64.msi"
+$msi = ".\dist\jt-snmpd-1.1.1-x64.msi"
 "$((Get-FileHash $msi -Algorithm SHA256).Hash.ToLower())  $(Split-Path $msi -Leaf)" |
   Set-Content "$msi.sha256" -Encoding ascii
 ```
@@ -218,7 +218,7 @@ $msi = ".\dist\jt-snmpd-1.0.0-x64.msi"
 
 ```powershell
 # CLI
-signtool verify /pa /v .\dist\jt-snmpd-1.0.0-x64.msi
+signtool verify /pa /v .\dist\jt-snmpd-1.1.1-x64.msi
 Get-AuthenticodeSignature .\build\jt-snmpd\jt-snmpd.exe | Format-List Status, SignerCertificate
 ```
 
