@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "deploy"))
-from preauth import DropReason, PreAuthGate  # noqa: E402
+from preauth import MAX_TRACKED_SOURCES, DropReason, PreAuthGate  # noqa: E402
 
 
 def _seq(payload: bytes) -> bytes:
@@ -328,3 +328,72 @@ def test_the_agent_default_matches_the_gate_default():
             exec(line, ns)  # noqa: S102
     assert f'"rate_burst": {ns["DEFAULT_BURST"]}' in agent, (
         "CFG's rate_burst default and preauth's DEFAULT_BURST have to agree")
+
+
+# --- The source tracking table ---------------------------------------------
+
+def _open_gate():
+    """A gate that allows everything, which is the configuration the source
+    table ceiling exists for. The documentation permits 0.0.0.0/0 for sites
+    that control reachability with a firewall instead."""
+    return PreAuthGate(allowed_networks=PreAuthGate.parse_networks(["0.0.0.0/0"]),
+                       rate_pps=1000, burst=1000)
+
+
+def test_a_flood_of_new_sources_cannot_grow_the_table_without_bound():
+    """With the allow-list wide open, every spoofed source would otherwise get
+    its own bucket, and they can be created faster than pruning removes them.
+    A million buckets is on the order of a hundred and fifty megabytes against a
+    self-restart threshold of two hundred and fifty.
+    """
+    g = _open_gate()
+    pkt = b"\x30\x02\x02\x00"
+    for i in range(MAX_TRACKED_SOURCES + 2000):
+        g.check(pkt, f"10.{(i >> 16) & 255}.{(i >> 8) & 255}.{i & 255}", now=100.0)
+    assert len(g._buckets) <= MAX_TRACKED_SOURCES
+    assert g.counters[DropReason.SOURCE_TABLE_FULL] > 0
+
+
+def test_a_known_source_keeps_working_while_the_table_is_full():
+    """The point of the ceiling. Under a flood the agent goes on answering the
+    manager it was already talking to, instead of losing it along with everyone
+    else."""
+    g = _open_gate()
+    pkt = b"\x30\x02\x02\x00"
+    manager = "192.168.1.68"
+    assert g.check(pkt, manager, now=100.0)[0] is True
+
+    for i in range(MAX_TRACKED_SOURCES + 500):
+        g.check(pkt, f"10.{(i >> 16) & 255}.{(i >> 8) & 255}.{i & 255}", now=100.0)
+
+    allowed, reason = g.check(pkt, manager, now=100.5)
+    assert allowed is True, f"the known manager was turned away: {reason}"
+
+
+def test_a_full_table_is_counted_separately_from_rate_limiting():
+    """One manager asking too fast and someone spraying the port are different
+    problems with different answers, so they are different counters."""
+    g = _open_gate()
+    pkt = b"\x30\x02\x02\x00"
+    for i in range(MAX_TRACKED_SOURCES + 100):
+        g.check(pkt, f"10.{(i >> 16) & 255}.{(i >> 8) & 255}.{i & 255}", now=100.0)
+    assert g.counters[DropReason.SOURCE_TABLE_FULL] > 0
+    assert g.counters[DropReason.RATE_LIMIT] == 0
+
+
+def test_quiet_sources_make_room_again():
+    g = _open_gate()
+    pkt = b"\x30\x02\x02\x00"
+    for i in range(MAX_TRACKED_SOURCES):
+        g.check(pkt, f"10.{(i >> 16) & 255}.{(i >> 8) & 255}.{i & 255}", now=100.0)
+    assert len(g._buckets) == MAX_TRACKED_SOURCES
+    # Well past the idle threshold: the old ones go and a new source gets in
+    allowed, _ = g.check(pkt, "172.16.0.1", now=100.0 + 3600)
+    assert allowed is True
+    assert len(g._buckets) < MAX_TRACKED_SOURCES
+
+
+def test_the_allow_list_makes_the_ceiling_unreachable_in_normal_use():
+    """A /24 is 254 addresses. The ceiling is for the deliberately open
+    configuration, not for the ordinary one."""
+    assert MAX_TRACKED_SOURCES > 254 * 4

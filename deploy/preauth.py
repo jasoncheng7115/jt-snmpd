@@ -66,6 +66,20 @@ DEFAULT_RATE_PPS = 50
 DEFAULT_BURST = 300
 
 
+# Ceiling on how many source addresses are tracked at once. The address
+# allow-list runs first, so a sane configuration cannot approach this: a /24 is
+# 254 addresses. It exists for the configuration the documentation deliberately
+# permits — 0.0.0.0/0, for a site that controls reachability with a firewall
+# instead — where every spoofed source would otherwise get its own bucket and
+# they can be created faster than pruning removes them.
+#
+# When it is reached, a source we have never seen is dropped and a source we
+# already know keeps its bucket. That is the right way round for a monitoring
+# agent: under a flood it goes on answering the managers it was already talking
+# to, rather than losing them along with everyone else.
+MAX_TRACKED_SOURCES = 4096
+
+
 class DropReason:
     """Why a packet was dropped. Each maps to a jtAgent*Drops counter and an
     Event ID."""
@@ -73,6 +87,11 @@ class DropReason:
     OVERSIZE = "oversize"        # Event 2002
     RATE_LIMIT = "rate_limit"    # Event 2003
     MALFORMED = "malformed"      # Event 2002
+    # Distinct from RATE_LIMIT on purpose: this one says the tracking table is
+    # full, which means something is flooding from many addresses. Folding it
+    # into rate limiting would hide the difference between "one manager is
+    # asking too fast" and "someone is spraying the port".
+    SOURCE_TABLE_FULL = "source_table_full"
 
 
 @dataclass
@@ -99,7 +118,8 @@ class PreAuthGate:
     _buckets: dict = field(default_factory=dict)
     counters: dict = field(default_factory=lambda: {
         DropReason.ACL: 0, DropReason.OVERSIZE: 0,
-        DropReason.RATE_LIMIT: 0, DropReason.MALFORMED: 0, "passed": 0,
+        DropReason.RATE_LIMIT: 0, DropReason.MALFORMED: 0,
+        DropReason.SOURCE_TABLE_FULL: 0, "passed": 0,
     })
 
     # ---------------------------------------------------------------- helpers
@@ -210,6 +230,15 @@ class PreAuthGate:
         if len(data) > self.max_bytes:
             self.counters[DropReason.OVERSIZE] += 1
             return False, DropReason.OVERSIZE
+
+        if (src_ip not in self._buckets
+                and len(self._buckets) >= MAX_TRACKED_SOURCES):
+            # Try to make room from addresses that have gone quiet before
+            # turning anyone away.
+            self.prune(now)
+            if len(self._buckets) >= MAX_TRACKED_SOURCES:
+                self.counters[DropReason.SOURCE_TABLE_FULL] += 1
+                return False, DropReason.SOURCE_TABLE_FULL
 
         if not self._rate_ok(src_ip, now):
             self.counters[DropReason.RATE_LIMIT] += 1
