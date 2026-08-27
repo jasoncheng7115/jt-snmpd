@@ -38,6 +38,17 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
+# Windows' own service cmdlets print a progress warning that names the service
+# by its **localised display name**, in the language of the installation. On a
+# Traditional Chinese Windows that puts a line of Chinese into this project's
+# own installation log and into the msiexec log; on a German one it puts German
+# there. The program ships in English only, so those warnings are
+# suppressed and what this script logs itself is what appears. Every
+# Stop-Service / Start-Service call carries -WarningAction SilentlyContinue for
+# that reason, not to hide failures: errors are handled separately and the
+# outcome is always logged in English by the lines around them.
+$WarningPreference = 'SilentlyContinue'
+
 $SERVICE_NAME  = 'jt-snmpd'
 $DATA_DIR      = Join-Path $env:ProgramData 'jt-snmpd'
 # Where the data directory lived up to 0.9.5, before everything was renamed to
@@ -74,7 +85,7 @@ function Log {
 function Stop-AgentService {
     $svc = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
     if (-not $svc) { return }
-    if ($svc.Status -ne 'Stopped') { Stop-Service -Name $SERVICE_NAME -Force -ErrorAction SilentlyContinue }
+    if ($svc.Status -ne 'Stopped') { Stop-Service -Name $SERVICE_NAME -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue }
     # Stopping the service does not mean its file handles are released (the
     # actual bug in jt-doc-tools v1.1.66-69)
     $deadline = (Get-Date).AddSeconds(30)
@@ -107,7 +118,7 @@ if ($Uninstall) {
                 if ($orig -and $orig -ne 'Disabled') {
                     Set-Service -Name SNMP -StartupType $orig -ErrorAction SilentlyContinue
                     if ($r.ms_snmp.original_status -eq 'Running') {
-                        Start-Service -Name SNMP -ErrorAction SilentlyContinue
+                        Start-Service -Name SNMP -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
                     }
                     Log "built-in Windows SNMP Service restored to $orig"
                 }
@@ -452,7 +463,7 @@ $restore | ConvertTo-Json -Depth 6 | Set-Content $RESTORE_FILE -Encoding UTF8
 
 # --- Disable the built-in SNMP service (disabled, not removed) ---
 if ($msCfg.service_exists -and $KeepMsSnmp -ne '1') {
-    Stop-Service -Name SNMP -Force -ErrorAction SilentlyContinue
+    Stop-Service -Name SNMP -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
     Set-Service -Name SNMP -StartupType Disabled -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
     # Verify rather than assume: Group Policy or third-party management can block
@@ -520,7 +531,7 @@ function Test-SnmpLoopback {
     } catch { return $false }
 }
 
-Start-Service -Name $SERVICE_NAME
+Start-Service -Name $SERVICE_NAME -WarningAction SilentlyContinue
 $deadline = (Get-Date).AddSeconds(30)
 $healthy = $false
 while ((Get-Date) -lt $deadline) {
