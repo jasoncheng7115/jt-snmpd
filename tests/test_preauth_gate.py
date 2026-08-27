@@ -288,3 +288,43 @@ def test_loopback_still_subject_to_malformed_check(gate):
     """The malformed-packet check applies to loopback as well."""
     ok, reason = gate.check(b"\x02\x01\x01", "127.0.0.1", now=0.0)
     assert not ok and reason == DropReason.MALFORMED
+
+
+def test_the_burst_covers_a_real_walk_not_a_round_number():
+    """A GETBULK walk sends one request per 25 varbinds as fast as the manager
+    turns them around. Measured 2026-08-27: 34 requests in 0.32 s on a
+    766-varbind laptop, an instantaneous 106 pps — twice the sustained rate,
+    surviving only on burst. A 2,400-varbind server is about 96 requests, and
+    some sites poll every minute with discovery running alongside.
+
+    A burst of 100 sat right on top of one ordinary walk, and two managers or one
+    large host dropped packets. That is the worst kind of fault to ship, because
+    from the manager's end it looks like a network problem.
+    """
+    from pathlib import Path as _P
+    src = (_P(__file__).resolve().parents[1] / "deploy" / "preauth.py").read_text(
+        encoding="utf-8")
+    ns: dict = {}
+    for line in src.splitlines():
+        if line.startswith(("DEFAULT_RATE_PPS", "DEFAULT_BURST")):
+            exec(line, ns)  # noqa: S102
+    largest_expected_walk = 2400 // 25          # one request per 25 varbinds
+    assert ns["DEFAULT_BURST"] >= largest_expected_walk * 3, (
+        "the burst has to cover several concurrent walks of a large host, not "
+        "one walk of a small one")
+    assert ns["DEFAULT_RATE_PPS"] >= 50, "the sustained rate is the actual control"
+
+
+def test_the_agent_default_matches_the_gate_default():
+    """Two defaults for one setting drift. This one did not, but only because
+    nobody had changed either of them yet."""
+    from pathlib import Path as _P
+    root = _P(__file__).resolve().parents[1]
+    gate = (root / "deploy" / "preauth.py").read_text(encoding="utf-8")
+    agent = (root / "deploy" / "jt_agent.py").read_text(encoding="utf-8")
+    ns: dict = {}
+    for line in gate.splitlines():
+        if line.startswith("DEFAULT_BURST"):
+            exec(line, ns)  # noqa: S102
+    assert f'"rate_burst": {ns["DEFAULT_BURST"]}' in agent, (
+        "CFG's rate_burst default and preauth's DEFAULT_BURST have to agree")

@@ -44,9 +44,26 @@ from dataclasses import dataclass, field
 
 # a normal request is under 300 bytes, so 4096 is already generous
 MAX_PACKET_BYTES = 4096
-# Packets per second allowed from a single source (token bucket)
+# Packets per second allowed from a single source (token bucket).
+#
+# The sustained rate is what stops a flood; the burst is what a legitimate walk
+# needs, and the two are sized from measurement rather than from a round number.
+# A GETBULK walk sends one request per 25 varbinds as fast as the manager can
+# turn them around: 34 requests in 0.32 s on a 766-varbind laptop, an
+# instantaneous 106 pps. A 2,400-varbind server — 64 cores, 40 interfaces — is
+# about 96 requests, and some sites poll every minute rather than every five,
+# with discovery running alongside polling and sometimes a second manager.
+#
+# A burst of 100 therefore sat right on top of one ordinary walk. Two managers,
+# or one large host, and packets were dropped: measured as walks that finished
+# in 0.2 s taking 5 s on a retry, on v2c and v3 alike. That is the worst kind of
+# fault to leave in, because it looks like a network problem.
+#
+# 300 covers three concurrent large walks. It does not weaken the control worth
+# mentioning: the sustained rate is unchanged, and 300 packets is nothing to an
+# attacker who is limited to 50 per second after them.
 DEFAULT_RATE_PPS = 50
-DEFAULT_BURST = 100
+DEFAULT_BURST = 300
 
 
 class DropReason:
