@@ -690,11 +690,12 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
       <p><span class="zh">磁碟上每個檔案的實際位置，以及從真實 bug 得出的編碼規則</span>
          <span class="en">Where every file actually lives, and the encoding rule that came out of a
            real failure</span></p></div>
-    <div class="card"><h3><a data-doc="adr/0001-why-not-net-snmp" href="adr/0001-why-not-net-snmp.html">
-      <span class="zh">ADR-0001：為何自建</span><span class="en">ADR-0001: why not Net-SNMP</span></a></h3>
-      <p><span class="zh">為何不重建 Net-SNMP for Windows，也不用 Telegraf / windows_exporter</span>
-         <span class="en">Why not rebuild Net-SNMP for Windows, and why not Telegraf or
-           windows_exporter either</span></p></div>
+    <div class="card"><h3><a data-doc="configuration" href="configuration.html">
+      <span class="zh">事後調整設定</span><span class="en">Changing settings afterwards</span></a></h3>
+      <p><span class="zh">community、管理網段、限速與 v3 帳號怎麼改，以及改壞了會怎樣</span>
+         <span class="en">Changing the community, networks, rate limits and v3 accounts, and what
+         happens when one of them is wrong</span></p></div>
+
     <div class="card"><h3><a data-doc="snmpv3" href="snmpv3.html">
       <span class="zh">SNMPv3</span><span class="en">SNMPv3</span></a></h3>
       <p><span class="zh">認證與加密輪詢，與 v2c 並存。預設 SHA-256 + AES-128，

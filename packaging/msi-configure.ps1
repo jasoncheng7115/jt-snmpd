@@ -399,10 +399,32 @@ try {
 } catch { Log "[!] failed to set the ACL: $_" }
 
 # --- Write the config and the restore record ---
+# Every setting the agent reads is written here, including the ones left at
+# their defaults. An operator opening this file should be able to see what can
+# be changed; until now it listed only what the installer had asked about, so
+# rate_pps, rate_burst and v3_only existed, worked, and were invisible unless
+# somebody had read the documentation first. A setting nobody can discover is
+# close to a setting that is not there.
+#
+# The agent skips any key whose type or range is wrong and lists the ones it
+# actually applied in its log, so a hand-edited file cannot quietly half-apply.
 $cfg = [ordered]@{
-    schema_version = 1; community = $comm; allowed_networks = @($nets)
-    port = 161; enable_arp_table = $false; installed_at = (Get-Date).ToString('s')
-    installed_by = 'msi'
+    schema_version   = 1
+    community        = $comm
+    allowed_networks = @($nets)
+    port             = 161
+    enable_arp_table = $false
+    # Packets per second per source address, and the burst that absorbs one
+    # walk. A walk is roughly one request per 25 varbinds, so the burst has to
+    # exceed that or ordinary polling trips the agent's own rate limit.
+    rate_pps         = 50
+    rate_burst       = 300
+    # true refuses SNMPv2c outright. Provision an SNMPv3 account first: with
+    # this set and no usable account, the service refuses to start rather than
+    # listen with no way in.
+    v3_only          = $false
+    installed_at     = (Get-Date).ToString('s')
+    installed_by     = 'msi'
 }
 # No BOM: Windows PowerShell 5.1's -Encoding UTF8 adds one, and most JSON
 # parsers — Python's json.load included — fail on it. The agent now reads with

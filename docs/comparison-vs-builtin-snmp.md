@@ -9,6 +9,11 @@ description: Compared with the built-in SNMP Service, table by table
 
 # jt-snmpd compared with the Windows built-in SNMP Service
 
+> **Why not rebuild Net-SNMP for Windows instead?** That option was
+> evaluated. The conclusion and the reasoning, including Net-SNMP's own
+> published failure history, are in
+> [ADR-0001](https://jasoncheng7115.github.io/jt-snmpd/adr/0001-why-not-net-snmp.html).
+
 | Measurement | Value |
 |---|---|
 | Date | 2026-08-24 |

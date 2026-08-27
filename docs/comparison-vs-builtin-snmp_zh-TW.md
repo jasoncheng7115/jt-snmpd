@@ -9,6 +9,8 @@ description: Compared with the built-in SNMP Service, table by table
 
 # jt-snmpd 與 Windows 內建 SNMP Service 對照
 
+> **為什麼不直接重建 Net-SNMP for Windows?** 那個選項評估過，結論與理由（含 Net-SNMP 上游自己的故障史）寫在 [ADR-0001](https://jasoncheng7115.github.io/jt-snmpd/adr/0001-why-not-net-snmp_zh-TW.html)。
+
 | 量測項目 | 內容 |
 |---|---|
 | 量測日期 | 2026-08-24 |
