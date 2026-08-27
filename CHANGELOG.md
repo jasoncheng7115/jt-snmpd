@@ -71,6 +71,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   identical identity and the count carries across. Found by writing the test
   first.
 
+- **The service no longer refuses to run because a log write failed.** `SvcDoRun`
+  opened by writing "the service has started" to the Windows event log. That call
+  reaches the Event Log service over RPC, and **during an MSI transaction it can
+  return 1722, RPC_S_SERVER_UNAVAILABLE**. The line was unguarded, so the
+  exception propagated, pywin32 reported it to the SCM as a service-specific
+  error with no text attached, and the installer's health check timed out and
+  rolled the whole install back with 1603. What an operator saw was
+  StartPending, then Stopped, a hex number in the event log, and nothing at all
+  in the agent's own log.
+
+  Our own log line is now the first statement in `SvcDoRun`, before anything
+  that can throw, and the event log write is wrapped. Failing to serve SNMP
+  because a courtesy log write failed is the wrong trade every time.
+
+  **This defect was present in 1.0.0**; it needed the timing of an installer
+  transaction to show itself, which is why 40 lifecycle assertions never caught
+  it.
+
+- Every branch of the service entry point now records which one it took
+  (`pywin32=…  frozen=…  argv=…`). A wrong branch there dies without writing
+  anything: both a `SystemExit` and pywin32's usage message go to a console the
+  Service Control Manager never provided.
+
 ### Security
 
 - `cryptography` is pinned. It arrives through pysnmp and was already inside the
