@@ -401,34 +401,57 @@ try {
 # --- Write the config and the restore record ---
 # Every setting the agent reads is written here, including the ones left at
 # their defaults. An operator opening this file should be able to see what can
-# be changed; until now it listed only what the installer had asked about, so
+# be changed; it used to list only what the installer had asked about, so
 # rate_pps, rate_burst and v3_only existed, worked, and were invisible unless
 # somebody had read the documentation first. A setting nobody can discover is
 # close to a setting that is not there.
 #
-# The agent skips any key whose type or range is wrong and lists the ones it
-# actually applied in its log, so a hand-edited file cannot quietly half-apply.
+# **An upgrade keeps what the operator set.** This block used to be built from
+# scratch and written over whatever was there, so upgrading reset every value
+# the installer does not collect. The worst of those was v3_only: a site that
+# had turned SNMPv2c off got it back, silently, by installing a newer version.
+# Others were quieter but still wrong — a tuned rate limit, a non-standard port,
+# a deliberately enabled ARP table.
+#
+# community and allowed_networks are not in this list: they come from the MSI
+# properties, which are mandatory, so an upgrade always states them.
+$keep = @{}
+$cfgPath = Join-Path $DATA_DIR 'config.json'
+if (Test-Path $cfgPath) {
+    try {
+        $old = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($k in 'port', 'enable_arp_table', 'rate_pps', 'rate_burst', 'v3_only') {
+            if ($null -ne $old.$k) { $keep[$k] = $old.$k }
+        }
+        if ($keep.Count) {
+            Log ("keeping settings from the existing configuration: " +
+                 (($keep.GetEnumerator() | Sort-Object Name |
+                   ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', '))
+        }
+    } catch {
+        Log "[!] the existing config.json could not be read ($_); writing defaults for everything except the values passed to this installer"
+    }
+}
+function Keep { param($name, $fallback) if ($keep.ContainsKey($name)) { $keep[$name] } else { $fallback } }
+
 $cfg = [ordered]@{
     schema_version   = 1
     community        = $comm
     allowed_networks = @($nets)
-    port             = 161
-    enable_arp_table = $false
+    port             = (Keep 'port' 161)
+    enable_arp_table = (Keep 'enable_arp_table' $false)
     # Packets per second per source address, and the burst that absorbs one
     # walk. A walk is roughly one request per 25 varbinds, so the burst has to
     # exceed that or ordinary polling trips the agent's own rate limit.
-    rate_pps         = 50
-    rate_burst       = 300
+    rate_pps         = (Keep 'rate_pps' 50)
+    rate_burst       = (Keep 'rate_burst' 300)
     # true refuses SNMPv2c outright. Provision an SNMPv3 account first: with
     # this set and no usable account, the service refuses to start rather than
     # listen with no way in.
-    v3_only          = $false
+    v3_only          = (Keep 'v3_only' $false)
     installed_at     = (Get-Date).ToString('s')
     installed_by     = 'msi'
 }
-# No BOM: Windows PowerShell 5.1's -Encoding UTF8 adds one, and most JSON
-# parsers — Python's json.load included — fail on it. The agent now reads with
-# utf-8-sig and tolerates either form, but this still writes the clean version.
 [IO.File]::WriteAllText((Join-Path $DATA_DIR 'config.json'),
     ($cfg | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
 

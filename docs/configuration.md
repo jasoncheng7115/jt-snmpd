@@ -162,6 +162,128 @@ The `config loaded from ...` line lists what went in, so it names what did not.
 
 ---
 
+## 6. Worked examples
+
+### SNMPv2c only, the common case
+
+`C:\ProgramData\jt-snmpd\config.json`:
+
+```json
+{
+  "schema_version": 1,
+  "community": "mon-readonly-2026",
+  "allowed_networks": ["192.168.1.0/24", "10.20.0.0/16"],
+  "port": 161,
+  "enable_arp_table": false,
+  "rate_pps": 50,
+  "rate_burst": 300,
+  "v3_only": false
+}
+```
+
+In LibreNMS: Devices → Add Device, SNMP Version **v2c**, community
+`mon-readonly-2026`.
+
+Check it from the LibreNMS host first:
+
+```
+snmpwalk -v2c -c mon-readonly-2026 <host> 1.3.6.1.2.1.1
+```
+
+---
+
+### v2c and v3 together, while migrating
+
+The configuration file is as above with `v3_only` left `false`. Add an account
+on the monitored host:
+
+```
+"C:\Program Files\jt-snmpd\jt-snmpd.exe" user add librenms
+  authentication passphrase: ****************
+  confirm:                   ****************
+  privacy passphrase:        ****************
+  confirm:                   ****************
+
+added librenms (SHA-256 + AES-128).
+Only the localized keys were stored; the passphrases were not.
+
+sc stop jt-snmpd && sc start jt-snmpd
+```
+
+Both now answer. **This is where to sit during a migration**: the existing
+monitoring keeps working while the new path is verified host by host.
+
+Confirm v3 reaches it before changing anything in LibreNMS:
+
+```
+snmpwalk -v3 -l authPriv -u librenms \
+  -a SHA-256 -A '<auth passphrase>' \
+  -x AES     -X '<privacy passphrase>' \
+  <host> 1.3.6.1.2.1.1
+```
+
+Then switch the device: its page → gear → Edit → SNMP
+
+| Field | Value |
+|---|---|
+| SNMP Version | v3 |
+| Auth Level | authPriv |
+| Auth User Name | `librenms` |
+| Auth Password | the authentication passphrase |
+| Auth Algorithm | SHA-256 |
+| Crypto Password | the privacy passphrase |
+| Crypto Algorithm | AES |
+
+**Switching does not make LibreNMS rediscover the device.** Ports, storage and
+sensors keep their existing entries, and their history with them.
+
+---
+
+### SNMPv3 only, refusing v2c
+
+**The order matters: confirm v3 works, and set `v3_only` last.**
+
+```json
+{
+  "schema_version": 1,
+  "community": "",
+  "allowed_networks": ["192.168.1.0/24"],
+  "port": 161,
+  "enable_arp_table": false,
+  "rate_pps": 50,
+  "rate_burst": 300,
+  "v3_only": true
+}
+```
+
+After a restart the log reads:
+
+```
+v3_only is set: SNMPv2c is not registered on this agent
+SNMPv3 user 'librenms' registered (SHA-256 + AES-128)
+LISTENING 0.0.0.0:161 varbinds=652
+```
+
+Verify that v2c is refused and v3 is not:
+
+```
+snmpget -v2c -c anything <host> 1.3.6.1.2.1.1.5.0
+  → Timeout: No Response
+
+snmpget -v3 -l authPriv -u librenms -a SHA-256 -A '...' -x AES -X '...' <host> 1.3.6.1.2.1.1.5.0
+  → STRING: "WIN11-PRO-1"
+```
+
+**With `v3_only` set and no account, the service refuses to start** and says so:
+
+```
+ERROR refusing to start: v3_only is set but no SNMPv3 user could be loaded,
+so nothing could authenticate. Provision one with `jt-snmpd.exe user add <name>`,
+or clear v3_only in config.json to serve v2c again
+```
+
+---
+
 ## Related
 
 - [SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3.html)
