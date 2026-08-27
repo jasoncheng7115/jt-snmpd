@@ -9,9 +9,10 @@ description: Authenticated, encrypted polling - how to provision it and what it 
 
 # SNMPv3
 
-> **狀態:開發中。** 代理服務已經能回應 authPriv,而且是用 net-snmp 驗過的
-> —— 那正是 LibreNMS 用來輪詢的實作。但它還沒走完一次完整的發版流程,
-> 請當成「可以用,但尚未累積到 v2c 那條路徑的驗證量」。
+> **狀態:已驗證。** 先用 net-snmp 對打驗過(那正是 LibreNMS 用來輪詢的實作),
+> 再在四台實機上驗:Windows 10、Windows 11、Server 2016(網域控制站)、Server 2022。
+> 正式 LibreNMS 上納管的三台都從 v2c 切換成 v3,**沒有任何一台被重新探索**,
+> 連接埠、儲存與感測器的既有項目全部保留。
 
 SNMPv2c 的 community 字串是明文傳送的,而且完全不做認證。看得到封包的人就讀得到內容,
 猜得到 community 的人就能查詢主機。SNMPv3 把這兩件事都補上:每個請求都用 HMAC 認證,

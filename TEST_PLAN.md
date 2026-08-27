@@ -193,7 +193,9 @@ LibreNMS 用的是 net-snmp，所以測試的另一端就必須是 net-snmp。
 | 5.20.12 | engine.json 損毀時讀 `.bak`，不得從 1 重新開始 | **[已驗]** 同上 |
 | 5.20.13 | boots 觸頂（2^31-1）必須換 engineID，不得回捲 | **[已驗]** 同上 |
 | 5.20.14 | 別台機器的 usm.dat 複製過來必須被拒，且說明原因 | **[已驗]** `tests/test_usm_store.py` |
-| 5.20.15 | `v3_only` 開啟但沒有可用帳號時，服務必須拒絕啟動 | [待驗] 需實機 |
+| 5.20.15 | `v3_only` 開啟但沒有可用帳號時，服務必須拒絕啟動 | **[已驗]** Server 2016 DC `.49` 2026-08-27。服務留在 Stopped，記錄寫出 `refusing to start: v3_only is set but no SNMPv3 user could be loaded…`，並指出兩條出路（建帳號，或清掉 `v3_only`）。布建帳號後即可正常啟動 |
+| 5.20.15a | `v3_only` 開啟且有帳號時，v2c 必須完全不回應 | **[已驗]** `.49`：v2c `Timeout: No Response`，v3 正常，完整 walk 621 varbind |
+| 5.20.15b | **`v3_only` 必須真的被 `load_config()` 讀進來** | **[已驗，且先前是壞的]** 這個鍵原本只加在預設值與 `run_agent()`，沒有加進 `load_config()` 的驗證清單，於是設定檔寫了 `"v3_only": true` 卻被無聲忽略、v2c 照常回答。**一個資安開關無聲失效，比沒有那個開關更糟，因為會有人拿它去交代稽核。** 現在有測試斷言 CFG 裡的每一個鍵都被 `load_config()` 讀取，或列在有理由的豁免清單裡；拿掉修正該測試就會失敗 |
 | 5.20.16 | v3 的每封包 CPU 成本（v2c / authNoPriv / authPriv 三者比較） | **[待做]** 沒有數字就不能說「不會拖慢主機」，見 L3 |
 | 5.20.17 | 時鐘漂移或休眠喚醒後，engineTime 的 150 秒視窗行為 | [待驗] `.163` 是筆電，正好是這個情境 |
 | 5.20.18 | LibreNMS 以 v3 加入裝置並完成探索與輪詢 | **[已驗]** 見 8.9 / 8.10 |
@@ -234,6 +236,7 @@ LibreNMS 用的是 net-snmp，所以測試的另一端就必須是 net-snmp。
 | 機器 | 生命週期 | v3 | 備註 |
 |---|---|---|---|
 | Windows 11 26200 `.154` | **40/40** | ✓ | 有 nxlog 等第三方服務,第三方共存情境 |
+| Windows 10 22H2 `.163` | 升級 1.0.0 → 1.1.0 | ✓ | **唯一的實體機**:磁碟 SMART 與 ACPI 溫度區只有這台驗得到 |
 | **Server 2016 Standard `.49`** | **40/40** | ✓ | **主網域控制站**(`DomainRole 5`),內建 SNMP 移轉全走完 |
 | **Server 2022 Standard `.187`** | **33/33 適用項** | ✓ | 沒有內建 SNMP,那 7 項不適用 |
 
@@ -258,6 +261,17 @@ LibreNMS 用的是 net-snmp，所以測試的另一端就必須是 net-snmp。
 同一把金鑰,**LibreNMS 那端完全不用動**,`port_id` 也仍是 166095。
 
 **重裝不會清掉 v3 帳號**:`.187` 重裝之後 `user list` 仍列出 `librenms`。
+
+**schema 1 → 2 的升級在兩台實機上各驗一次**:`.154` 與 `.163` 升級前都是 schema 1,
+升級後 engineID 與升級前線上回報的值逐位元組相同,`boots` 沒有倒退。
+`.163` 的值是 `8001869F04 3238B1976ECEE4569518C7E0A88BB85C`。
+
+**LibreNMS 三台裝置都改用 v3,一台都沒有被重新探索**:106(`.154`)、118(`.163`)、
+119(`.187`),`port_id` 全部保留,`deleted` 全部是 0,OS 判讀不變。
+設定變更走的是 **LibreNMS 自己的 API**(`PATCH /api/v0/devices/<host>`),
+不是直接寫資料庫 —— API 會經過 LibreNMS 的驗證邏輯,跟網頁表單同一條路徑。
+**`lnms` 的 CLI 沒有編輯既有裝置的指令**(只有 add / remove / rename / discover /
+poll / ping),已對照官方文件確認。
 
 踩過的一個坑:生命週期測試要帶 community,我在 `.187` 上用了測試用的
 `srv2022mon`,而 LibreNMS 的 device 119 記的是 `mon2`,於是輪詢失敗。
@@ -558,7 +572,7 @@ Windows Installer 轉而去列舉並關閉與我們無關的服務（`nxlog`、`
 | 8.8 | 自我健康 OID 的 alert rule 範本能正確觸發 | [受阻] |
 | 8.9 | **以 v3 加入裝置**（authPriv、SHA-256、AES）並完成 discovery | **[已驗]** 正式 LibreNMS，device 106，2026-08-27。完整探索 55 次 SNMP 操作（13 get / 42 walk）全走 authPriv，7.04 秒完成；輪詢 37 次操作、**64 筆 RRD 更新**。LibreNMS 的裝置頁還會顯示它抓到的 SNMP Engine ID，與代理服務回報的逐位元組相同 |
 | 8.10 | **同一台機器由 v2c 改為 v3 之後，不得重新 discovery**：ports / storage / processor 的既有項目必須留著，RRD 不得斷 | **[已驗]** device 106 改 v3 並跑完整探索後，每一個 id 都沒變：`port_id` 166095（`deleted=0`）、`storage_id` 6413/6414、`processor_id` 6314–6319、`mempool_id` 2941–2944。OS 判讀仍是 `windows / 11 Insider (NT 6.3)`。**設定是由使用者從網頁表單改的**，那才是客戶會走的路徑 |
-| 8.11 | v3 下六個頁面（Overview / Processor / Memory / Storage / DiskIO / Ports）同樣全滿 | **[部分已驗]** 輪詢寫入 64 筆 RRD，處理器 6、記憶體 4、儲存 2、連接埠 1 都還在。`.154` 是虛擬機，沒有磁碟 SMART 與 ACPI 溫度區，感測器與應用程式本來就是 0；那兩塊要用 `.163` 實體筆電驗 |
+| 8.11 | v3 下六個頁面（Overview / Processor / Memory / Storage / DiskIO / Ports）同樣全滿 | **[已驗]** 三台都驗過。`.163` 實體筆電補上了虛擬機沒有的兩塊：切到 v3 之後感測器仍是 2 筆且有真實數值（`PhysicalDrive0 Temp = 35`、`ThermalZone0 = 25`），`smart` 應用程式仍在，`port_id` 166097/166098、`storage_id` 6421 都沒變 |
 | 8.12 | v3 連續 poll 24 小時，RRD 無斷點，且無間歇性認證失敗 | [待驗]。間歇性失敗正是 engineID 重複時的症狀，這一項是它的守門員 |
 
 > **注意**：deploy 到目標機器後必須主動觸發 LibreNMS discovery，

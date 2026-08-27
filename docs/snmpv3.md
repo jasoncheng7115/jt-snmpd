@@ -9,10 +9,11 @@ description: Authenticated, encrypted polling - how to provision it and what it 
 
 # SNMPv3
 
-> **Status: in development.** The agent answers authPriv and it has been checked
-> against net-snmp, which is what LibreNMS polls with. It has not yet been
-> through a full release cycle, so treat it as usable and not yet proven at the
-> scale the v2c path has been.
+> **Status: verified.** Checked on the wire against net-snmp, which is what
+> LibreNMS polls with, and then on four real machines: Windows 10, Windows 11,
+> Server 2016 (a domain controller) and Server 2022. The three of them that a
+> production LibreNMS monitors were switched from v2c to v3, and none was
+> rediscovered — ports, storage and sensors all kept their existing entries.
 
 SNMPv2c sends its community string in clear text and authenticates nothing.
 Anyone who can see the traffic can read it, and anyone who can guess the

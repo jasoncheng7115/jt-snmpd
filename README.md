@@ -217,6 +217,38 @@ so real-world usage is around **0.004% CPU**.
 | Information disclosure | Installed software, running processes, ARP tables and listening ports are all off by default |
 | Scanning | Bandit / Semgrep / Ruff-S / pip-audit / CycloneDX SBOM, plus protocol fuzzing and Windows-specific checks — see [`docs/security-scanning.md`](docs/security-scanning.md) |
 
+### SNMPv3
+
+Served alongside v2c rather than in place of it, so an upgrade does not take an
+existing deployment off the map. To refuse v2c outright, set `v3_only` in
+`config.json`; with that set and no usable account, the service **refuses to
+start** rather than listening with no way in.
+
+Only **authPriv** is offered. A read-only agent still discloses an inventory,
+software versions and an ARP table, so there is no level below it worth having.
+
+| | Accepted |
+|---|---|
+| Authentication (hash) | `SHA-224` / **`SHA-256` (default)** / `SHA-384` / `SHA-512` |
+| Privacy | **`AES-128` (default)** / `AES-192` / `AES-256` |
+| **Refused outright** | `MD5`, `SHA-1`, `DES`, `3DES` |
+
+Refusing them is not an omission. pysnmp implements all four, so naming one
+would otherwise work — and **working is the wrong outcome**, because the
+operator would believe the traffic was protected.
+
+`AES-192` and `AES-256` are selectable but warn at startup. That is an
+interoperability risk rather than a weak cipher: neither was standardised for
+USM, two incompatible key-extension schemes exist, and Debian and Ubuntu build
+net-snmp without the one pysnmp uses — so an agent configured that way **can be
+unreachable from the very LibreNMS installation it was set up for**.
+
+Keys are stored as **localized keys**, bound to this machine's engineID, never
+as passphrases, and encrypted with **DPAPI machine scope**. Reading one
+machine's secrets file buys an account on that machine, not on every machine
+sharing the credential. Full details in
+[SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3.html).
+
 ## Stack
 
 | Layer | Choice |
@@ -348,7 +380,7 @@ jt-snmpd/
 | Windows service, boot start, migration from the built-in service | ✅ verified on Windows 10 and 11 |
 | Disk temperature and SMART health | ✅ verified on physical hardware |
 | **MSI installer** (double-click with a settings dialog, `/qn` unattended, GPO / Intune / SCCM deployment) | ✅ released; 40 lifecycle assertions covering install, upgrade, uninstall, reinstall and purge, all green on real hardware |
-| SNMPv3 (SHA-256 + AES-128) | 🚧 in development; v2c only today |
+| SNMPv3 (SHA-256 + AES-128, authPriv) | ✅ **verified on four real machines and against a production LibreNMS**; served alongside v2c, with a `v3_only` switch |
 | OID view presets (VACM) | ⛔ not implemented |
 | Authenticode signing | ⏳ planned via an open-source certificate programme — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
 | **Windows Server** | ✅ **2016 (a domain controller) and 2022 verified on real machines** — installation lifecycle, migration from the built-in service, and end to end through LibreNMS; see [Deploying to Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes.html) |
