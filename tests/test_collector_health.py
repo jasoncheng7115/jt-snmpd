@@ -239,3 +239,56 @@ def test_the_snapshot_is_rebuilt_off_the_event_loop():
     i = loop_body.index("build_snapshot")
     assert "run_in_executor" in loop_body[max(0, i - 200):i + 60], (
         "the rebuild inside the service loop is the one that blocks responses")
+
+
+def test_the_processor_count_comes_from_all_processor_groups():
+    """Windows splits machines with more than 64 logical processors into groups,
+    and the older APIs report only the group the caller is in — a 128-core host
+    reads as 64. Every use of this number sizes a buffer the kernel writes into,
+    and one that is too small makes NtQuerySystemInformation fail rather than
+    fill it, so the effect is a host reporting no CPU data at all.
+
+    sensors.py has always called GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)
+    and says in a comment not to use os.cpu_count(). jt_agent.py used
+    os.cpu_count() in three places, including both buffer allocations. The rule
+    was learned once and applied to one file.
+    """
+    import ast as _ast
+    from pathlib import Path as _P
+
+    src = (_P(__file__).resolve().parents[1] / "deploy" / "jt_agent.py").read_text(
+        encoding="utf-8")
+    tree = _ast.parse(src)
+    fns = {n.name: _ast.unparse(n) for n in _ast.walk(tree)
+           if isinstance(n, _ast.FunctionDef)}
+
+    helper = fns["active_cpu_count"]
+    assert "GetActiveProcessorCount" in helper
+    assert "0xFFFF" in helper or "65535" in helper, "ALL_PROCESSOR_GROUPS"
+    assert "MAX_PROCESSORS" in helper, "the count sizes an allocation, so cap it"
+
+    for name in ("get_cpu_loads", "get_cpu_raw"):
+        if name in fns:
+            assert "os.cpu_count" not in fns[name], (
+                f"{name} sizes a buffer from the processor count; os.cpu_count "
+                "under-reports past 64 cores")
+            assert "active_cpu_count" in fns[name]
+
+
+def test_a_failed_cpu_read_is_not_reported_as_zero_per_cent():
+    """Rule 4: what cannot be measured is not reported. Returning zeros made
+    every core read 0% — a plausible number, a false one — and left the
+    collector recorded as healthy while it did so.
+    """
+    import ast as _ast
+    from pathlib import Path as _P
+
+    src = (_P(__file__).resolve().parents[1] / "deploy" / "jt_agent.py").read_text(
+        encoding="utf-8")
+    fn = next(_ast.unparse(n) for n in _ast.walk(_ast.parse(src))
+              if isinstance(n, _ast.FunctionDef) and n.name == "get_cpu_loads")
+    assert "[0] * ncpu" not in fn and "[0]*ncpu" not in fn, (
+        "fabricating zeros hides the failure from _collector, which then marks "
+        "the collector healthy")
+    assert "raise" in fn, (
+        "raising is what makes the rows disappear and the collector show failed")
