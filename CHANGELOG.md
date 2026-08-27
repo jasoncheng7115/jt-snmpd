@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.2] - 2026-08-27
+
+### Fixed
+
+- **A host with `v3_only` set could not be upgraded.** The installer ends by
+  proving the service does not merely start but actually answers SNMP, and it
+  did that with an SNMPv2c GET. On a host that had taken the security advice and
+  refused v2c, nothing answered, the custom action failed, and Windows Installer
+  rolled the whole transaction back: `msiexec` exit 1603, every time, on exactly
+  the sites that had been most careful. Such a host is now probed with an
+  SNMPv3 engine discovery, which RFC 3414 requires an agent to answer before any
+  credential has been presented, so it needs no account and no passphrase and is
+  still a real round trip rather than a look at the service state.
+
+  **This was reachable only from 1.1.1.** Earlier versions reset `v3_only` to
+  false before the probe ran, so the probe always had v2c to talk to. Preserving
+  operator settings across an upgrade — the fix 1.1.1 exists for — is what
+  exposed it. Two correct changes combined into a failure that neither one's
+  tests could show.
+
+- **The health check assumed port 161.** A host moved to another port failed the
+  same check for the same reason. The port now comes from the configuration the
+  installer has just written.
+
+### Changed
+
+- The installer log now names the probe it is about to run and the port it is
+  aimed at, so a failure says which check failed rather than only that one did.
+
+---
+
 ## [1.1.1] - 2026-08-27
 
 ### Fixed

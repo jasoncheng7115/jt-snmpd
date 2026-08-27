@@ -180,7 +180,7 @@ $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
 ```
 
 The version comes from `deploy\version.py`; there is no argument to pass. The
-result is `dist\jt-snmpd-1.1.1-x64.msi`, its `.sha256`, and a per-version copy
+result is `dist\jt-snmpd-1.1.2-x64.msi`, its `.sha256`, and a per-version copy
 under `dist\releases\1.0.0\` alongside `BUILDINFO.txt`:
 
 ```
@@ -213,7 +213,7 @@ nobody was editing.
 # CLI
 signtool sign /n "Your Organisation" /fd SHA256 `
   /tr http://timestamp.digicert.com /td SHA256 `
-  .\dist\jt-snmpd-1.1.1-x64.msi
+  .\dist\jt-snmpd-1.1.2-x64.msi
 ```
 
 Signing rewrites the file, so the `.sha256` produced in §5 no longer describes
@@ -222,7 +222,7 @@ distributes its own:
 
 ```powershell
 # CLI
-$msi = ".\dist\jt-snmpd-1.1.1-x64.msi"
+$msi = ".\dist\jt-snmpd-1.1.2-x64.msi"
 "$((Get-FileHash $msi -Algorithm SHA256).Hash.ToLower())  $(Split-Path $msi -Leaf)" |
   Set-Content "$msi.sha256" -Encoding ascii
 ```
@@ -233,7 +233,7 @@ $msi = ".\dist\jt-snmpd-1.1.1-x64.msi"
 
 ```powershell
 # CLI
-signtool verify /pa /v .\dist\jt-snmpd-1.1.1-x64.msi
+signtool verify /pa /v .\dist\jt-snmpd-1.1.2-x64.msi
 Get-AuthenticodeSignature .\build\jt-snmpd\jt-snmpd.exe | Format-List Status, SignerCertificate
 ```
 

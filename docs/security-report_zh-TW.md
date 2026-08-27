@@ -18,7 +18,7 @@ description: The current scan baseline, with a verdict on every finding
 | | |
 |---|---|
 | 日期 | 2026-08-27 |
-| 版本 | jt-snmpd 1.1.1 |
+| 版本 | jt-snmpd 1.1.2 |
 | 掃描範圍 | `deploy/`、`tools/`、`packaging/`，共 14 個檔案、4,967 行 |
 
 ---
