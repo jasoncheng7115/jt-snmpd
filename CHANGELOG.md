@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.1.0] - 2026-08-28
 
 ### Added
 
@@ -93,6 +93,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (`pywin32=…  frozen=…  argv=…`). A wrong branch there dies without writing
   anything: both a `SystemExit` and pywin32's usage message go to a console the
   Service Control Manager never provided.
+
+- **Responses no longer exceed the 1400 bytes the agent advertises.** The cap was
+  advertised as `snmpEngineMaxMessageSize` and never enforced: GETBULK was
+  delegated to pysnmp, which has no byte cap. On a machine with disk SMART data
+  a single ordinary walk produced a 1902-byte response and the datagram
+  fragmented. Behind a firewall that drops IP fragments — the normal
+  configuration in the environments this ships into — SMART data would go
+  missing intermittently with nothing in any log. GETBULK now stops on a byte
+  budget, and ends a walk with one `endOfMibView` instead of padding the
+  response to max-repetitions with them.
+
+- **The rate limiter no longer drops packets during ordinary polling.** One full
+  walk is 34 requests in 0.32 s, an instantaneous 106 packets per second, and
+  the burst allowance was 100 — one walk of a small machine. Two managers, a
+  large host, or discovery running alongside polling went over, and from the
+  manager's end rate limiting is indistinguishable from a network fault. The
+  burst is now 300; the sustained rate is unchanged.
+
+- **The four drop reasons are separate counters.** They were summed into
+  `snmpInASNParseErrs`, whose name describes only one of them, so an operator
+  whose walks were being rate limited had no way to see it from SNMP.
+
+- **A log rotation that fails no longer lets the log grow without limit.** The
+  20 MB ceiling was conditional on rotation succeeding, and rotation fails when
+  something else holds the file — antivirus or a backup agent, which every
+  customer machine has. It truncates instead, and says so in the fresh file.
+
+- **The snapshot is rebuilt off the event loop.** A ctypes call into a
+  disconnected network drive cannot be interrupted and blocks for thirty seconds
+  or more; on the loop that is a total outage and the manager marks the device
+  down. Answers now continue from the previous snapshot throughout.
 
 ### Security
 
