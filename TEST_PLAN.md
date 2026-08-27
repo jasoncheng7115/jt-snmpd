@@ -46,6 +46,7 @@
 | 1.6 | TimeTicks 回捲：497 天邊界自然回捲，wrap count 正確遞增 | [待實作] |
 | 1.7 | 介面篩選：Hyper-V host 的 40～80 個介面，僅硬體介面通過 | [待實作] |
 | 1.8 | 快取失效語意：新鮮 / stale 內 / 超過 stale threshold（整列移除，不得捏造值） | [待實作] |
+| 1.8a | **collector 失敗時不得送出捏造的量測值**（硬性規則 4） | **[已修，2026-08-27]** `_collector` 的預設值就是規則 4 守住或破掉的地方。清單用 `[]`、結構用 `None` 都是誠實的（列會消失、呼叫端會跳過）；**數字不是**。原本 `hrSystemProcesses` 與 `hrSystemNumUsers` 的預設值是 `0` —— **而沒有處理程序的機器不存在**，監控系統會把它畫成一條落到底的線，看起來像量測結果而不是失敗。`get_cpu_loads()` 更糟：它回 `[0] * ncpu` 而且**不拋例外**，所以連 collector 都被標成健康。現在三者都改為「量不到就不送那個 OID」，測試掃描每一個 `_collector()` 呼叫點的預設值 |
 | 1.9 | 狀態檔原子寫入：temp → fsync → ReplaceFileW；主檔損毀時讀 .bak | [待實作] |
 | 1.10 | schema_version 遷移：舊版 index-map / engine-state 能正確升級 | [待實作] |
 | 1.11 | 設定合併：ADMX 原則覆寫 config.yaml，`--effective` 正確標示各值來源 | [待實作] |

@@ -1183,12 +1183,12 @@ def get_process_count() -> int:
     """
     snap = _k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
     if not snap or snap == INVALID_HANDLE:
-        return 0
+        raise OSError("CreateToolhelp32Snapshot failed")
     try:
         pe = PROCESSENTRY32()
         pe.dwSize = ctypes.sizeof(pe)
         if not _k32.Process32First(snap, ctypes.byref(pe)):
-            return 0
+            raise OSError("Process32First failed")
         n = 1
         while _k32.Process32Next(snap, ctypes.byref(pe)):
             n += 1
@@ -2172,16 +2172,22 @@ def build_snapshot() -> tuple[tuple, tuple]:
     add(HR + (1, 2, 0), octet(_hr_system_date()))                       # hrSystemDate
     add(HR + (1, 3, 0), rfc1902.Integer32(0))                           # hrSystemInitialLoadDevice
     add(HR + (1, 4, 0), octet(""))                                      # hrSystemInitialLoadParameters
-    add(HR + (1, 5, 0), rfc1902.Gauge32(
-        _collector("sessions", get_session_count, 0)))                  # hrSystemNumUsers
+    # Both of these omit their OID when they cannot be measured, rather than
+    # sending nought. Rule 4 in one sentence: a machine with no processes does
+    # not exist, so a zero there is not a low reading, it is a wrong one — and
+    # a monitoring system draws it as a line to the floor rather than a gap.
+    _sessions = _collector("sessions", get_session_count, None)
+    if _sessions is not None:
+        add(HR + (1, 5, 0), rfc1902.Gauge32(_sessions))                 # hrSystemNumUsers
     # hrSystemProcesses — what LibreNMS's System → Processes graph reads.
     # GetPerformanceInfo is preferred: a single call, tens of microseconds. Only
     # when that is unavailable does this fall back to a Toolhelp32 snapshot,
     # which enumerates every process and costs 50-300 ms with 300 of them
     # .
     nproc = perf.ProcessCount if perf is not None else _collector(
-        "processes", get_process_count, 0)
-    add(HR + (1, 6, 0), rfc1902.Gauge32(nproc))
+        "processes", get_process_count, None)
+    if nproc is not None:
+        add(HR + (1, 6, 0), rfc1902.Gauge32(nproc))
     add(HR + (1, 7, 0), rfc1902.Integer32(0))                           # hrSystemMaxProcesses (0 = no limit)
 
     mem = _collector("memory", get_memory, None)
