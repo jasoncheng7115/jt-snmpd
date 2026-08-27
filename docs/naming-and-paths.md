@@ -67,7 +67,7 @@ do not exist yet.
     state\engine.json                   engineID and engineBoots
     state\ms-snmp-restore.json          the built-in service's original start type and state
     state\disk-maxtemp.json             the highest disk temperature actually observed, kept across restarts
-    logs\jt-snmpd.log                   rotated, 5 MB across 5 generations
+    logs\jt-snmpd.log                   rotated at 5 MB, 3 kept (4 files, about 20 MB)
     logs\msi-configure.log              the installer's own log
     secrets\usm.dat                     SNMPv3 localized keys, DPAPI machine scope
 ```

@@ -62,7 +62,7 @@ LibreNMS 會刪掉每一個 port 重新探索，歷史 RRD 一起失去對應；
     state\engine.json                   engineID / engineBoots
     state\ms-snmp-restore.json          內建 SNMP 的原始啟動類型與狀態，供解除安裝還原
     state\disk-maxtemp.json             實際觀測到的磁碟最高溫，跨重新啟動保存
-    logs\jt-snmpd.log                   輪替：5 MB × 5 份
+    logs\jt-snmpd.log                   輪替：每檔 5 MB，保留 3 份（上界 4 檔約 20 MB）
     logs\msi-configure.log              安裝程式自己的記錄
     secrets\usm.dat                     SNMPv3 的 localized key，DPAPI machine scope
 ```

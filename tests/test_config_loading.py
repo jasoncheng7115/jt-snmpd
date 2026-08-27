@@ -303,3 +303,36 @@ def test_every_setting_in_cfg_is_actually_read_from_the_file():
     assert not missing, (
         f"these settings exist in CFG but load_config never reads them, so a "
         f"value in config.json is silently ignored: {sorted(missing)}")
+
+
+def test_the_installer_writes_every_setting_the_agent_reads():
+    """An operator opening config.json should be able to see what can be
+    changed.
+
+    Until 1.1.1 the installer wrote only the keys it had asked about, so
+    rate_pps, rate_burst and v3_only existed, worked, and were invisible: the
+    file gave no hint they were there, and the only way to know was to have read
+    the documentation first. A setting nobody can discover is close to a setting
+    that does not exist.
+    """
+    import ast as _ast
+    from pathlib import Path as _P
+
+    root = _P(__file__).resolve().parents[1]
+    agent = (root / "deploy" / "jt_agent.py").read_text(encoding="utf-8")
+    cfg = next(n.value for n in _ast.walk(_ast.parse(agent))
+               if isinstance(n, _ast.Assign)
+               and any(getattr(t, "id", "") == "CFG" for t in n.targets))
+    keys = {k.value for k in cfg.keys if isinstance(k, _ast.Constant)}
+
+    # Read from the machine at runtime rather than set in the file
+    not_written = {"contact", "location"}
+
+    script = (root / "packaging" / "msi-configure.ps1").read_text(encoding="utf-8-sig")
+    block = script[script.index("$cfg = [ordered]@{"):]
+    block = block[:block.index("\n}")]
+
+    missing = sorted(k for k in keys - not_written if k not in block)
+    assert not missing, (
+        "the installer does not write these, so an operator reading config.json "
+        f"cannot tell they exist: {missing}")
