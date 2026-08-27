@@ -143,6 +143,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   never showed it; a machine with several has the graphs of every renumbered
   port orphaned.
 
+- **The SNMPv3 key store keeps a previous copy.** Losing `usm.dat` takes every
+  account on the machine with it and they cannot be recovered from anywhere
+  else: the keys are localized to that engineID and the passphrases were
+  deliberately never stored. A fallback now exists, and it says which accounts
+  may be missing rather than looking like a clean recovery.
+
 ### Security
 
 - `cryptography` is pinned. It arrives through pysnmp and was already inside the
