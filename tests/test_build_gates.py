@@ -145,3 +145,26 @@ def test_the_shipped_program_is_english_only():
     assert not offenders, (
         "the program ships in English only; these lines carry CJK text:\n  "
         + "\n  ".join(offenders))
+
+
+def test_the_installer_log_reads_the_same_on_any_windows():
+    """Windows' service cmdlets print a progress warning naming the service by
+    its **localised display name**. On a Traditional Chinese install that puts
+    a line of Chinese into this project's own installation log and into the
+    msiexec log; on a German one it puts German there.
+
+    The program ships in English only, so those warnings are suppressed and
+    what the script logs itself is what appears. This is not hiding failures:
+    -ErrorAction is separate, and the outcome is logged in English either way.
+    """
+    from pathlib import Path as _P
+    import re as _re
+
+    cfg = (_P(__file__).resolve().parents[1] / "packaging" / "msi-configure.ps1"
+           ).read_text(encoding="utf-8-sig")
+    assert "$WarningPreference = 'SilentlyContinue'" in cfg, (
+        "set it once at the top so a new call site cannot forget")
+    for call in _re.finditer(r"^\s*(Stop|Start|Restart)-Service\b.*$", cfg, _re.M):
+        line = call.group(0)
+        assert "-WarningAction SilentlyContinue" in line, (
+            f"this call will print a localised warning into the log: {line.strip()}")
