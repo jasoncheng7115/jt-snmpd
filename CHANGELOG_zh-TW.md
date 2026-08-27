@@ -9,7 +9,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
-## [1.1.0] - 2026-08-28
+## [1.1.0] - 2026-08-27
 
 ### 新增
 
