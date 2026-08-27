@@ -175,3 +175,19 @@ def test_the_two_passphrases_must_differ():
     assert "one compromise should not be two" in src, (
         "reusing one passphrase for authentication and privacy turns a single "
         "disclosure into both")
+
+
+def test_refusing_to_start_says_why_in_the_log():
+    """`v3_only` with no usable account is a deliberate refusal to start, and a
+    refusal the operator cannot explain is barely better than a crash. Without
+    its own log line the last thing written is "agent thread ended
+    unexpectedly", which is what every other startup failure writes too."""
+    agent = (Path(__file__).resolve().parents[1] / "deploy" / "jt_agent.py")
+    src = agent.read_text(encoding="utf-8")
+    # Anchor on the raise, not on the message: the log line now contains the
+    # same words, and searching for those found the log line itself.
+    i = src.index('raise SystemExit("v3_only is set')
+    window = src[max(0, i - 900):i]
+    assert "refusing to start" in window, (
+        "the refusal has to reach the log, not only the exception")
+    assert "user add" in window, "say how to fix it, not only what went wrong"

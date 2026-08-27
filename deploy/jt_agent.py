@@ -3042,6 +3042,14 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
             # would look healthy from Windows while answering nobody, and the
             # operator would go looking at the network for a fault that is
             # in a configuration file.
+            # Said in the log, not only in the exception. What the operator
+            # otherwise sees is "agent thread ended unexpectedly", which is the
+            # same line every other startup failure produces, and the reason has
+            # to be inferred from two lines further up.
+            log("refusing to start: v3_only is set but no SNMPv3 user could be "
+                "loaded, so nothing could authenticate. Provision one with "
+                "`jt-snmpd.exe user add <name>`, or clear v3_only in "
+                "config.json to serve v2c again", error=True)
             raise SystemExit("v3_only is set but no SNMPv3 user could be "
                              "loaded; the agent would answer nobody")
         ctx = context.SnmpContext(eng)
