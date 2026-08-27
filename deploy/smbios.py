@@ -29,6 +29,16 @@ from ctypes import wintypes
 # 'RSMB' as a little-endian DWORD
 RSMB = 0x52534D42
 
+# Ceilings on firmware-supplied sizes. Every length in this file comes from the
+# BIOS, so each one is treated as hostile input: a real SMBIOS table is a few
+# kilobytes with a few dozen structures, and nothing here should scale with what
+# the firmware claims. Python will not read out of bounds, but a nonsense length
+# would still have the agent allocate or loop on the strength of it -- which on
+# something whose first requirement is not to slow the host is the same problem
+# by a different name.
+MAX_TABLE_BYTES = 1 << 20        # 1 MB
+MAX_STRUCTURES = 4096            # a large server reports a few hundred
+
 
 def get_raw_smbios() -> bytes:
     """Fetch the raw SMBIOS table. Returns empty bytes on failure, which the
@@ -39,7 +49,10 @@ def get_raw_smbios() -> bytes:
     k32.GetSystemFirmwareTable.restype = wintypes.UINT
 
     size = k32.GetSystemFirmwareTable(RSMB, 0, None, 0)
-    if not size:
+    if not size or size > MAX_TABLE_BYTES:
+        # The size comes from firmware. Asking the API for it is right; trusting
+        # the answer without a ceiling is not. A buggy BIOS or a hypervisor
+        # reporting nonsense would otherwise have this allocate whatever it said.
         return b""
     buf = ctypes.create_string_buffer(size)
     got = k32.GetSystemFirmwareTable(RSMB, 0, buf, size)
@@ -116,7 +129,7 @@ def parse_smbios(blob: bytes) -> list[dict]:
 
     out: list[dict] = []
     pos = 0
-    while pos + 4 <= len(data):
+    while pos + 4 <= len(data) and len(out) < MAX_STRUCTURES:
         stype, slen, handle = struct.unpack_from("<BBH", data, pos)
         if slen < 4:
             break

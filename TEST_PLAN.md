@@ -281,6 +281,8 @@ CPU 那一側不是問題：單次完整 walk 約 12.5 ms CPU，5 分鐘輪詢�
 | 5.6.2 | loopback 永遠放行（否則安裝程式健康檢查必定失敗） | 斷言 | **[已實作]** |
 | 5.6.3 | SAST / SCA / SBOM 基線 | Bandit HIGH=0、相依 CVE=0 | **[已實作]** 見 `docs/security-scanning_zh-TW.md` |
 | 5.7 | 深度巢狀 SEQUENCE | 事件迴圈上無未攔截的 RecursionError | [待實作] |
+| 5.7a | **SMBIOS 解析對惡意位元組的性質測試** | 任何輸入都不得拋例外或無限迴圈 | **[已實作，2026-08-27]** `tests/test_smbios_parsing.py`：3,000 組隨機位元組加 3,000 組「合法表格被翻位元」的變異，另含長度 0、長度小於標頭、長度超出緩衝區、缺字串終止符等邊界。`sensors.py` 早有這種測試，`smbios.py` 一直沒有 |
+| 5.7b | **韌體回報的大小必須有上限常數**（硬性規則 15 後半） | 配置與迴圈不得隨韌體宣告的數字放大 | **[已修，2026-08-27]** `get_raw_smbios()` 原本用 `GetSystemFirmwareTable` 回報的大小直接配置緩衝區，**沒有任何上限**；結構走訪也沒有數量上限。現在是 `MAX_TABLE_BYTES = 1 MB` 與 `MAX_STRUCTURES = 4096`。Python 不會真的越界，但「按照韌體說的數字去配置或迴圈」對一個以「不得拖慢主機」為第一要求的程式來說是同一個問題換個名字 |
 | 5.8 | 速率限制在 USM 密碼學處理**之前**生效 | 斷言呼叫順序 | [待實作] |
 | 5.9 | 所有 HMAC 比對使用 `compare_digest` | 靜態檢查 + code review checklist | [待實作] |
 | 5.10 | 拒絕 MD5 / DES / 3DES，即使 library 提供 | 載入即拒 | **[已實作]** `tests/test_usm_store.py`；拒絕訊息必須指名替代品，因為「未知的通訊協定」對操作人員沒有任何可行動的資訊 |
