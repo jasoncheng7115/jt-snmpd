@@ -190,7 +190,7 @@ class _STORAGE_PROTOCOL_DATA_DESCRIPTOR(ctypes.Structure):
 
 
 def health_via_nvme(h) -> dict:
-    """NVMe SMART / Health Information Log（NVM Express 1.4 §5.14.1.2）。"""
+    """NVMe SMART / Health Information Log(NVM Express 1.4 §5.14.1.2)."""
     hdr_size = ctypes.sizeof(_STORAGE_PROTOCOL_DATA_DESCRIPTOR)
     total = hdr_size + 512
     outbuf = ctypes.create_string_buffer(total)
@@ -331,7 +331,7 @@ def health_via_ata_smart(h, drive_index: int) -> dict:
     The first 16 bytes of the output buffer are the SENDCMDOUTPARAMS header,
     followed by 512 bytes of attribute data: offsets 0-1 are the version, then
     one attribute every 12 bytes.
-    （id, flags(2), value, worst, raw(6), reserved）。
+    (id, flags(2), value, worst, raw(6), reserved).
     """
     if not _smart_supported(h):
         return {}

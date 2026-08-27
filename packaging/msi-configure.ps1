@@ -462,7 +462,7 @@ if ($msCfg.service_exists -and $KeepMsSnmp -ne '1') {
     $after = Get-Service -Name SNMP -ErrorAction SilentlyContinue
     if ($after -and ($after.Status -ne 'Stopped' -or $after.StartType -ne 'Disabled')) {
         Log ("FAIL could not disable the built-in SNMP Service; it is currently " +
-             "$($after.Status) / $($after.StartType)。" +
+             "$($after.Status) / $($after.StartType)." +
              "It may be under Group Policy control. Disable it manually and retry, or install with KEEPMSSNMP=1 on a different port.")
         exit 1
     }
