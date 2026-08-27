@@ -159,7 +159,7 @@
          set the ACL, register the service, add firewall rules, start it, and run
          the loopback health check -->
     <SetProperty Id="ConfigureAgent"
-                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[CONFIGSCRIPT]&quot; -ManagementNetworks &quot;[MANAGEMENTNETWORKS]&quot; -Community &quot;[COMMUNITY]&quot; -KeepMsSnmp &quot;[KEEPMSSNMP]&quot;"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[CONFIGSCRIPT]&quot; -ManagementNetworks &quot;[MANAGEMENTNETWORKS]&quot; -Community &quot;[COMMUNITY]&quot; -KeepMsSnmp &quot;[KEEPMSSNMP]&quot; -UILevel &quot;[UILevel]&quot; -RestartManagerKey &quot;[MsiRestartManagerSessionKey]&quot;"
                  Before="ConfigureAgent"
                  Sequence="execute" />
     <CustomAction Id="ConfigureAgent"

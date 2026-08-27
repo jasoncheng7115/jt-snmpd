@@ -391,8 +391,19 @@ def test_configure_script_fails_closed_on_empty_networks():
 
 # ------------------------------------------------- the "Files in use" dialog
 #
-# There is deliberately no ServiceControl in this package. Two placements were
-# built and driven through the wizard on real hardware:
+# **This is specified behaviour, not a defect** (decided 2026-08-27):
+#
+#   graphical install   the operator is shown the Files in use page and decides.
+#                       Nothing should shut a monitoring agent down behind
+#                       someone's back while they are watching it.
+#   silent install      there is nobody to ask, so Windows Installer shuts the
+#                       agent down, installs, and starts it again by itself —
+#                       and msi-configure.ps1 records that it happened, because
+#                       the msiexec log which otherwise records it only exists
+#                       if somebody passed /l*v, which GPO deployment does not.
+#
+# There is deliberately no ServiceControl. Two placements were built and driven
+# through the wizard on real hardware before the behaviour above was specified:
 #
 #   in a component of its own      the dialog still listed jt-snmpd
 #   in the executable's component  jt-snmpd was gone from the list, but on a
@@ -400,8 +411,9 @@ def test_configure_script_fails_closed_on_empty_networks():
 #                                  then shut down unrelated services and the
 #                                  upgrade rolled back
 #
-# So the guard is that nobody adds one back without reading TEST_PLAN 6.1c.12
-# first.
+# The second one is the reason this is a test: it removes the dialog by making
+# the installer stop other people's services, which is exactly what the
+# specification above rules out.
 BUILD_MSI = (ROOT / "packaging" / "build-msi.ps1").read_text(encoding="utf-8")
 
 
@@ -424,3 +436,24 @@ def test_the_reason_is_written_down_next_to_the_decision():
     """A bare absence teaches nobody anything."""
     assert "Files in use" in BUILD_MSI, \
         "the comment explaining why there is no ServiceControl is gone"
+
+
+def test_the_installer_records_which_mode_it_ran_in():
+    """A silent install shuts the agent down and restarts it without asking, and
+    that is correct — but it has to leave a trace. Windows Installer records it
+    in the msiexec log, which only exists when somebody passes /l*v, and GPO
+    deployment does not.
+    """
+    wxs = (ROOT / "packaging" / "wix" / "jt-snmpd.wxs").read_text(encoding="utf-8")
+    assert "[UILevel]" in wxs, (
+        "the configure action has to know whether anyone was asked")
+    assert "[MsiRestartManagerSessionKey]" in wxs, (
+        "and whether Restart Manager was the thing that stopped the agent")
+
+    cfg = (ROOT / "packaging" / "msi-configure.ps1").read_text(encoding="utf-8")
+    assert "installation mode:" in cfg, "the mode has to reach our own log"
+    assert "Restart Manager session" in cfg, (
+        "say whether Restart Manager stopped and restarted the agent; the "
+        "operator's only other source for that is a log that was never written")
+    for level in ('"2"', '"5"'):
+        assert level in cfg, f"UI level {level} has to be distinguished"

@@ -363,7 +363,7 @@ jt-snmpd/
 | Authenticode 簽章 | ⏳ 日後規劃申請開源專案憑證，見[程式碼簽章](https://jasoncheng7115.github.io/jt-snmpd/code-signing_zh-TW.html) |
 | **Windows Server** | ✅ **2016（網域控制站）與 2022 已實機驗證**，含安裝生命週期、內建 SNMP 移轉、LibreNMS 端對端；見[部署到 Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes_zh-TW.html) |
 | 唯讀網域控制站 | ⛔ 尚未驗證，無環境 |
-| 圖形升級的「使用中的檔案」對話框 | ⚠️ **已知缺陷**。無訊息安裝與 GPO 派送不受影響;兩種修法都實測後撤回，原因見 `TEST_PLAN.md` 6.1c.12 |
+| 升級時的「使用中的檔案」對話框 | ✅ **已規範的行為**。圖形安裝會問，**由操作人員決定** —— 沒有人應該在別人看著的時候把監控代理服務悄悄關掉。無訊息安裝沒有人可問，由 Windows Installer 自行關閉、安裝、再啟動回來，**而且會寫進安裝記錄** |
 | 多網路卡來源位址選擇 | ⛔ 尚未驗證 |
 
 v1.0 不列入計畫：SNMP trap 與 inform、SNMP SET、ARM64、純 IPv6 部署、

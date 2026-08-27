@@ -384,7 +384,7 @@ jt-snmpd/
 | Authenticode signing | ⏳ planned via an open-source certificate programme — see [Code signing](https://jasoncheng7115.github.io/jt-snmpd/code-signing.html) |
 | **Windows Server** | ✅ **2016 (a domain controller) and 2022 verified on real machines** — installation lifecycle, migration from the built-in service, and end to end through LibreNMS; see [Deploying to Windows Server](https://jasoncheng7115.github.io/jt-snmpd/windows-server-notes.html) |
 | Read-only domain controllers | ⛔ not yet verified, no machine |
-| The "Files in use" page on graphical upgrades | ⚠️ **Known defect.** Silent installation and GPO deployment are unaffected; two fixes were measured and withdrawn, see `TEST_PLAN.md` 6.1c.12 |
+| The "Files in use" page on upgrades | ✅ **Specified behaviour.** A graphical install asks, and **the operator decides** — nothing should shut a monitoring agent down behind someone's back while they are watching. A silent install has nobody to ask, so Windows Installer stops it, installs, and starts it again, **and the installer log says so** |
 | Multi-homed source address selection | ⛔ not yet verified |
 
 Not planned for v1.0: SNMP traps and informs, SNMP SET, ARM64, IPv6-only

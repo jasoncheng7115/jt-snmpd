@@ -125,6 +125,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   or more; on the loop that is a total outage and the manager marks the device
   down. Answers now continue from the previous snapshot throughout.
 
+- **Upgrades now record how they handled the running agent.** A graphical
+  install shows the "Files in use" page and the operator decides; a silent
+  install has nobody to ask, so Windows Installer stops the agent, installs, and
+  starts it again. Both are correct, but only the first was visible. The
+  installer now receives the UI level and the Restart Manager session key and
+  writes what happened into its own log — the msiexec log that otherwise records
+  it exists only when somebody passes `/l*v`, which GPO deployment does not.
+
 ### Security
 
 - `cryptography` is pinned. It arrives through pysnmp and was already inside the

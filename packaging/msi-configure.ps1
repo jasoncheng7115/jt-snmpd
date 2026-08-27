@@ -20,6 +20,13 @@ param(
     [string]$ManagementNetworks = "",
     [string]$Community = "",
     [string]$KeepMsSnmp = "0",
+    # Windows Installer's UI level: 2 = /qn, 3 = /qb, 4 = reduced, 5 = full.
+    # Which one it is decides who gets to answer the "files in use" question,
+    # and the answer has to be visible afterwards either way.
+    [string]$UILevel = "",
+    # Non-empty when Windows Installer opened a Restart Manager session, which
+    # is what shuts down and restarts whatever was holding the files.
+    [string]$RestartManagerKey = "",
 
     [switch]$Uninstall,
     [string]$Purge = "0"
@@ -146,6 +153,43 @@ if ($Uninstall) {
 # where [INSTALLFOLDER]'s trailing backslash escapes the closing quote.
 $InstallDir = Split-Path -Parent $PSCommandPath
 Log "=== configuration starting, InstallDir=$InstallDir ==="
+
+# --- How this installation is being run, and who answered the "files in use"
+# question ---------------------------------------------------------------
+#
+# On a graphical upgrade the agent is still running when Windows Installer
+# checks which files are held, so it appears on the "Files in use" page and
+# **the operator decides** whether to let it be closed. That is the intended
+# behaviour, not a defect: nothing should shut a monitoring agent down behind
+# someone's back while they are watching.
+#
+# A silent installation has nobody to ask, so Windows Installer shuts the agent
+# down, installs, and starts it again by itself. That is also right — but it
+# happens invisibly, and the msiexec log that records it only exists if somebody
+# passed /l*v, which GPO deployment does not. So it is recorded here, in the log
+# the operator actually has.
+$uiName = switch ($UILevel) {
+    "2" { "silent (/qn)" }
+    "3" { "basic (/qb)" }
+    "4" { "reduced" }
+    "5" { "full UI" }
+    default { "unknown ($UILevel)" }
+}
+Log "installation mode: $uiName"
+if ($RestartManagerKey) {
+    if ($UILevel -eq "2" -or $UILevel -eq "3") {
+        Log ("Restart Manager session $RestartManagerKey is active. With no UI to " +
+             "ask, Windows Installer shuts down whatever holds the files and " +
+             "restarts it afterwards; if jt-snmpd was running it was stopped and " +
+             "will be started again by the installer.")
+    } else {
+        Log ("Restart Manager session $RestartManagerKey is active. At this UI " +
+             "level the operator was shown the Files in use page and chose how " +
+             "to proceed.")
+    }
+} else {
+    Log "no Restart Manager session: nothing held the files being replaced"
+}
 $exe = Join-Path $InstallDir $EXE_NAME
 if (-not (Test-Path $exe)) { Log "FAIL $exe not found"; exit 1 }
 
