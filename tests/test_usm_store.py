@@ -217,3 +217,59 @@ def test_aes_cfb_privacy_still_works_in_this_cryptography():
     ct = enc.update(plain) + enc.finalize()
     dec = Cipher(algorithms.AES(key), modes.CFB(iv)).decryptor()
     assert dec.update(ct) + dec.finalize() == plain
+
+
+# --- Losing the store -------------------------------------------------------
+
+def test_the_store_keeps_a_previous_copy():
+    """temp-flush-replace already rules out a torn write. The .bak is for what
+    comes from outside: a filesystem error, antivirus quarantining the file, a
+    backup agent restoring something odd.
+
+    It is worth keeping because of the cost. Every SNMPv3 account on the machine
+    goes with the file and cannot be recovered from anywhere else — the keys are
+    localized to this engineID and the passphrases were deliberately never
+    stored. Someone has to visit the machine and provision each account again,
+    and on an estate provisioned from one policy that is every machine that lost
+    it.
+    """
+    import ast as _ast
+    src = (Path(__file__).resolve().parents[1] / "deploy" / "usm.py").read_text(
+        encoding="utf-8")
+    save = next(_ast.unparse(n) for n in _ast.walk(_ast.parse(src))
+                if isinstance(n, _ast.FunctionDef) and n.name == "save_store")
+    assert ".bak" in save, "the previous copy has to be kept"
+    assert "fsync" in save, "and the new one flushed before it replaces anything"
+    load = next(_ast.unparse(n) for n in _ast.walk(_ast.parse(src))
+                if isinstance(n, _ast.FunctionDef) and n.name == "load_store")
+    assert ".bak" in load, (
+        "keeping a copy nobody reads is what index-map did for four releases")
+
+
+def test_a_damaged_store_falls_back_and_says_what_may_be_missing(tmp_path, monkeypatch):
+    good = usm.store_to_json(ENGINE_A, [_one_user()])
+    # Stand in for DPAPI, which only exists on Windows
+    monkeypatch.setattr(usm, "protect", lambda b: b)
+    monkeypatch.setattr(usm, "unprotect", lambda b: b)
+
+    store = tmp_path / "usm.dat"
+    store.write_bytes(b"\x00 not a store")
+    (tmp_path / "usm.dat.bak").write_bytes(good)
+
+    users, problems = usm.load_store(str(store), ENGINE_A)
+    assert [u.name for u in users] == ["librenms"]
+    joined = " ".join(problems)
+    assert "previous copy" in joined
+    assert "will be missing" in joined, (
+        "an account added since the last save is gone; say so rather than "
+        "letting it look like a clean recovery")
+
+
+def test_both_copies_unusable_reports_and_does_not_invent_users(tmp_path, monkeypatch):
+    monkeypatch.setattr(usm, "unprotect", lambda b: b)
+    store = tmp_path / "usm.dat"
+    store.write_bytes(b"rubbish")
+    (tmp_path / "usm.dat.bak").write_bytes(b"also rubbish")
+    users, problems = usm.load_store(str(store), ENGINE_A)
+    assert users == []
+    assert problems

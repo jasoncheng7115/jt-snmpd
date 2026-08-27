@@ -249,7 +249,20 @@ def store_from_json(raw: bytes, engine_id: bytes) -> tuple[list[UsmUser], list[s
 
 
 def save_store(path: str, engine_id: bytes, users: list[UsmUser]) -> None:
-    """Encrypt and write. Same temp-flush-replace as the other state files."""
+    """Encrypt and write, keeping the previous copy.
+
+    temp-flush-replace already makes a torn write impossible: an interrupted
+    save leaves either the old file or the new one, never half of each. The
+    .bak is for the failures that come from outside — a filesystem error,
+    antivirus quarantining the file, a backup agent restoring something odd.
+
+    It is worth keeping here because of what losing it costs. Every SNMPv3
+    account on the machine goes with it, and they cannot be recovered from
+    anywhere else: the keys are localized to this engineID and the passphrases
+    they came from were deliberately never stored. The operator has to visit the
+    machine and provision each account again, and on an estate provisioned from
+    one policy that is every machine that lost the file.
+    """
     os.makedirs(os.path.dirname(path), exist_ok=True)
     blob = protect(store_to_json(engine_id, users))
     tmp = path + ".tmp"
@@ -257,22 +270,36 @@ def save_store(path: str, engine_id: bytes, users: list[UsmUser]) -> None:
         fh.write(blob)
         fh.flush()
         os.fsync(fh.fileno())
+    if os.path.exists(path):
+        try:
+            os.replace(path, path + ".bak")
+        except OSError:
+            pass          # a missing .bak only costs the fallback, not the save
     os.replace(tmp, path)
 
 
 def load_store(path: str, engine_id: bytes) -> tuple[list[UsmUser], list[str]]:
-    if not os.path.exists(path):
-        return [], []
-    try:
-        with open(path, "rb") as fh:
-            blob = fh.read()
-    except OSError as exc:
-        return [], [f"the SNMPv3 store could not be read: {exc}"]
-    try:
-        raw = unprotect(blob)
-    except OSError as exc:
-        return [], [
-            f"the SNMPv3 store could not be decrypted: {exc}. DPAPI machine "
-            "keys do not travel, so this is what a store copied from another "
-            "machine looks like; the users have to be provisioned again"]
-    return store_from_json(raw, engine_id)
+    problems: list[str] = []
+    for candidate in (path, path + ".bak"):
+        if not os.path.exists(candidate):
+            continue
+        try:
+            with open(candidate, "rb") as fh:
+                blob = fh.read()
+            raw = unprotect(blob)
+        except OSError as exc:
+            problems.append(
+                f"{os.path.basename(candidate)} could not be read or decrypted: "
+                f"{exc}. DPAPI machine keys do not travel, so this is also what "
+                "a store copied from another machine looks like")
+            continue
+        users, parse_problems = store_from_json(raw, engine_id)
+        if users:
+            if candidate.endswith(".bak"):
+                problems.append(
+                    "the SNMPv3 store was unusable and the previous copy was "
+                    "used instead. Check secrets\\usm.dat: an account added "
+                    "since the last save will be missing")
+            return users, problems + parse_problems
+        problems.extend(parse_problems)
+    return [], problems
