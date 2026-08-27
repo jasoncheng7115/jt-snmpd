@@ -539,7 +539,7 @@ def _volume_info(root: str) -> tuple[str, str, str]:
     returning UTF-16, so Python gets a str directly; the risk comes later, when
     it is encoded into an OCTET STRING. That has to go through octet() to become
     explicit UTF-8, or pyasn1 encodes it as latin-1 and raises
-    PyAsn1UnicodeEncodeError。
+    PyAsn1UnicodeEncodeError.
     """
     name = ctypes.create_unicode_buffer(261)
     fs = ctypes.create_unicode_buffer(261)
@@ -1013,7 +1013,7 @@ def get_routes() -> list[dict]:
 
 # ------------------- UCD-SNMP systemStats (the LibreNMS System graph group)
 class _SYSTEM_PERFORMANCE_INFORMATION(ctypes.Structure):
-    """NtQuerySystemInformation(SystemPerformanceInformation)。
+    """NtQuerySystemInformation(SystemPerformanceInformation).
 
     Windows does not document this structure, but its layout has been stable
     since NT and both Task Manager and perfmon depend on it. Measured on Win11
@@ -1854,7 +1854,7 @@ class _WTS_SESSION_INFOW(ctypes.Structure):
                 ("State", ctypes.c_int)]
 
 
-# WTS_CONNECTSTATE_CLASS：0=Active 1=Connected 2=ConnectQuery 3=Shadow
+# WTS_CONNECTSTATE_CLASS:0=Active 1=Connected 2=ConnectQuery 3=Shadow
 # 4=Disconnected 5=Idle 6=Listen 7=Reset 8=Down 9=Init
 _WTS_ACTIVE, _WTS_CONNECTED, _WTS_DISCONNECTED = 0, 1, 4
 WTS_CURRENT_SERVER_HANDLE = 0
@@ -1934,7 +1934,7 @@ DISK_STATE_OK, DISK_STATE_WARNING, DISK_STATE_CRITICAL, DISK_STATE_UNKNOWN = 1, 
 
 SYS = (1, 3, 6, 1, 2, 1, 1)
 IFT = (1, 3, 6, 1, 2, 1, 2, 2, 1)          # ifTable
-IFX = (1, 3, 6, 1, 2, 1, 31, 1, 1, 1)      # ifXTable（ifMIBObjects.ifXTable.ifXEntry）
+IFX = (1, 3, 6, 1, 2, 1, 31, 1, 1, 1)      # ifXTable(ifMIBObjects.ifXTable.ifXEntry)
 HR = (1, 3, 6, 1, 2, 1, 25)
 HRSTOR = HR + (2, 3, 1)                    # hrStorageTable
 HRDEV = HR + (3, 2, 1)                     # hrDeviceTable
@@ -1956,8 +1956,8 @@ UDPG = (1, 3, 6, 1, 2, 1, 7)               # UDP-MIB udp group
 SNMPG = (1, 3, 6, 1, 2, 1, 11)             # SNMPv2-MIB snmp group
 IPADDR = (1, 3, 6, 1, 2, 1, 4, 20, 1)      # RFC1213 ipAddrTable (IPv4; what
                                            # LibreNMS actually reads)
-IPADDRESS = (1, 3, 6, 1, 2, 1, 4, 34, 1)   # IP-MIB ipAddressTable（IPv4 + IPv6）
-IPNETPHYS = (1, 3, 6, 1, 2, 1, 4, 35, 1)   # IP-MIB ipNetToPhysicalTable（ARP / ND）
+IPADDRESS = (1, 3, 6, 1, 2, 1, 4, 34, 1)   # IP-MIB ipAddressTable(IPv4 + IPv6)
+IPNETPHYS = (1, 3, 6, 1, 2, 1, 4, 35, 1)   # IP-MIB ipNetToPhysicalTable(ARP / ND)
 ENTSENS = (1, 3, 6, 1, 2, 1, 99, 1, 1, 1)  # ENTITY-SENSOR-MIB entPhySensorEntry
 ENT_SENSOR_BASE = 5000                     # entPhysicalIndex range: sensors
 ENT_THERMAL_BASE = 5500                    # entPhysicalIndex range: thermal zones
@@ -2419,7 +2419,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(UDPG + (3, 0), rfc1902.Counter32(udp.InErrors & U32))
         add(UDPG + (4, 0), rfc1902.Counter32(udp.OutDatagrams & U32))
 
-    # --- ipAddrTable / ipAddressTable（LibreNMS ipv4-addresses / ipv6-addresses）---
+    # --- ipAddrTable / ipAddressTable(LibreNMS ipv4-addresses / ipv6-addresses)---
     def _oid_addr(raw: bytes) -> tuple:
         """Expand address bytes into an OID suffix, one sub-identifier per byte."""
         return tuple(raw)
@@ -2461,7 +2461,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(IPADDRESS + (7,) + aidx, rfc1902.Integer32(1))                # ipAddressStatus preferred
         add(IPADDRESS + (10,) + aidx, rfc1902.Integer32(1))               # ipAddressRowStatus
 
-    # --- ipNetToPhysicalTable（ARP / IPv6 ND）---
+    # --- ipNetToPhysicalTable(ARP / IPv6 ND)---
     # off by default. The local ARP table is a target list for
     # lateral movement.
     if CFG.get("enable_arp_table"):
@@ -2519,7 +2519,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         add(HRFS + (8, pi), rfc1902.Integer32(0))                        # hrFSLastFullBackupDate
         add(HRFS + (9, pi), rfc1902.Integer32(0))                        # hrFSLastPartialBackupDate
 
-    # --- ipRouteTable（RFC1213）---
+    # --- ipRouteTable(RFC1213)---
     # RFC1213's ipRouteTable is indexed by **destination address alone**, so a
     # destination can appear only once. Real hosts routinely have a multicast
     # route (224.0.0.0) and a broadcast route (255.255.255.255) per adapter, and
@@ -2803,7 +2803,7 @@ def build_snapshot() -> tuple[tuple, tuple]:
         # ssCpuRawKernel(55): UCD's definition overlaps ssCpuRawSystem and is
         #   usually 0 on Linux
         add(UCDSS + (56, 0), rfc1902.Counter32(_hz(ct["interrupt"])))       # ssCpuRawInterrupt
-        # ssCpuRawSoftIRQ(61) / ssCpuRawSteal(64) / ssCpuRawGuest(65,66)：
+        # ssCpuRawSoftIRQ(61) / ssCpuRawSteal(64) / ssCpuRawGuest(65,66):
         #   no Windows equivalent, so not emitted.
 
     if sp is not None:
@@ -3128,7 +3128,7 @@ class GatedUdpTransport(udp.UdpTransport):
     def datagram_received(self, datagram, transportAddress):
         """The actual hook point in pysnmp 7.x.
 
-        UdpAsyncioTransport → DgramAsyncioProtocol → asyncio.DatagramProtocol。
+        UdpAsyncioTransport → DgramAsyncioProtocol → asyncio.DatagramProtocol.
         DgramAsyncioProtocol.datagram_received hands the datagram to
         loop.call_soon(callback), which enters pysnmp's message processing chain.
         Intercepting here keeps the bytes away from the BER decoder.

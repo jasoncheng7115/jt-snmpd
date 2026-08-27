@@ -147,7 +147,7 @@ def _u32(d: bytes, off: int) -> int:
 # --- Extraction per structure type ------------------------------------------
 
 def bios_info(structs) -> dict:
-    """Type 0 — BIOS。"""
+    """Type 0 — BIOS."""
     for s in structs:
         if s["type"] == 0:
             d, st = s["data"], s["strings"]
@@ -158,7 +158,7 @@ def bios_info(structs) -> dict:
 
 
 def system_info(structs) -> dict:
-    """Type 1 — System。"""
+    """Type 1 — System."""
     for s in structs:
         if s["type"] == 1:
             d, st = s["data"], s["strings"]
@@ -170,7 +170,7 @@ def system_info(structs) -> dict:
 
 
 def baseboard_info(structs) -> dict:
-    """Type 2 — Baseboard。"""
+    """Type 2 — Baseboard."""
     for s in structs:
         if s["type"] == 2:
             d, st = s["data"], s["strings"]

@@ -100,3 +100,48 @@ def test_scripts_are_utf8_with_bom(script, name):
     turns Chinese comments into a syntax error."""
     raw = (PKG / name).read_bytes()
     assert raw.startswith(b"\xef\xbb\xbf"), f"{name} has to be saved as UTF-8 with BOM"
+
+
+def test_the_shipped_program_is_english_only():
+    """Documentation is bilingual; the program is not.
+
+    A Taiwanese-built agent that emits a fullwidth full stop into an English
+    sentence on an English Windows looks broken, and one had reached a
+    user-visible line: the installer's "could not disable the built-in SNMP
+    Service" error carried a `。` in the middle of it, which went to the console
+    and into the installation log on every machine that hit it.
+
+    The rest were fullwidth punctuation left in comments and docstrings by
+    translation. Nobody sees those, but they are the same mistake one step
+    further from the user, and they are how the first one got there.
+    """
+    from pathlib import Path as _P
+
+    root = _P(__file__).resolve().parents[1]
+    files = (sorted((root / "deploy").glob("*.py"))
+             + sorted((root / "packaging").glob("*.ps1"))
+             + sorted((root / "packaging" / "wix").glob("*.wxs")))
+
+    def is_cjk(ch: str) -> bool:
+        o = ord(ch)
+        return (0x3000 <= o <= 0x303F      # CJK punctuation
+                or 0x3400 <= o <= 0x9FFF   # Han
+                or 0xF900 <= o <= 0xFAFF
+                or 0xFF00 <= o <= 0xFFEF)  # fullwidth forms
+
+    # One deliberate exception, and it is data rather than prose: the docstring
+    # on octet() quotes a Traditional Chinese adapter name to say why encoding
+    # is stated explicitly. Removing it would remove the reason.
+    allowed = {"乙太網路"}
+
+    offenders = []
+    for f in files:
+        for i, line in enumerate(f.read_text(encoding="utf-8-sig").splitlines(), 1):
+            if not any(is_cjk(c) for c in line):
+                continue
+            if any(a in line for a in allowed):
+                continue
+            offenders.append(f"{f.relative_to(root)}:{i}: {line.strip()[:70]}")
+    assert not offenders, (
+        "the program ships in English only; these lines carry CJK text:\n  "
+        + "\n  ".join(offenders))
