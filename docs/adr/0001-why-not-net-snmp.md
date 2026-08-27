@@ -50,11 +50,43 @@ LibreNMS uses, which is a poller pulling over SNMP.
 2. **Extending it means writing C.** The self-health OIDs and the small
    adjustments needed for LibreNMS compatibility would all be C changes and a
    recompile, which makes every iteration slow.
-3. **It does not match the skills available.** The other jt-* projects are
-   Python. Rebuilding Net-SNMP calls for C, autotools and win32 build expertise.
+3. **It needs a second build and release chain.** Carrying a long-lived C fork
+   means autotools and MSVC, which share nothing with the rest of this project's
+   toolchain of Python, PyInstaller and WiX. That is a second thing to keep
+   current and a second thing to go wrong.
 4. **Self-contained deployment is harder.** A C binary brings MSVC runtime
    dependencies with it, where PyInstaller's one-folder output is self-contained
    by construction. That was verified on hardware at gate D.
+
+**Upstream's own history points the same way.** This is not conjecture: these
+are Net-SNMP's published bugs and advisories, and **each one lands in a part
+this project does not have**:
+
+| Net-SNMP issue | Applicable here |
+|---|---|
+| An AgentX subagent timing out crashes or hangs snmpd at 100% CPU (bug 2411) | No. There is no AgentX here, and no plug-in extension mechanism at all |
+| Repeated memory leaks in `ipNetToMediaTable` and the `table_iterator` API | No. This is a sorted array and a bisect, rebuilt whole every cycle, with no iterator state to leak |
+| USM duplicate-user memory leak (bug 2942) | No. Users are loaded once at startup and not mutated afterwards |
+| snmptrapd buffer overflow on a crafted packet (CVE-2025-68615) | No. Trap reception is not implemented |
+| A denial-of-service vector in the ICMP-MIB table objects | No. Those tables are not served |
+
+**What that table is and is not saying.** It is not that Net-SNMP is badly
+written — it is a decades-old implementation carrying an enormous amount of the
+world's monitoring. It is that most of those failures come from its extension
+machinery, AgentX subagents and dynamically loaded modules, and from manual
+memory management. This project has none of that, and pays for it with a far
+smaller feature set. What choosing A buys is not safer code; it is **a much
+smaller attack surface and far fewer moving parts**.
+
+### Upstream sources
+
+Everything in that table is public, and is listed here so a reader can weigh it
+themselves rather than take this document's word for it:
+
+- [Net-SNMP bug 2411 — AgentX subagent timeout](https://sourceforge.net/p/net-snmp/bugs/2411/)
+- [Net-SNMP bug 2942 — USM duplicate user memory leak](https://sourceforge.net/p/net-snmp/bugs/2942/)
+- [GHSA-4389-rwqf-q9gq — snmptrapd buffer overflow (CVE-2025-68615)](https://github.com/net-snmp/net-snmp/security/advisories/GHSA-4389-rwqf-q9gq)
+- [Net-SNMP NEWS](https://www.net-snmp.org/docs/NEWS.html)
 
 ### Why A, and what already demonstrates it
 
