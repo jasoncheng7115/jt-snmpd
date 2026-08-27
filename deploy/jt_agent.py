@@ -1389,21 +1389,40 @@ def _extend_index(token: str) -> tuple[int, ...]:
     return (len(raw),) + tuple(raw)
 
 
-def _machine_guid() -> str:
+def _machine_guid() -> tuple[str, str]:
     """Read Windows' MachineGuid as a stable basis for the engineID.
+
+    Returns (value, source) where source is "machine-guid" or "hostname".
 
     RFC 3411 requires the engineID to stay the same across reboots and service
     restarts. SNMPv3 user keys are localised against it, so if it changes every
     key stops working.
+
+    **The fallback is not equivalent and used to be silent.** A hostname is not
+    stable: renaming a machine is routine — joining a domain, standardising
+    names — and each rename would change the engineID and kill every SNMPv3
+    account on that host. Worse, the clone detection would then report that the
+    machine had been cloned from a template or reimaged, which would be untrue
+    and would send whoever read it looking in the wrong place.
+
+    So the source travels with the value, is recorded in engine.json, and is
+    logged. MachineGuid exists on every Windows since XP, so reaching the
+    fallback at all says something is wrong with the machine.
     """
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
                             r"SOFTWARE\Microsoft\Cryptography", 0,
                             winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
-            return str(winreg.QueryValueEx(k, "MachineGuid")[0])
-    except Exception:  # noqa: BLE001 - fall back to the hostname if the
-                       # registry is unavailable
-        return socket.gethostname()
+            return str(winreg.QueryValueEx(k, "MachineGuid")[0]), "machine-guid"
+    except Exception as exc:  # noqa: BLE001
+        host = socket.gethostname()
+        log(f"MachineGuid could not be read ({exc!r}), so the SNMPv3 engineID "
+            f"is derived from the hostname {host!r} instead. **Renaming this "
+            f"machine will invalidate every SNMPv3 account on it.** MachineGuid "
+            f"is present on every Windows since XP; if this persists, the "
+            f"registry key or its permissions are the thing to look at",
+            error=True)
+        return host, "hostname"
 
 
 # RFC 3414 §2.2: snmpEngineBoots saturates here, and a new engineID is required
@@ -1485,11 +1504,23 @@ def _plan_engine_state(prev: object, machine_guid: str, boot_key: int,
         # Resetting the counter is right rather than merely tidy: the identity
         # is new, so its counter has never been used and cannot be replayed.
         engine_id, boots = fresh_engine_id, 0
-        reasons.append(
-            "MachineGuid does not match the one this engineID was generated "
-            "for, so the machine was cloned or reimaged; generated a new "
-            "engineID and reset snmpEngineBoots. Any SNMPv3 user localised "
-            "against the old engineID has to be provisioned again")
+        if prev.get("identity_source") == "hostname":
+            # Not a clone. The identity was built from the hostname because
+            # MachineGuid could not be read, and the machine has since been
+            # renamed. Saying "cloned" here would send whoever reads it looking
+            # for a template that does not exist.
+            reasons.append(
+                "the identity was derived from the hostname because MachineGuid "
+                "could not be read, and the hostname has changed. This is a "
+                "rename, not a clone. A new engineID was generated and every "
+                "SNMPv3 user has to be provisioned again. Fix whatever stops "
+                "MachineGuid being read, or the next rename does this again")
+        else:
+            reasons.append(
+                "MachineGuid does not match the one this engineID was generated "
+                "for, so the machine was cloned or reimaged; generated a new "
+                "engineID and reset snmpEngineBoots. Any SNMPv3 user localised "
+                "against the old engineID has to be provisioned again")
     elif boots >= ENGINE_BOOTS_MAX:
         engine_id, boots = fresh_engine_id, 0
         reasons.append("snmpEngineBoots reached its ceiling, so RFC 3414 "
@@ -1558,27 +1589,32 @@ def _engine_state() -> dict:
     if _engine_cache is not None:
         return _engine_cache
     try:
-        guid = _machine_guid()
+        guid, source = _machine_guid()
         # Tolerate sub-second jitter, or every sample would look like a new boot
         boot_key = (int(time.time() * 1000) - int(_k32.GetTickCount64())) // 10000
         prev = _load_engine_state()
         state, reasons = _plan_engine_state(prev, guid, boot_key,
                                             _new_engine_id(guid))
+        # Recorded so the clone check can tell the difference between a machine
+        # that was cloned and one that was renamed while running on the
+        # hostname fallback. Without it the second reports as the first.
+        state["identity_source"] = source
         for reason in reasons:
             log(f"engine identity: {reason}")
         if state != prev:
             _save_engine_state(state)
         _engine_cache = state
     except Exception as exc:  # noqa: BLE001 - must never stop a snapshot build
-        log(f"engine state read/write failed, serving a volatile identity: {exc!r}")
-        guid = "unknown"
+        log(f"engine state read/write failed, serving a volatile identity: {exc!r}",
+            error=True)
+        guid, source = "unknown", "unknown"
         try:
-            guid = _machine_guid()
+            guid, source = _machine_guid()
         except Exception:  # noqa: BLE001
             pass
         _engine_cache = {"schema_version": 2, "machine_guid": guid,
                          "engine_id": _new_engine_id(guid), "boot_key": 0,
-                         "boots": 1}
+                         "boots": 1, "identity_source": source}
     return _engine_cache
 
 

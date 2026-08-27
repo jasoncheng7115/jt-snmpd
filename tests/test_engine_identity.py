@@ -200,3 +200,59 @@ def test_a_schema_1_file_is_read_without_losing_the_boot_count():
     assert state["boots"] == 44, "the count carries across the schema change"
     assert state["engine_id"] == new_id(GUID_A)
     assert reasons, "generating the first engine identity is worth a log line"
+
+
+# --- The hostname fallback --------------------------------------------------
+
+def test_a_rename_is_not_reported_as_a_clone():
+    """MachineGuid is read from the registry, and when that fails the identity
+    falls back to the hostname. A hostname is not stable — renaming a machine is
+    routine — so a rename then changes the engineID and kills every SNMPv3
+    account on the host.
+
+    Reporting that as "the machine was cloned or reimaged" would be untrue and
+    would send whoever read it looking for a template that does not exist. The
+    two cases are told apart by the source recorded alongside the identity.
+    """
+    before = {"schema_version": 2, "machine_guid": "OLD-HOSTNAME",
+              "engine_id": new_id("OLD-HOSTNAME"), "boot_key": 100, "boots": 9,
+              "identity_source": "hostname"}
+    _, reasons = plan(before, "NEW-HOSTNAME", 101, new_id("NEW-HOSTNAME"))
+    joined = " ".join(reasons)
+    assert "rename, not a clone" in joined
+    assert "cloned or reimaged" not in joined
+    assert "MachineGuid" in joined, "say what to fix so it stops happening"
+
+
+def test_a_real_clone_still_reads_as_a_clone():
+    before = {"schema_version": 2, "machine_guid": GUID_A,
+              "engine_id": new_id(GUID_A), "boot_key": 100, "boots": 9,
+              "identity_source": "machine-guid"}
+    _, reasons = plan(before, GUID_B, 101, new_id(GUID_B))
+    assert "cloned" in " ".join(reasons)
+
+
+def test_an_older_file_without_the_source_reads_as_a_clone():
+    """1.1.0 added identity_source. A file written before it has no such key,
+    and the previous behaviour is the right default: those machines did read
+    MachineGuid successfully in the overwhelming majority of cases."""
+    before = {"schema_version": 2, "machine_guid": GUID_A,
+              "engine_id": new_id(GUID_A), "boot_key": 100, "boots": 9}
+    _, reasons = plan(before, GUID_B, 101, new_id(GUID_B))
+    assert "cloned" in " ".join(reasons)
+
+
+def test_the_fallback_is_logged_and_says_what_it_costs():
+    """It used to be silent. Everything else in this file depends on the
+    identity being stable, and the fallback quietly changes what "stable"
+    means."""
+    src = AGENT.read_text(encoding="utf-8")
+    i = src.index("def _machine_guid()")
+    body = src[i:src.index("\ndef ", i + 1)]
+    assert "gethostname" in body
+    assert "log(" in body, "a silent change of basis is the problem"
+    assert "invalidate every SNMPv3 account" in body, (
+        "say the consequence, not just that it happened")
+    assert 'return host, "hostname"' in body, (
+        "the source has to travel with the value or the clone check cannot "
+        "tell a rename from a clone")
