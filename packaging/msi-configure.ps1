@@ -555,7 +555,48 @@ New-NetFirewallRule -DisplayName $FW_RULE_ICMP -Direction Inbound -Protocol ICMP
 Log "firewall rules created (UDP/161 and ICMPv4, sources limited to $($nets -join ', '))"
 
 # --- Start the service and run the loopback health check  ---
-function Test-SnmpLoopback {
+#
+# Two probes, because there are two ways to be configured and only one of them
+# speaks SNMPv2c.
+#
+# 1.1.1 shipped with only the v2c probe and it made `v3_only` machines
+# unupgradable: the agent deliberately does not register v2c, the probe got
+# nothing, the custom action failed, and Windows Installer rolled the whole
+# transaction back. 1603, every time, on exactly the sites that had taken the
+# security advice. It hid until 1.1.1 because until then an upgrade **reset**
+# `v3_only` to false before this ran, so the probe always had v2c to talk to.
+# Preserving the setting, which is the fix this release exists for, is what
+# made the older defect reachable.
+#
+# The v3 probe is an engine discovery: an empty username at noAuthNoPriv, which
+# RFC 3414 §4 requires an agent to answer with a report PDU before any
+# credential has been presented. It needs no account and no passphrase, so it
+# works on a machine whose SNMPv3 users this installer has never seen, and it
+# is still a real SNMP round trip rather than a look at the service state.
+function New-SnmpV3Discovery {
+    # Every length here is well under 128, so single-byte lengths are correct.
+    function Tlv { param([byte]$Tag, [byte[]]$Content)
+        return [byte[]]@($Tag, [byte]$Content.Length) + $Content }
+    $rid  = [byte[]](0x01,0x02,0x03,0x04)
+    $glob = (Tlv 0x02 $rid) +
+            [byte[]](0x02,0x03,0x00,0xFF,0xE3) +   # msgMaxSize 65507
+            [byte[]](0x04,0x01,0x04) +             # msgFlags: reportable, noAuthNoPriv
+            [byte[]](0x02,0x01,0x03)               # msgSecurityModel: USM
+    $usm  = [byte[]](0x04,0x00) +                  # msgAuthoritativeEngineID, empty
+            [byte[]](0x02,0x01,0x00) +             # msgAuthoritativeEngineBoots
+            [byte[]](0x02,0x01,0x00) +             # msgAuthoritativeEngineTime
+            [byte[]](0x04,0x00) +                  # msgUserName, empty
+            [byte[]](0x04,0x00) +                  # msgAuthenticationParameters
+            [byte[]](0x04,0x00)                    # msgPrivacyParameters
+    $pdu  = (Tlv 0x02 $rid) + [byte[]](0x02,0x01,0x00) + [byte[]](0x02,0x01,0x00) +
+            [byte[]](0x30,0x00)                    # empty varbind list
+    $scoped = [byte[]](0x04,0x00) + [byte[]](0x04,0x00) + (Tlv 0xA0 $pdu)
+    $body = [byte[]](0x02,0x01,0x03) + (Tlv 0x30 $glob) +
+            (Tlv 0x04 (Tlv 0x30 $usm)) + (Tlv 0x30 $scoped)
+    return (Tlv 0x30 $body)
+}
+
+function New-SnmpV2cGet {
     param($CommunityName)
     $c2 = [Text.Encoding]::ASCII.GetBytes($CommunityName)
     $oid = [byte[]](0x2B,0x06,0x01,0x02,0x01,0x01,0x03,0x00)
@@ -564,17 +605,34 @@ function Test-SnmpLoopback {
     $pdu = [byte[]](0xA0,(3+3+3+$vbl.Length)) + [byte[]](0x02,0x01,0x01) +
            [byte[]](0x02,0x01,0x00) + [byte[]](0x02,0x01,0x00) + $vbl
     $body = [byte[]](0x02,0x01,0x01) + [byte[]](0x04,$c2.Length) + $c2 + $pdu
-    $msg = [byte[]](0x30,$body.Length) + $body
+    return [byte[]](0x30,$body.Length) + $body
+}
+
+function Test-SnmpLoopback {
+    param([byte[]]$Message, [int]$Port)
     try {
         $u = New-Object System.Net.Sockets.UdpClient
         $u.Client.ReceiveTimeout = 3000
-        $u.Connect('127.0.0.1', 161)
-        [void]$u.Send($msg, $msg.Length)
+        $u.Connect('127.0.0.1', $Port)
+        [void]$u.Send($Message, $Message.Length)
         $ep = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
         $resp = $u.Receive([ref]$ep); $u.Close()
         return ($resp.Length -gt 0)
     } catch { return $false }
 }
+
+# The port comes from the configuration that was just written, not from a
+# constant. A site that had moved the agent off 161 would otherwise fail this
+# check for the same reason a v3_only site did.
+$probePort = [int]$cfg.port
+if ($cfg.v3_only) {
+    $probe = New-SnmpV3Discovery
+    $probeKind = "SNMPv3 engine discovery (v3_only is set, so there is no v2c to ask)"
+} else {
+    $probe = New-SnmpV2cGet -CommunityName $comm
+    $probeKind = "SNMPv2c GET of sysUpTime"
+}
+Log "health check: $probeKind on 127.0.0.1:$probePort"
 
 Start-Service -Name $SERVICE_NAME -WarningAction SilentlyContinue
 $deadline = (Get-Date).AddSeconds(30)
@@ -582,13 +640,13 @@ $healthy = $false
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 2
     if ((Get-Service -Name $SERVICE_NAME).Status -ne 'Running') { continue }
-    if (Test-SnmpLoopback -CommunityName $comm) { $healthy = $true; break }
+    if (Test-SnmpLoopback -Message $probe -Port $probePort) { $healthy = $true; break }
 }
 if (-not $healthy) {
     # By default an MSI only confirms the service started, and a service that
     # started is not the same as one that answers SNMP: the "alive but dead"
     # case. A failed health check rolls the whole MSI transaction back.
-    Log "FAIL the service started but did not answer a loopback SNMP query within 30 seconds"
+    Log "FAIL the service started but did not answer a loopback $probeKind within 30 seconds"
     exit 1
 }
 Log "service started and passed the loopback self-test"
