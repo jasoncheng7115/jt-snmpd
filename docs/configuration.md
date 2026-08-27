@@ -146,13 +146,27 @@ ports and their history.
 
 ## 5. What happens when it is wrong
 
-**Malformed JSON.** The log says `config file at ... could not be read` and the
-agent **starts anyway** on the built-in defaults — where the community is empty,
-so in practice it stops answering v2c. **That is deliberate**: carrying on
-quietly with the previous settings would let an operator believe an edit had
-taken effect.
+**Malformed JSON.** The log gives the exact reason, position included:
 
-**File missing.** `no config file at ...; using built-in defaults`, as above.
+```
+ERROR config file at C:\ProgramData\jt-snmpd\config.json could not be read:
+      JSONDecodeError('Expecting value: line 1 column 43 (char 42)')
+ERROR no community configured — refusing to serve. Set "community" in
+      C:\ProgramData\jt-snmpd\config.json and restart the service.
+```
+
+**The service then refuses to start** and stays stopped. A file that cannot be
+read means no community, and **without a community there is nothing to serve**.
+Carrying on with the built-in defaults would let an operator believe their edit
+had taken effect; stopping and saying why is the lesser harm.
+
+**File missing.** The same refusal, preceded by `no config file at ...; using
+built-in defaults`.
+
+**Empty management networks** with a valid community: the service **does**
+start, answers loopback only, and logs `no management networks configured —
+only loopback will be answered`. Deny-all rather than serve-all: an empty list
+was once treated as "no filtering", which is fail-open.
 
 **A value of the wrong type.** That one key is skipped and the rest are applied.
 The `config loaded from ...` line lists what went in, so it names what did not.

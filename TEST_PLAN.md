@@ -405,8 +405,8 @@ LibreNMS 用的是 net-snmp，所以測試的另一端就必須是 net-snmp。
 **`lnms` 的 CLI 沒有編輯既有裝置的指令**(只有 add / remove / rename / discover /
 poll / ping),已對照官方文件確認。
 
-踩過的一個坑:生命週期測試要帶 community,我在 `.187` 上用了測試用的
-`srv2022mon`,而 LibreNMS 的 device 119 記的是 `mon2`,於是輪詢失敗。
+踩過的一個坑:生命週期測試要帶 community,我在 `.187` 上用了測試專用的那一組,
+而 LibreNMS 上該裝置記的是正式監控在用的那一組,於是輪詢失敗。
 **在納管中的機器上跑生命週期測試,結束後要把 community 設回監控系統在用的那一個。**
 
 ---

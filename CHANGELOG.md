@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.1] - 2026-08-27
+
+### Fixed
+
+- **An upgrade no longer resets settings the operator changed.** The installer
+  built `config.json` from scratch and wrote it over whatever was there, so
+  every value it does not collect went back to its default. The one that
+  matters is `v3_only`: a site that had turned SNMPv2c off got it back, without
+  a prompt and without a line in any log, by installing a newer version. A
+  security setting undone by a routine action. `port`, `enable_arp_table`,
+  `rate_pps`, `rate_burst` and `v3_only` are now carried across, and the
+  installer log names what it kept.
+
+- **`config.json` now lists every setting the agent reads.** It carried only the
+  keys the installer had asked about, so `rate_pps`, `rate_burst` and `v3_only`
+  existed, worked, and were invisible to anyone who had not read the
+  documentation first — including the switch that refuses v2c. A setting nobody
+  can discover is close to a setting that is not there. An upgrade fills in
+  whichever of them a machine is missing.
+
+### Added
+
+- **[Changing settings after installation](https://jasoncheng7115.github.io/jt-snmpd/configuration.html)**,
+  which did not exist. The full key table, that settings are read once at
+  service start so a change needs a restart, that the `config loaded from ...`
+  log line names the keys actually applied and is the only way to tell an
+  accepted value from a rejected one, and worked examples for v2c alone, v2c and
+  v3 together during a migration, and v3 alone.
+
+### Security
+
+- The scan baseline was re-run against this release rather than carried over:
+  Bandit 1.9.4 over 14 files and 4,967 lines (HIGH 0), pip-audit across 70
+  packages (0 vulnerabilities). The SNMPv3 code — key localization, the
+  DPAPI-protected store, the algorithm allowlist — contributed no findings.
+  The measured amplification figure in the security assessment now covers the
+  unauthenticated SNMPv3 engine discovery, which RFC 3414 requires an agent to
+  answer before any credential is presented: 1.95x, against 19.8x for the v2c
+  case already published there.
+
+### Changed
+
+- The documentation said a malformed `config.json` left the agent running on
+  built-in defaults. It does not: a file that cannot be read means no community,
+  and the service refuses to start rather than serve nothing. Verified on four
+  machines, and the document now says what actually happens, quoting the log.
+
+---
+
 ## [1.1.0] - 2026-08-27
 
 ### Added

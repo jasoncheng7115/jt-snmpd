@@ -19,7 +19,9 @@ The local development repository keeps its full history and is unaffected.
 Usage::
 
     python3 tools/prepare-public-repo.py /tmp/jt-snmpd-public
-    cd /tmp/jt-snmpd-public && python3 tools/check-privacy.py   # and scan again
+
+The privacy scan runs first and a HIGH finding aborts the sync, so a failure
+here leaves the public tree exactly as it was.
 """
 
 from __future__ import annotations
@@ -99,6 +101,31 @@ def main() -> int:
             shutil.rmtree(item) if item.is_dir() else item.unlink()
         print("kept .git, cleared the old files, resyncing")
 
+    # The privacy scan runs **here, before anything is copied**, and a HIGH
+    # finding stops the sync.
+    #
+    # It used to be a printed suggestion at the end ("now go and run
+    # check-privacy"), and on 2026-08-27 that suggestion was not taken: the
+    # production LibreNMS community sat in TEST_PLAN.md, went through this
+    # script, and was pushed. The scanner had a rule for it and would have
+    # called it HIGH. Nothing was wrong with the detection; the gate was
+    # advisory, and an advisory gate is one a tired person walks past.
+    #
+    # It must run from ROOT, not from the destination. `tools/.privacy-secrets`
+    # holds the real credentials the known-secret rule matches against, and that
+    # file is never published — so the same scanner run inside the destination
+    # loads no secrets, reports "known secrets: NONE", and passes the very check
+    # it exists to perform. The stricter of the two runs is the only useful one.
+    print("running the privacy scan before copying anything")
+    rc = subprocess.run([sys.executable, str(ROOT / "tools" / "check-privacy.py")],
+                        cwd=ROOT).returncode
+    if rc != 0:
+        print("\nprivacy scan failed: nothing was copied and the public tree is "
+              "untouched.\nFix the findings above, then run this again.",
+              file=sys.stderr)
+        return rc
+    print()
+
     # List files the way git sees them: tracked, plus untracked and not ignored.
     # Walking the filesystem directly would sweep in .venv and the rest.
     files: set[str] = set()
@@ -131,7 +158,6 @@ def main() -> int:
 
     print("\nnext:")
     print(f"  cd {dest}")
-    print("  python3 tools/check-privacy.py      # scan the publishable content again")
     print("  git init -b main && git add -A")
     print("  git commit -m 'jt-snmpd v<version>'")
     print("  git remote add origin git@github.com:jasoncheng7115/jt-snmpd.git")

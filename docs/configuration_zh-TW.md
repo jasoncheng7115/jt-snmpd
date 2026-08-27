@@ -135,12 +135,25 @@ HKLM\SOFTWARE\Policies\JasonTools\JTSNMPD
 
 ## 5. 改壞了會怎樣
 
-**設定檔語法錯誤**:記錄會寫 `config file at ... could not be read`，
-代理服務**照常啟動**並使用內建預設值 —— 而內建預設的 community 是空的，
-所以實際效果是不再回應 v2c。**這是刻意的**:讓它安靜地用「上次的設定」繼續跑，
-會讓操作人員以為改生效了。
+**設定檔語法錯誤**:記錄會寫出**確切的原因**，包含出錯的位置:
 
-**檔案不見**:記錄寫 `no config file at ...; using built-in defaults`，同上。
+```
+ERROR config file at C:\ProgramData\jt-snmpd\config.json could not be read:
+      JSONDecodeError('Expecting value: line 1 column 43 (char 42)')
+ERROR no community configured — refusing to serve. Set "community" in
+      C:\ProgramData\jt-snmpd\config.json and restart the service.
+```
+
+**然後服務會拒絕啟動**，留在停止狀態。設定讀不到就等於沒有 community，
+而**沒有 community 就沒有東西可以服務** —— 用內建預設繼續跑,會讓操作人員
+以為改生效了。停下來並說明原因，是這兩者之中比較輕的傷害。
+
+**檔案不見**:一樣拒絕啟動，記錄先寫 `no config file at ...; using built-in
+defaults`，再寫 `refusing to serve`。
+
+**管理網段空的**（但 community 有值）:服務**會啟動**，但只回應回路，
+記錄寫 `no management networks configured — only loopback will be answered`。
+這是 deny-all 而不是 serve-all:空清單曾經被當成「不篩選」，那是 fail-open。
 
 **值的型別不對**:那一個鍵被安靜跳過，其餘照常套用。看 `config loaded from ...`
 那一行列出的鍵，就知道哪一個沒進去。

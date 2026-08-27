@@ -18,9 +18,9 @@ not "how many" but "why is each one acceptable".
 
 | | |
 |---|---|
-| Date | 2026-08-25 |
-| Version | jt-snmpd 1.0.0 |
-| Scope | `deploy/`, `tools/`, `packaging/` — 13 files, 4,279 lines |
+| Date | 2026-08-27 |
+| Version | jt-snmpd 1.1.1 |
+| Scope | `deploy/`, `tools/`, `packaging/` — 14 files, 4,967 lines |
 
 ---
 
@@ -28,10 +28,10 @@ not "how many" but "why is each one acceptable".
 
 | Check | Tool | Result |
 |---|---|---|
-| Static analysis (SAST) | Bandit 1.9.4 | **HIGH 0**, MEDIUM 3, LOW 11 — all accounted for below |
+| Static analysis (SAST) | Bandit 1.9.4 | **HIGH 0**, MEDIUM 3, LOW 12 — all accounted for below |
 | Dependency vulnerabilities (SCA) | pip-audit 2.10.1 | **0 across 70 packages** |
 | Personal data and secrets | `tools/check-privacy.py` | **HIGH 0** — runs on every push |
-| Test suite | pytest | 830 passed, 1 skipped — runs on every push |
+| Test suite | pytest | 963 passed, 1 skipped — runs on every push |
 | Installer artefact checks | Windows Installer tables | 5 checks — run on every push |
 
 **The runtime dependency surface is two packages.** `pysnmp 7.1.29`, which
@@ -43,15 +43,20 @@ the fewer dependencies, the shorter this section stays.
 
 ## Static analysis: every finding
 
-Bandit reports no HIGH findings. The fourteen below are MEDIUM and LOW, and each
+Bandit reports no HIGH findings. The fifteen below are MEDIUM and LOW, and each
 one is either a false positive or a documented decision.
+
+**The SNMPv3 code added none of them.** `deploy/usm.py` — key localization, the
+DPAPI-protected store, the algorithm allowlist — is the newest file and the one
+handling secrets, and it is clean. That is worth stating rather than leaving to
+be inferred from a total.
 
 ### B104 — "possible binding to all interfaces" (MEDIUM ×3)
 
 | Location | Verdict |
 |---|---|
-| `deploy/jt_agent.py:2938`, `:3069` | **Accepted, by design.** The agent binds `0.0.0.0` deliberately. A bind address does not filter senders; it only chooses which local addresses receive. Source restriction is enforced twice over and in the right places: the Windows Firewall rule is scoped to the management networks, and the pre-parse gate checks the source address before pysnmp sees a byte. Binding a single address would break multi-homed hosts and would add no security. See [Security assessment §1](https://jasoncheng7115.github.io/jt-snmpd/attack-surface.html). |
-| `tools/check-privacy.py:151` | **False positive.** `"0.0.0.0"` appears in a list of addresses the IP rule *excludes*, so that wildcards are not reported as leaks. |
+| `deploy/jt_agent.py:3441`, `:3716` | **Accepted, by design.** The agent binds `0.0.0.0` deliberately. A bind address does not filter senders; it only chooses which local addresses receive. Source restriction is enforced twice over and in the right places: the Windows Firewall rule is scoped to the management networks, and the pre-parse gate checks the source address before pysnmp sees a byte. Binding a single address would break multi-homed hosts and would add no security. See [Security assessment §1](https://jasoncheng7115.github.io/jt-snmpd/attack-surface.html). |
+| `tools/check-privacy.py:163` | **False positive.** `"0.0.0.0"` appears in a list of addresses the IP rule *excludes*, so that wildcards are not reported as leaks. |
 
 ### B105 — "possible hardcoded password" (LOW ×2)
 
@@ -59,15 +64,16 @@ one is either a false positive or a documented decision.
 booleans in `{"health_pass": True}`. Bandit's heuristic matches any name
 containing `pass`, and `health_pass` is a SMART result, not a credential.
 
-### B110 / B112 — try/except pass, try/except continue (LOW ×2)
+### B110 / B112 — try/except pass, try/except continue (LOW ×3)
 
 | Location | Verdict |
 |---|---|
-| `deploy/jt_agent.py:190` | **Accepted.** Writing to the Windows Event Log can fail on permissions or an unregistered source. A monitoring agent that dies because it could not log an error is worse than one that carries on; the same message is already written to the log file. |
+| `deploy/jt_agent.py:220` | **Accepted.** Writing to the Windows Event Log can fail on permissions or an unregistered source. A monitoring agent that dies because it could not log an error is worse than one that carries on; the same message is already written to the log file. |
+| `deploy/jt_agent.py:1613` | **Accepted.** The last resort inside an already-failed path: reading the engine identity threw, the outer handler has logged why, and this is the second attempt at the machine GUID. Failing here leaves `"unknown"`, which produces a volatile engine ID — worse than a stable one, and far better than no agent. |
 | `deploy/diskhealth.py:413` | **Accepted.** A disk that does not answer a SMART command is skipped rather than fabricated. One unresponsive USB bridge must not remove every other disk from the snapshot. |
 
-Both are narrow, both catch a specific expected failure, and both carry a comment
-saying why.
+All three are narrow, each catches a specific expected failure, and each carries
+a comment saying why.
 
 ### B404 / B603 / B607 — subprocess use (LOW ×7)
 
