@@ -208,11 +208,13 @@ def test_a_failed_rotation_truncates_rather_than_growing_forever():
 
 
 def test_the_snapshot_is_rebuilt_off_the_event_loop():
-    """Building a snapshot was measured at 229-245 ms on every test machine.
-    Run on the asyncio loop, that is a quarter of a second in every five where
-    the agent answers nothing — and the case the collector rule exists for is
-    far worse: a ctypes call into a disconnected network drive cannot be
-    interrupted and blocks for thirty seconds or more.
+    """A snapshot rebuild is cheap in the normal case — 0 to 15 ms across the
+    four test machines — so this is not about the steady state. It is about the
+    case the collector rule was written for: a ctypes call into a disconnected
+    network drive cannot be interrupted and blocks for thirty seconds or more.
+    On the event loop that is a total outage and the manager marks the device
+    down; off it, the rebuild fails and answers keep coming from the previous
+    snapshot.
 
     Net-SNMP's issue 194 records the manager's side of it: the manager forgets
     the request it sent, retransmits, and rejects the late reply because it no
