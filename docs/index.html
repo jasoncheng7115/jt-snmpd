@@ -697,13 +697,10 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
            windows_exporter either</span></p></div>
     <div class="card"><h3><a data-doc="snmpv3" href="snmpv3.html">
       <span class="zh">SNMPv3</span><span class="en">SNMPv3</span></a></h3>
-      <p><span class="zh">認證與加密輪詢，與 v2c 並存。認證 SHA-224/256/384/512、
-         加密 AES-128/192/256，預設 <b>SHA-256 + AES-128</b>，只提供 authPriv；
-         <b>MD5、SHA-1、DES、3DES 一律拒絕</b>。金鑰以 localized key 存放並用 DPAPI 加密。</span>
-         <span class="en">Authenticated, encrypted polling, served alongside v2c.
-         SHA-224/256/384/512 and AES-128/192/256, defaulting to <b>SHA-256 + AES-128</b>,
-         authPriv only; <b>MD5, SHA-1, DES and 3DES are refused</b>. Keys are stored
-         localized and encrypted with DPAPI.</span></p></div>
+      <p><span class="zh">認證與加密輪詢，與 v2c 並存。預設 SHA-256 + AES-128，
+         只提供 authPriv，金鑰以 DPAPI 加密</span>
+         <span class="en">Authenticated, encrypted polling alongside v2c. SHA-256
+         with AES-128 by default, authPriv only, keys encrypted with DPAPI</span></p></div>
 
     <div class="card"><h3><a href="https://github.com/jasoncheng7115/jt-snmpd/blob/main/SECURITY.md">
       <span class="zh">資安通報</span><span class="en">Security policy</span></a></h3>
