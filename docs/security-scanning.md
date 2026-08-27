@@ -109,7 +109,6 @@ Added by this document:
 | Pre-parse gate effectiveness | Sources outside the allow-list must get zero responses; `tests/test_preauth_gate.py` has 27 adversarial cases |
 | Unauthenticated packet flood | CPU stays within budget, RSS does not grow, a legitimate manager stays inside its SLA |
 | Response size | Every response under 1400 bytes, with no IP fragmentation |
-| VACM escape | Under `librenms-minimal`, walking `.1.3.6` must reach nothing in an excluded subtree (tested for both GET and GETNEXT) |
 
 ---
 

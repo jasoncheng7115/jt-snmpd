@@ -762,7 +762,7 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 - **介面篩選**：只輸出實體網路卡，排除 WFP 篩選器驅動程式、VPN 虛擬卡、通道、loopback
 - **ifIndex 保存**：以 NET_LUID 為主鍵，避免重開機後 LibreNMS 重建 port 與無主的 RRD
 - **Windows 服務**：PyInstaller one-folder 打包成 `jt-snmpd.exe`，
-  以自身為服務主程式，開機自啟、LocalSystem、目標機零 Python 依賴
+  以自身為服務主程式，開機時自動啟動、LocalSystem、目標機零 Python 依賴
 - **`--selftest` 建置閘門**：建置後實際初始化 SNMP engine 並建立快照，
   可攔截「exe 產出但缺資料檔」的情況
 - **程序優先權降級**：服務以 `BELOW_NORMAL_PRIORITY_CLASS` 執行
