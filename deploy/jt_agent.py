@@ -3237,7 +3237,22 @@ def run_agent(host: str, port: int, community: str, stop_event: threading.Event)
             await asyncio.sleep(5)
             try:
                 t0 = time.monotonic()
-                no, nv = build_snapshot()
+                # **Off the event loop.** Building a snapshot was measured at
+                # 229-245 ms on every test machine, and it used to run here, on
+                # the loop: a quarter of a second in every five where the agent
+                # answered nothing. Net-SNMP's issue 194 documents what that
+                # looks like from the other end — the manager forgets the
+                # request it sent, retransmits, and then rejects the late reply
+                # because it no longer matches the message id.
+                #
+                # The normal case is only 5% of the time. The case this really
+                # guards against is the one the collector rule was written for:
+                # a ctypes call into a disconnected network drive cannot be
+                # interrupted and blocks for thirty seconds or more. On the loop
+                # that is a total outage; off it, requests keep being served
+                # from the previous snapshot throughout.
+                loop = asyncio.get_running_loop()
+                no, nv = await loop.run_in_executor(None, build_snapshot)
                 # Atomic handover: reference assignment in Python is atomic
                 # under the GIL, so a walk in progress never sees half a
                 # snapshot.

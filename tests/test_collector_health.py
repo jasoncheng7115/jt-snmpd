@@ -205,3 +205,35 @@ def test_a_failed_rotation_truncates_rather_than_growing_forever():
         "a failed rotation has to truncate; leaving it to grow makes the size "
         "cap conditional on nothing else holding the file")
     assert "could not rotate" in fn, "say it happened, in the file itself"
+
+
+def test_the_snapshot_is_rebuilt_off_the_event_loop():
+    """Building a snapshot was measured at 229-245 ms on every test machine.
+    Run on the asyncio loop, that is a quarter of a second in every five where
+    the agent answers nothing — and the case the collector rule exists for is
+    far worse: a ctypes call into a disconnected network drive cannot be
+    interrupted and blocks for thirty seconds or more.
+
+    Net-SNMP's issue 194 records the manager's side of it: the manager forgets
+    the request it sent, retransmits, and rejects the late reply because it no
+    longer matches the message id. The failure surfaces as "Timeout: No
+    Response" from a manager pointed at a perfectly healthy agent.
+    """
+    import ast as _ast
+    from pathlib import Path as _P
+
+    src = (_P(__file__).resolve().parents[1] / "deploy" / "jt_agent.py").read_text(
+        encoding="utf-8")
+    # The service loop lives in main_co, nested inside run_agent
+    fn = next(_ast.unparse(n) for n in _ast.walk(_ast.parse(src))
+              if isinstance(n, _ast.AsyncFunctionDef) and n.name == "main_co")
+    assert "run_in_executor" in fn, (
+        "build_snapshot has to leave the event loop; on it, every rebuild is a "
+        "window where nothing is answered")
+    # The first build is at startup, before anything is being served, and is
+    # correctly synchronous. The one that matters is inside the service loop.
+    loop_body = fn[fn.index("while not stop_event"):]
+    assert "build_snapshot" in loop_body, "the rebuild moved out of the loop?"
+    i = loop_body.index("build_snapshot")
+    assert "run_in_executor" in loop_body[max(0, i - 200):i + 60], (
+        "the rebuild inside the service loop is the one that blocks responses")
