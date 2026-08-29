@@ -294,7 +294,19 @@ def load_store(path: str, engine_id: bytes) -> tuple[list[UsmUser], list[str]]:
                 "a store copied from another machine looks like")
             continue
         users, parse_problems = store_from_json(raw, engine_id)
-        if users:
+        # An empty store that parsed cleanly is an answer, not a failure.
+        #
+        # This used to fall through to the .bak whenever `users` was empty,
+        # which made removing the **last** account impossible: the file was
+        # written correctly with no users, the loader decided it was unusable,
+        # and the previous copy put the account back. An operator removing a
+        # compromised credential was told "removed" and the credential kept
+        # working. Measured on a domain controller: `user remove librenms`
+        # followed by `user list` still listed librenms.
+        #
+        # `parse_problems` is what separates the two cases. Empty means the file
+        # was read and understood and simply holds nothing.
+        if users or not parse_problems:
             if candidate.endswith(".bak"):
                 problems.append(
                     "the SNMPv3 store was unusable and the previous copy was "

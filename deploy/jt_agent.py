@@ -1459,7 +1459,14 @@ def _consume_provisioning() -> int:
     added = 0
     try:
         try:
-            with open(PROVISION_FILE, encoding="utf-8") as fh:
+            # utf-8-sig for the same reason config.json uses it: a deployment
+            # tool writing this file from PowerShell with `Set-Content -Encoding
+            # UTF8` produces a BOM, and so does Notepad. Plain utf-8 raises
+            # "Unexpected UTF-8 BOM" and the whole rollout silently provisions
+            # nothing. Written with plain utf-8 first, and the first real test
+            # against a file PowerShell had produced failed on exactly this --
+            # the same mistake the config reader already carried a comment about.
+            with open(PROVISION_FILE, encoding="utf-8-sig") as fh:
                 doc = json.load(fh)
             engine_id = _engine_id()
             existing, _ = usm.load_store(USM_STORE, engine_id)

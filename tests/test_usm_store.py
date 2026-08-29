@@ -16,6 +16,7 @@ to suspect the image.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -273,3 +274,60 @@ def test_both_copies_unusable_reports_and_does_not_invent_users(tmp_path, monkey
     users, problems = usm.load_store(str(store), ENGINE_A)
     assert users == []
     assert problems
+
+@pytest.fixture
+def plain_dpapi(monkeypatch):
+    """load_store and save_store go through DPAPI, which is Windows only. The
+    behaviour under test is the fallback logic around them, so the encryption is
+    replaced by identity rather than the test being skipped: this is the layer
+    that decided a correctly emptied store was a broken one."""
+    monkeypatch.setattr(usm, "protect", lambda b: b)
+    monkeypatch.setattr(usm, "unprotect", lambda b: b)
+
+
+def test_removing_the_last_user_actually_removes_it(tmp_path, plain_dpapi):
+    """`user remove` on the only account left the account working.
+
+    The store keeps a .bak, and load_store fell through to it whenever the
+    primary file yielded no users. A store with zero users is exactly what
+    removing the last one produces, so the loader treated a correct file as a
+    broken one and restored the account from the previous copy. `user remove`
+    printed "removed", `user list` still listed the user, and the next service
+    start registered it again.
+
+    That is the worst shape this bug could take: the operator most likely to
+    remove the only account is removing one they believe is compromised, and
+    they were told it was gone.
+
+    Measured on a Server 2016 domain controller before the fix.
+    """
+    store = str(tmp_path / "usm.dat")
+    user = _one_user()
+
+    usm.save_store(store, ENGINE_A, [user])
+    usm.save_store(store, ENGINE_A, [user])          # now there is a .bak
+    assert os.path.exists(store + ".bak")
+
+    usm.save_store(store, ENGINE_A, [])
+    users, problems = usm.load_store(store, ENGINE_A)
+    assert users == [], (
+        f"the removed account came back from the .bak: {[u.name for u in users]}")
+    assert not any("previous copy" in p for p in problems), (
+        "an empty store parsed cleanly; reporting it as unusable sends the "
+        "operator looking for a fault that is not there")
+
+
+def test_a_store_that_cannot_be_parsed_still_falls_back(tmp_path, plain_dpapi):
+    """The counterweight. Telling empty apart from broken must not remove the
+    fallback a genuinely corrupt file needs: losing the store costs every
+    SNMPv3 account on the machine, and none of them can be recovered from
+    anywhere else."""
+    store = str(tmp_path / "usm.dat")
+    user = _one_user()
+    usm.save_store(store, ENGINE_A, [user])
+    usm.save_store(store, ENGINE_A, [user])
+    with open(store, "wb") as fh:
+        fh.write(b"not a store at all")
+    users, problems = usm.load_store(store, ENGINE_A)
+    assert [u.name for u in users] == ["librenms"], "the .bak was not used"
+    assert any("previous copy" in p for p in problems)

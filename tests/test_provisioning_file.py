@@ -138,3 +138,28 @@ def test_the_installer_still_takes_no_snmpv3_property():
     props = {ln.split('Property="')[1].split('"')[0] for ln in dlg.splitlines()
              if 'Property="' in ln}
     assert props == {"MANAGEMENTNETWORKS", "COMMUNITY", "KEEPMSSNMP"}
+
+
+def test_a_file_written_by_powershell_can_be_read(tree: ast.Module):
+    """`Set-Content -Encoding UTF8` in Windows PowerShell 5.1 writes a BOM, and
+    so does Notepad. Read as plain utf-8 that raises "Unexpected UTF-8 BOM", the
+    provisioning fails, and a rollout provisions nothing on every machine while
+    reporting success at the deployment tool.
+
+    This is the second time in this file's history: config.json already carried
+    a comment about it, and the first version of the provisioning reader made
+    the same mistake anyway. It was caught by writing the file the way a
+    deployment tool would, rather than the way Python does."""
+    body = _func(tree, "_consume_provisioning")
+    assert "utf-8-sig" in body, (
+        "the provisioning file is written by an operator's tooling, so it has "
+        "to tolerate a byte-order mark")
+
+
+def test_every_operator_supplied_json_file_tolerates_a_bom(src: str):
+    """The general form. Files the agent writes itself may be read strictly;
+    files a person or their tooling writes may not."""
+    for path_const in ("CFG_PATH", "PROVISION_FILE"):
+        idx = src.index(f"open({path_const}")
+        window = src[idx:idx + 120]
+        assert "utf-8-sig" in window, f"{path_const} is read without utf-8-sig"
