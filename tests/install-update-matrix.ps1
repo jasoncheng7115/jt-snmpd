@@ -63,6 +63,19 @@ function Run([string]$msi, [string[]]$extra) {
     $args = @('/i', "`"$msi`"", '/qn') + $extra
     (Start-Process msiexec.exe -ArgumentList $args -Wait -PassThru).ExitCode
 }
+function Get-InstalledCodes {
+    # Uninstall keys rather than Win32_Product: querying that class makes
+    # Windows Installer reconfigure every installed product, which is slow and
+    # has been known to restart services.
+    $roots = @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+               'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')
+    foreach ($r in $roots) {
+        Get-ChildItem $r -ErrorAction SilentlyContinue | ForEach-Object {
+            $d = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+            if ($d.DisplayName -like 'jt-snmpd*') { $_.PSChildName }
+        }
+    }
+}
 function Remove-Product([string]$msi, [string[]]$extra = @()) {
     (Start-Process msiexec.exe -ArgumentList (@('/x', "`"$msi`"", '/qn') + $extra) -Wait -PassThru).ExitCode
 }
@@ -75,8 +88,20 @@ if ($h -ne $ExpectMsiSha256.ToLower()) {
 }
 
 Sec 'B. clean the machine so the first install is a first install'
-foreach ($m in @($NewMsi, $OldMsi)) { [void](Remove-Product $m @('PURGE=1')) }
-Start-Sleep 4
+# By ProductCode, not by MSI path.
+#
+# The package has no fixed ProductCode, so WiX generates a new one for every
+# build. `msiexec /x <a freshly built MSI>` therefore does not match a product
+# installed from an earlier build of the same version: it returns 1605 and does
+# nothing, and the run that follows starts on a machine that was never cleaned.
+# That is exactly what happened, and the check below is what caught it.
+#
+# Released MSIs do not have this problem -- there is one artefact per version --
+# so this is a property of testing against local builds, not of the product.
+foreach ($code in (Get-InstalledCodes)) {
+    [void](Start-Process msiexec.exe -ArgumentList @('/x', $code, '/qn', 'PURGE=1') -Wait -PassThru)
+}
+Start-Sleep 6
 $clean = ((SvcState) -eq 'absent') -and (-not (Test-Path $DATA))
 Check 'the machine starts clean' $clean "(service=$(SvcState), data dir present=$(Test-Path $DATA))"
 if (-not $clean) {
