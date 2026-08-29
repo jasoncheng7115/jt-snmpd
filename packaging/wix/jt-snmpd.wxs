@@ -226,7 +226,7 @@
          the same defect as rate_pps and v3_only being live but invisible, which
          1.1.1 fixed for the configuration file and left standing here. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-              Value="SNMPv2c is ready to use. SNMPv3 (SHA-256 + AES-128, authPriv) is supported and is set up after installation, because a passphrase must never be passed to an installer: run &quot;jt-snmpd.exe user add librenms&quot; from the installation folder, then restart the service. The documentation link is in the Start menu folder and on the project page." />
+              Value="SNMPv2c is ready to use. SNMPv3 (SHA-256 + AES-128, authPriv) is supported and is set up after installation, because a passphrase must never be passed to an installer: run &quot;jt-snmpd.exe user add librenms&quot; from the installation folder, then restart the service. Full instructions: https://jasoncheng7115.github.io/jt-snmpd/snmpv3.html" />
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <UI>
