@@ -69,7 +69,77 @@ sc stop jt-snmpd && sc start jt-snmpd
 
 ---
 
-## 2. 在 LibreNMS 加入裝置
+## 2. 大量機器的布建
+
+上面那道指令用在十台可以,用在一千台不可能。**安裝程式刻意不接受任何 SNMPv3
+參數**,而那不是一個可以繞過去的疏漏:**MSI 屬性會被寫進 `msiexec` 的記錄檔,
+也會進 Windows 事件記錄的 1033 與 11707**,並且留在每一台被派送到的機器上。
+群組原則的啟動指令碼也沒有比較好 —— 密碼會留在 SYSVOL,而網域內每一台電腦都讀得到,
+那正是 Microsoft 後來把「群組原則喜好設定密碼」功能整個撤掉的原因。
+
+改成:**由部署工具放一個檔案,代理服務讀一次就把它消耗掉**。
+
+```
+C:\ProgramData\jt-snmpd\provision.json
+```
+
+```json
+{
+  "schema_version": 1,
+  "users": [
+    {
+      "name": "librenms",
+      "auth": "SHA-256",
+      "auth_passphrase": "認證密碼",
+      "priv": "AES-128",
+      "priv_passphrase": "加密密碼"
+    }
+  ]
+}
+```
+
+服務下次啟動時,代理服務會把密碼轉成綁定這台機器 engineID 的 localized key,
+以 **DPAPI machine scope** 保存(與 `user add` 完全相同的路徑),然後
+**把那個檔案覆寫並刪除**。事後留在磁碟上的東西,就跟用 `user add` 做完之後一模一樣。
+
+記錄會寫出發生了什麼 —— **只有名稱與演算法,永遠沒有密碼** ——
+所以整批派送可以用 `Get-WinEvent` 集中確認,不必逐台登入:
+
+```
+provisioning file found at C:\ProgramData\jt-snmpd\provision.json
+provisioned SNMPv3 user 'librenms' (SHA-256 + AES-128)
+provisioning: 1 user(s) stored; only the localized keys were kept, the passphrases were not
+provisioning file overwritten and deleted
+SNMPv3 user 'librenms' registered (SHA-256 + AES-128)
+```
+
+**即使檔案讀不成功,也一樣會被刪掉。** 一個打錯字不應該讓密碼永遠留在磁碟上;
+記錄會寫出原因與出錯的位置,改好再放一份就是了。萬一連刪除都失敗,
+那會以錯誤等級記錄並指名那個檔案 —— 一個本來該消失卻還在的檔案,
+不講就沒有人會知道。
+
+重複派送是安全的:已經存在的帳號會被取代,所以已經做過的機器會收斂,而不是失敗。
+
+### 它保護了什麼、沒保護什麼
+
+它限制的是密碼**在被監控主機上**存在的時間與位置:放在安裝程式已經把權限
+限縮到 SYSTEM 與 Administrators 的目錄裡,只存活到服務啟動那一次。
+**對另一端那份副本,它什麼也沒做。**
+
+**怎麼把檔案送過去,仍然是你要解決的,而且那是最弱的一段。**
+群組原則喜好設定的檔案複製,來源是網域內每一台電腦都讀得到的共用資料夾。
+如果這件事對你有影響 —— 在網域環境通常有 —— 就把來源放在
+**權限只列出目標電腦帳戶**的共用資料夾,派送完就移除。
+如果那組密碼曾經放在大範圍可讀的地方,**請當成已經外洩**並更換:
+`user remove` 之後重新布建。
+
+**每台一組密碼比整批共用一組好**,而這個檔案讓那件事變得可行:
+部署工具替每一台寫一份不同的檔案。一台機器的金鑰綁在它自己的 engineID 上,
+拿到別台去沒有用,**但產生它的那組密碼不是**。
+
+---
+
+## 3. 在 LibreNMS 加入裝置
 
 Devices → Add Device,然後:
 
@@ -94,7 +164,7 @@ snmpwalk -v3 -l authPriv -u librenms \
 
 ---
 
-## 3. 關掉 v2c
+## 4. 關掉 v2c
 
 等到所有監控系統都改用 v3 之後,在
 `C:\ProgramData\jt-snmpd\config.json` 設定 `v3_only`,再重新啟動服務:
@@ -109,7 +179,7 @@ snmpwalk -v3 -l authPriv -u librenms \
 
 ---
 
-## 4. 金鑰放在哪裡,以及它保護了什麼
+## 5. 金鑰放在哪裡,以及它保護了什麼
 
 `%ProgramData%\jt-snmpd\secrets\usm.dat`,以 **DPAPI machine scope** 加密。
 該目錄的存取權限只給 SYSTEM 與 Administrators。
@@ -129,7 +199,7 @@ snmpwalk -v3 -l authPriv -u librenms \
 
 ---
 
-## 5. 複製出來的虛擬機,以及唯一一件一定會咬到你的事
+## 6. 複製出來的虛擬機,以及唯一一件一定會咬到你的事
 
 engineID 必須唯一。jt-snmpd 由 Windows 的 MachineGuid 推導它,並且會記下當初是用哪個
 MachineGuid 推導的。
@@ -156,7 +226,7 @@ MachineGuid 推導的。
 
 ---
 
-## 6. SNMPv3 不會改變的事
+## 7. SNMPv3 不會改變的事
 
 - **代理服務仍然是唯讀的。** v3 的通訊協定本身帶有 SET;本代理服務在**任何版本下都沒有實作
   SET**。

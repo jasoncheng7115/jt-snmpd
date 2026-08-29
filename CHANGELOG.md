@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Removing the last SNMPv3 account did not remove it.** `user remove` printed
+  "removed", `user list` still listed the account, and the next service start
+  registered it again. The store keeps a previous copy for the case where the
+  current one is unreadable, and the loader fell back to it whenever the current
+  one yielded no users — which is exactly what removing the last account
+  produces. The operator most likely to remove the only account is removing one
+  they believe is compromised, and they were told it was gone while it kept
+  working.
+
 - **A repair silently changed the community and the management networks, and monitoring stopped.** A repair,
   and an upgrade deployed without properties, pass no `COMMUNITY`. The installer
   then took one from the built-in Windows SNMP Service and wrote it over the one
@@ -77,6 +86,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   machine.
 
 ### Added
+
+- **SNMPv3 accounts can be provisioned by a deployment tool.** Visiting a
+  thousand machines to run `user add` is not a plan, and the two obvious
+  alternatives are both worse than they look: an MSI property is written to the
+  `msiexec` log and to Event IDs 1033 and 11707 and stays on every machine it
+  reached, and a Group Policy startup script keeps the passphrase in SYSVOL
+  where every domain computer can read it. A file dropped at
+  `%ProgramData%\jt-snmpd\provision.json` is instead read once at service
+  start, turned into keys localized to that machine under DPAPI, and then
+  overwritten and deleted — including when it could not be parsed, so a typo
+  does not leave plain text on disk. Getting the file to the machine is still
+  the operator's problem and
+  [SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3.html) says so
+  plainly. **The installer still accepts no SNMPv3 parameter and will not.**
 
 - **SNMPv3 is now findable by someone who installs by double-clicking.** It was
   supported from 1.1.0, verified on four machines and against a production
