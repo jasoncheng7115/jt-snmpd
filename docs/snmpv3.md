@@ -77,7 +77,84 @@ AES-128 is the interoperable choice.
 
 ---
 
-## 2. Adding the device in LibreNMS
+## 2. Provisioning across many machines
+
+The command above is fine for ten hosts and impossible for a thousand. The
+installer deliberately accepts no SNMPv3 parameter, and that is not an oversight
+to be worked around: **an MSI property is written to the `msiexec` log and to
+Windows Event IDs 1033 and 11707**, where it stays on every machine it reached.
+A Group Policy startup script is no better — it keeps the passphrase in SYSVOL,
+readable by every domain computer, which is the shape of the Group Policy
+Preferences password problem Microsoft eventually withdrew the feature over.
+
+Instead, a deployment tool drops a file, and the agent consumes it once:
+
+```
+C:\ProgramData\jt-snmpd\provision.json
+```
+
+```json
+{
+  "schema_version": 1,
+  "users": [
+    {
+      "name": "librenms",
+      "auth": "SHA-256",
+      "auth_passphrase": "the authentication passphrase",
+      "priv": "AES-128",
+      "priv_passphrase": "the privacy passphrase"
+    }
+  ]
+}
+```
+
+At the next service start the agent turns the passphrases into keys localized to
+this machine's engineID, stores them under DPAPI machine scope exactly as
+`user add` does, and **overwrites and deletes the file**. What is left on disk
+afterwards is what `user add` would have left, and nothing else.
+
+The log says what happened, by name and algorithm and never by passphrase, so a
+rollout can be checked from `Get-WinEvent` without opening a session on each
+host:
+
+```
+provisioning file found at C:\ProgramData\jt-snmpd\provision.json
+provisioned SNMPv3 user 'librenms' (SHA-256 + AES-128)
+provisioning: 1 user(s) stored; only the localized keys were kept, the passphrases were not
+provisioning file overwritten and deleted
+SNMPv3 user 'librenms' registered (SHA-256 + AES-128)
+```
+
+**The file is deleted even when it could not be used.** A typo must not leave
+passphrases on disk for ever; the log gives the reason, with the position in the
+file, and a corrected one can be dropped in. If the deletion itself fails, that
+is logged as an error naming the file, because a file meant to be gone and still
+there is an exposure nobody would otherwise learn about.
+
+Re-running a rollout is safe: an account that already exists is replaced, so the
+machines already reached converge instead of failing.
+
+### What this does and does not protect
+
+It bounds how long and where a passphrase exists **on the monitored host**: in a
+directory the installer has restricted to SYSTEM and Administrators, for one
+service start. It does nothing for the copy at the other end.
+
+**Getting the file there is still yours to solve, and it is the weak part.**
+A Group Policy Preferences file copy reads from a share every domain computer
+can read. If that matters to you — and on a domain it usually does — put the
+source on a share whose ACL names the target computer accounts, deploy, and
+remove it. Treat the passphrase as compromised if it sat somewhere broadly
+readable, and rotate it: `user remove`, then provision again.
+
+**A different passphrase per machine is better than one for the estate**, and
+this file makes that practical: the deployment tool writes a different file per
+host. One machine's keys are localized to its own engineID and are useless
+anywhere else, but the passphrase they came from is not.
+
+---
+
+## 3. Adding the device in LibreNMS
 
 Devices → Add Device, then:
 
@@ -102,7 +179,7 @@ snmpwalk -v3 -l authPriv -u librenms \
 
 ---
 
-## 3. Turning v2c off
+## 4. Turning v2c off
 
 Once every manager is on v3, set `v3_only` in
 `C:\ProgramData\jt-snmpd\config.json` and restart the service:
@@ -119,7 +196,7 @@ file.
 
 ---
 
-## 4. Where the keys live, and what that protects
+## 5. Where the keys live, and what that protects
 
 `%ProgramData%\jt-snmpd\secrets\usm.dat`, encrypted with **DPAPI machine
 scope**. The directory is restricted to SYSTEM and Administrators.
@@ -145,7 +222,7 @@ the machine's own administrators.
 
 ---
 
-## 5. Cloned VMs, and the one thing that will bite you
+## 6. Cloned VMs, and the one thing that will bite you
 
 An engineID must be unique. jt-snmpd derives it from the Windows MachineGuid and
 records which MachineGuid it was derived from.
@@ -176,7 +253,7 @@ has nothing to lose.
 
 ---
 
-## 6. What SNMPv3 does not change
+## 7. What SNMPv3 does not change
 
 - **The agent is still read-only.** v3 brings SET with it in the protocol; this
   agent does not implement SET at all, at any version.
