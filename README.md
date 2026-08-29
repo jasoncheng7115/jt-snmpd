@@ -354,9 +354,32 @@ monitoring keeps working while the new path is verified host by host. To refuse
 SNMPv2c once every poller has moved, set `"v3_only": true` in
 `C:\ProgramData\jt-snmpd\config.json` and restart the service.
 
-**Across many machines**, run the same command from a Group Policy startup
-script or your management tool. The passphrases can come from standard input, so
-nothing appears in the process list:
+**Across many machines**, have the deployment tool drop a file instead. The
+agent reads it at the next service start, turns the passphrases into keys
+localized to that machine, and then **overwrites and deletes it**:
+
+`C:\ProgramData\jt-snmpd\provision.json`
+
+```json
+{
+  "schema_version": 1,
+  "users": [
+    { "name": "librenms",
+      "auth": "SHA-256", "auth_passphrase": "the authentication passphrase",
+      "priv": "AES-128", "priv_passphrase": "the privacy passphrase" }
+  ]
+}
+```
+
+The file is deleted even when it could not be parsed, so a typo does not leave
+passphrases on disk. **Getting the file to the machine is still yours to solve
+and it is the weak part** — a Group Policy Preferences file copy reads from a
+share every domain computer can read. The trade-offs, and what to do about them,
+are in [SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3.html).
+
+A startup script calling `user add` also works, taking the passphrases from
+standard input so nothing appears in the process list, but it keeps the
+passphrase in the script:
 
 ```powershell
 (echo auth-passphrase& echo priv-passphrase) | .\jt-snmpd.exe user add librenms
