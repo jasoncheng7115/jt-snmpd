@@ -243,7 +243,7 @@ Collect a verbose log to diagnose an installation:
 
 ```powershell
 # CLI
-msiexec /i jt-snmpd-1.1.2-x64.msi /qn /l*v "$env:TEMP\jt-install.log" `
+msiexec /i jt-snmpd-1.1.3-x64.msi /qn /l*v "$env:TEMP\jt-install.log" `
   MANAGEMENTNETWORKS=10.0.0.0/24 COMMUNITY=your-community
 ```
 

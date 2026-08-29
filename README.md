@@ -1,4 +1,4 @@
-# jt-snmpd v1.1.2
+# jt-snmpd v1.1.3
 
 [![License](https://img.shields.io/badge/License-GPL--3.0--or--later-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
@@ -290,7 +290,7 @@ The same MSI and the same properties are what **Group Policy software
 deployment** uses, where the installation runs as SYSTEM with no prompts.
 
 ```powershell
-msiexec /i jt-snmpd-1.1.2-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=your-community
+msiexec /i jt-snmpd-1.1.3-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=your-community
 ```
 
 For GPO, place the MSI on a domain file share and make sure computer accounts can
@@ -323,16 +323,60 @@ The installer will:
 If UDP/161 is held by something that is not the Microsoft SNMP Service, the
 installer stops and leaves it alone rather than disabling a third-party agent.
 
+### After installing: turning on SNMPv3
+
+**The installer never asks for SNMPv3, and that is deliberate.** An MSI property
+is written to the `msiexec` log and to Windows Event IDs 1033 and 11707, so a
+passphrase passed to an installer ends up in plain text on every machine it is
+deployed to. A community string is a read-only access token and sits at a
+different risk level; a v3 key does not.
+
+SNMPv2c works as soon as the installer finishes. SNMPv3 is a second step, on the
+monitored host, and it takes about a minute:
+
+```powershell
+cd "C:\Program Files\jt-snmpd"
+
+.\jt-snmpd.exe user add librenms
+#   authentication passphrase: ****************
+#   confirm:                   ****************
+#   privacy passphrase:        ****************
+#   confirm:                   ****************
+#
+#   added librenms (SHA-256 + AES-128).
+#   Only the localized keys were stored; the passphrases were not.
+
+sc stop jt-snmpd && sc start jt-snmpd
+```
+
+Both versions now answer, which is where to sit during a migration: the existing
+monitoring keeps working while the new path is verified host by host. To refuse
+SNMPv2c once every poller has moved, set `"v3_only": true` in
+`C:\ProgramData\jt-snmpd\config.json` and restart the service.
+
+**Across many machines**, run the same command from a Group Policy startup
+script or your management tool. The passphrases can come from standard input, so
+nothing appears in the process list:
+
+```powershell
+(echo auth-passphrase& echo priv-passphrase) | .\jt-snmpd.exe user add librenms
+```
+
+Full details, the algorithms available, and what happens to a cloned machine are
+in [SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3.html); the settings
+themselves are in
+[Changing settings after installation](https://jasoncheng7115.github.io/jt-snmpd/configuration.html).
+
 ### Uninstall
 
 Through Apps & Features, or from the command line:
 
 ```powershell
 # Uninstall (restores the built-in SNMP Service, keeps configuration and state)
-msiexec /x jt-snmpd-1.1.2-x64.msi /qn
+msiexec /x jt-snmpd-1.1.3-x64.msi /qn
 
 # Uninstall and remove everything
-msiexec /x jt-snmpd-1.1.2-x64.msi /qn PURGE=1
+msiexec /x jt-snmpd-1.1.3-x64.msi /qn PURGE=1
 ```
 
 If an install or uninstall will not complete,
