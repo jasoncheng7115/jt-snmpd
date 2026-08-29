@@ -454,6 +454,55 @@ Restart Manager 就把它列進來。`nxlog` 同理(它在讀事件記錄)。
 
 ---
 
+### 5.25 修復安裝(REINSTALL)(1.1.3 新增,實機驅動精靈才發現的一整串)
+
+**這一節的每一項都是 2026-08-29 那天在實機上一個接一個掉出來的,而且沒有一項
+在資料表、原始碼或既有的 40 項生命週期檢查裡看得到** —— 因為那些檢查全程走
+`/qn` 的**安裝**,從來沒有跑過**修復**。
+
+| 編號 | 項目 | 狀態 |
+|---|---|---|
+| 5.25.1 | `msiexec /i ... /qn REINSTALL=ALL REINSTALLMODE=vomus` 必須 `exit 0` 且服務仍在 | **[已驗]** `.49` `exit 0`,服務 Running/Automatic |
+| 5.25.2 | 修復不得走解除安裝分支 | **[已驗]** 記錄顯示 `=== configuration starting ===`,不是 `=== uninstall starting ===` |
+| 5.25.3 | 不帶任何屬性的修復不得被啟動條件擋下 | **[已驗]** 加入 `Installed OR WIX_UPGRADE_DETECTED` 之前是 1603 |
+| 5.25.4 | 修復必須保留機器上的 community | **[已驗]** `keepme-2026` 保留;修正前會被換成內建服務裡的值 |
+| 5.25.5 | 修復必須保留機器上的管理網段 | **[已驗]** `192.0.2.0/24,127.0.0.1` 保留;修正前會被換成內建服務的 PermittedManagers |
+| 5.25.6 | 圖形修復必須成功 | **[已驗]** `.49` 走 `Resuming the ... Setup Wizard`,服務 Running,記錄顯示 install 分支 |
+
+**修正前的實測(同一台機器,同一個情境)**:
+
+```
+exit = 1603                         ← 啟動條件擋下,而 1603 沒有說明任何原因
+（改掉啟動條件之後）
+exit = 0
+community  keepme-2026 → dc-carryover-test   ← 被內建服務裡的舊值蓋掉
+networks   192.0.2.0/24 → 192.168.1.68       ← ACL 被縮小,沒有任何提示
+```
+
+**修正後**:
+
+```
+exit = 0
+keeping the community already configured on this machine
+keeping the management networks already configured on this machine
+community = keepme-2026            PASS
+networks  = 192.0.2.0/24,127.0.0.1 PASS
+service   = Running / Automatic
+```
+
+#### 測這一項時會誤導人的兩件事,都踩過
+
+1. **修復不會換掉 `msi-configure.ps1`。** 那是一個沒有版本資源的檔案,
+   Windows Installer 在修復時會留著磁碟上那一份 —— **連 `REINSTALLMODE=vamus`
+   的 `a`(強制全部)也一樣**。所以修復跑的是**上一次安裝時的那一版腳本**。
+   後果是:改了腳本之後直接用修復去驗,驗到的是舊腳本,會得到「修正沒有生效」
+   這個錯誤結論。**要驗腳本的改動,必須先做一次真正的安裝。**
+2. **產物比來源舊。** 有一次是在建置還沒跑完就把 MSI 複製走,測到的是前一次的產物。
+   `BUILDINFO.txt` 的 `configure` 指紋與 MSI 的 SHA-256 是拿來核對的,
+   每次都要對(硬性規則 16)。
+
+---
+
 ### 5.22 1.1.0 發版前的實機驗證(2026-08-27)
 
 **客戶大多裝在 Windows Server**,所以兩台 Server 是主要平台,不是附帶項目。
