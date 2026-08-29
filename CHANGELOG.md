@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.1.3] - 2026-08-29
 
+### Fixed
+
+- **A graphical upgrade asked the operator to close Windows Event Log.** It
+  showed two "Files in use" pages, not one. The first listed `jt-snmpd`, which
+  is the specified behaviour. The second listed `nxlog` and **Windows Event
+  Log**, and the default button on that page has Windows Installer stop a system
+  service that other services depend on.
+
+  The cause was ours. pywin32 registers our event source with
+  `EventMessageFile` pointing at its own `servicemanager.pyd`, which sits
+  **inside the installation folder**; the Event Log service loads that file to
+  format our messages and holds a handle on it, so an upgrade that has to
+  replace the folder finds it in use. The source is now registered against
+  `%SystemRoot%\System32\EventCreate.exe`, so nothing the Event Log service
+  loads belongs to us. The installer writes that registration as well as the
+  agent, because a machine upgrading from 1.1.2 arrives with the old key and it
+  has to be corrected before the files are replaced.
+
+  Present since 1.0.0 and invisible to every automated check: `/qn` asks nobody,
+  so the page exists only for someone double-clicking, and forty lifecycle
+  assertions drive `/qn` throughout. Found by driving the wizard on a real
+  machine.
+
 ### Added
 
 - **SNMPv3 is now findable by someone who installs by double-clicking.** It was

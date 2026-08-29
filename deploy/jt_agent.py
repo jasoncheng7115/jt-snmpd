@@ -203,24 +203,73 @@ def _rotate_log(path: str) -> None:
         pass
 
 
-def _event_log_error(msg: str) -> None:
-    """Also write errors to the Windows Event Log, under the source jt-snmpd.
+EVENT_SOURCE = "jt-snmpd"
+
+
+def _event_message_file() -> str:
+    """A message file that is not ours and is not in the installation folder.
+
+    EventCreate.exe ships with Windows, lives in System32, and its message table
+    maps event ID 1 to "%1", so one insertion string renders as itself. The
+    property that matters is not which file it is but where it is **not**: an
+    upgrade must be able to replace every file we install while the Event Log
+    service is running.
+    """
+    root = os.environ.get("SystemRoot") or r"C:\Windows"
+    return os.path.join(root, "System32", "EventCreate.exe")
+# One generic message: "%1", so a single insertion string renders as itself.
+# The message file that resolves it is registered by the installer and lives in
+# System32, never in our installation folder. See _write_event.
+EVENT_ID_MESSAGE = 1
+
+
+def _write_event(msg: str, *, error: bool) -> None:
+    """Also write to the Windows Event Log, under the source jt-snmpd.
 
     Field staff and audit tooling look at the Event Viewer first, not at a text
     file under %ProgramData%. Diagnosing hundreds of machines remotely,
     `Get-WinEvent` can collect centrally; log files scattered across machines
-    cannot. servicemanager is imported further down this module, so it is fetched
-    lazily through globals().
+    cannot.
+
+    **Why this does not use servicemanager.LogMsg / LogErrorMsg.** Those
+    register the event source on the fly with `EventMessageFile` pointing at
+    pywin32's own `servicemanager.pyd`, which sits **inside the installation
+    folder**. The Event Log service loads that DLL to format our messages and
+    then holds a handle on it, so an upgrade that must replace the folder finds
+    the file in use: Restart Manager lists **Windows Event Log** on the "Files
+    in use" page, and the default button there has Windows Installer stop a
+    system service that other services depend on. Measured on a real machine
+    2026-08-29; see TEST_PLAN.md 5.24.
+
+    The source is registered by the installer against a message file in
+    System32, so nothing the Event Log service loads belongs to us. win32evtlog
+    is imported lazily: this module is also imported by the CLI and by tests on
+    Linux.
     """
-    sm = globals().get("servicemanager")
-    if sm is None:
-        return
     try:
-        sm.LogErrorMsg(f"jt-snmpd: {msg}")
+        import win32evtlog
+        import win32evtlogutil
+    except Exception:   # noqa: BLE001, S110
+        # Not on Windows, or pywin32 is not present. The file log already has
+        # the message; the Event Log is the second copy, not the only one.
+        return
+    kind = (win32evtlog.EVENTLOG_ERROR_TYPE if error
+            else win32evtlog.EVENTLOG_INFORMATION_TYPE)
+    try:
+        win32evtlogutil.ReportEvent(EVENT_SOURCE, EVENT_ID_MESSAGE,
+                                    eventType=kind, strings=[f"jt-snmpd: {msg}"])
     except Exception:   # noqa: BLE001, S110
         # Failing to write to the Event Log (permissions, unregistered event
-        # source) must not bring the agent down with it.
+        # source, RPC unavailable inside an MSI transaction) must not bring the
+        # agent down with it. That last one is not hypothetical: an unguarded
+        # event write once failed with RPC 1722 mid-install and killed the
+        # service, and the installation rolled back with 1603.
         pass
+
+
+def _event_log_error(msg: str) -> None:
+    """Errors go to the Event Log as well as to our own file."""
+    _write_event(msg, error=True)
 
 
 def log(msg: str, *, error: bool = False) -> None:
@@ -3422,16 +3471,10 @@ try:
             # event log. That is the "alive but dead" case this file warns about
             # elsewhere, arriving before there is anything to read.
             log("SvcDoRun entered")
-            try:
-                servicemanager.LogMsg(
-                    servicemanager.EVENTLOG_INFORMATION_TYPE,
-                    servicemanager.PYS_SERVICE_STARTED, (self._svc_name_, ""))
-            except Exception as exc:  # noqa: BLE001
-                # Writing our start to the event log is a courtesy, not a
-                # requirement. Failing to serve SNMP because a log write failed
-                # would be the wrong trade every time.
-                log(f"could not write the service start event, continuing: {exc!r}",
-                    error=True)
+            # Writing our start to the event log is a courtesy, not a
+            # requirement. Failing to serve SNMP because a log write failed
+            # would be the wrong trade every time, so _write_event swallows.
+            _write_event(f"{self._svc_name_} service started", error=False)
             # Before anything reads CFG. Everything below — including the values
             # handed to run_agent — must see the operator's settings, not the
             # built-in defaults.
@@ -3515,7 +3558,18 @@ def _service_main() -> None:
         # log entry with a hex number in it. That state cost a full session to
         # diagnose once; it should never cost that again.
         try:
-            servicemanager.Initialize()
+            # Initialize() with no arguments registers our event source with
+            # EventMessageFile pointing at pywin32's servicemanager.pyd, which
+            # is **inside the installation folder**. The Event Log service then
+            # loads it, holds a handle on it, and an upgrade that has to replace
+            # the folder finds the file in use: the graphical upgrade grows a
+            # second "Files in use" page listing Windows Event Log, whose
+            # default button stops a system service other services depend on.
+            #
+            # EventCreate.exe is in System32, ships with Windows, and its
+            # message table resolves event ID 1 to "%1" -- exactly the shape
+            # _write_event uses. Nothing the Event Log service loads is ours.
+            servicemanager.Initialize(EVENT_SOURCE, _event_message_file())
             servicemanager.PrepareToHostSingle(JTSnmpdService)
             servicemanager.StartServiceCtrlDispatcher()
         except Exception as exc:  # noqa: BLE001 - the whole point is to say why

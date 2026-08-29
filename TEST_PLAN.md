@@ -410,6 +410,50 @@ RFC 3414 §4 要求代理服務在對方出示任何憑證之前就得以 report
 
 ---
 
+### 5.24 圖形升級的第二個「使用中的檔案」對話框列的是**別人的服務**(1.1.3 發現,**未修**)
+
+2026-08-29 在 `.154` 上以 RDP 實際驅動精靈升級(1.1.2 → 1.1.3),
+出現**兩個**「使用中的檔案」對話框,不是一個:
+
+| 順序 | 列出的項目 | 判斷 |
+|---|---|---|
+| 第一個 | `jt-snmpd` | **正確**,那是我們自己的服務 |
+| 第二個 | `nxlog`、**`Windows Event Log`** | **錯的,而且危險** |
+
+**預設選項是「關閉應用程式並嘗試重新啟動」。操作人員照著按下去,
+Windows Installer 就會去停 `Windows Event Log`** —— 那是一個有其他服務相依的系統服務。
+
+**根本原因已經找到**,登錄檔裡我們自己註冊的事件來源:
+
+```
+HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Application\jt-snmpd
+  EventMessageFile = C:\Program Files\jt-snmpd\_internal\win32\servicemanager.pyd
+```
+
+**事件來源指向安裝目錄裡的一個檔案。** Windows Event Log 服務為了格式化我們的訊息
+會載入那個 .pyd,於是它對「升級時必須被取代的檔案」持有 handle,
+Restart Manager 就把它列進來。`nxlog` 同理(它在讀事件記錄)。
+
+**這修正了本專案自己的紀錄。** CLAUDE.md 原本把「列舉到 nxlog / Windows Event Log」
+歸因於當時試加的 `ServiceControl`。這次實測**沒有 `ServiceControl`** 也一樣會發生,
+所以那個歸因是錯的:真正的關聯是 `EventMessageFile` 指進了安裝目錄。
+
+**這個缺陷不是 1.1.3 造成的**,1.1.0 / 1.1.1 / 1.1.2 都有,只在
+**同時具備「圖形升級」與「事件來源已註冊」** 的機器上才看得到 ——
+`/qn` 與 GPO 派送不會問任何人,所以 40 項生命週期永遠抓不到它。
+
+| 編號 | 項目 | 狀態 |
+|---|---|---|
+| 5.24.1 | 圖形升級不得要求操作人員關閉與本專案無關的服務 | **[未通過]** 實測列出 `nxlog` 與 `Windows Event Log` |
+| 5.24.2 | `EventMessageFile` 不得指向安裝目錄內、升級時會被取代的檔案 | **[未通過]** 目前指向 `_internal\win32\servicemanager.pyd` |
+| 5.24.3 | 修好之後,第二個對話框必須完全不出現 | 待驗 |
+
+**測試當下的處置**:選了第二個選項「不要關閉應用程式,需要重新開機」,
+所以 `.154` 上的 `Windows Event Log` 與 `nxlog` **沒有被停過**,兩者實測仍是 Running,
+也沒有留下待重開機的檔案更名。升級本身成功,服務 Running,版本 1.1.3。
+
+---
+
 ### 5.22 1.1.0 發版前的實機驗證(2026-08-27)
 
 **客戶大多裝在 Windows Server**,所以兩台 Server 是主要平台,不是附帶項目。

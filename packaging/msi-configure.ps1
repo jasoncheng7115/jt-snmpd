@@ -158,6 +158,13 @@ if ($Uninstall) {
         # makes LibreNMS rediscover everything, orphaning the existing RRDs.
         Log "data directory kept: $DATA_DIR"
     }
+    # Registered by this script, so removed by it. Left behind, it points at a
+    # message file for a source nothing writes to any more.
+    $evtKey = "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\$SERVICE_NAME"
+    if (Test-Path $evtKey) {
+        Remove-Item $evtKey -Recurse -Force -ErrorAction SilentlyContinue
+        Log "event source removed"
+    }
     Log "=== uninstall complete ==="
     exit 0
 }
@@ -539,6 +546,39 @@ if (-not (Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue)) {
 & sc.exe privs $SERVICE_NAME SeChangeNotifyPrivilege/SeSystemProfilePrivilege/SeIncreaseQuotaPrivilege | Out-Null
 $s = Get-CimInstance Win32_Service -Filter "Name='$SERVICE_NAME'"
 Log "service registered: $($s.StartName) / $($s.StartMode)"
+
+# --- Event Log source ---
+#
+# Registered here, and pointed at a message file in System32 rather than at
+# anything we install.
+#
+# pywin32 registers this key itself on first use, with EventMessageFile set to
+# its own servicemanager.pyd inside the installation folder. The Event Log
+# service loads that DLL to format our messages and keeps a handle on it, so an
+# upgrade that has to replace the folder finds the file in use: the graphical
+# upgrade grew a second "Files in use" page listing Windows Event Log, and the
+# default button on that page has Windows Installer stop a system service that
+# other services depend on. Measured on a real machine on 2026-08-29.
+#
+# Writing the key here as well as in the agent matters for the upgrade case:
+# a machine coming from 1.1.2 already has the key pointing into the old folder,
+# and it has to be corrected before the files are replaced, not after.
+#
+# EventCreate.exe ships with Windows and resolves event ID 1 to "%1", which is
+# the single insertion string the agent writes.
+$evtKey = "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\$SERVICE_NAME"
+try {
+    if (-not (Test-Path $evtKey)) { New-Item -Path $evtKey -Force | Out-Null }
+    New-ItemProperty -Path $evtKey -Name 'EventMessageFile' -PropertyType ExpandString `
+        -Value '%SystemRoot%\System32\EventCreate.exe' -Force | Out-Null
+    New-ItemProperty -Path $evtKey -Name 'TypesSupported' -PropertyType DWord `
+        -Value 7 -Force | Out-Null
+    Log "event source registered against %SystemRoot%\System32\EventCreate.exe (nothing in the install folder is loaded by the Event Log service)"
+} catch {
+    # A missing Event Log entry costs the second copy of our messages. It must
+    # not cost the installation.
+    Log "[!] could not register the event source, continuing: $($_.Exception.Message)"
+}
 if ($s.PathName -notmatch '^"') { Log "[!] ImagePath is not quoted: $($s.PathName)" }
 
 # --- Firewall  ---

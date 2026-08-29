@@ -79,20 +79,29 @@ def test_size_is_taken_from_the_open_handle():
 
 def test_errors_reach_the_windows_event_log():
     """Field staff open Event Viewer first, and diagnosing hundreds of machines
-    remotely, Get-WinEvent can collect centrally."""
-    body = _func("_event_log_error")
-    assert "LogErrorMsg" in body, "errors never reach the Event Log"
-    # ast.unparse normalises quotes to single ones, so the quotes are not matched
-    assert re.search(r"globals\(\)\.get\(.servicemanager.\)", body), (
-        "servicemanager is imported further down the module, so it has to be "
-        "fetched lazily rather than referenced at module level")
+    remotely, Get-WinEvent can collect centrally.
+
+    The write moved out of `_event_log_error` and into `_write_event` in 1.1.3,
+    when the event source stopped going through pywin32: `servicemanager` points
+    EventMessageFile at a DLL inside the installation folder, which put Windows
+    Event Log on the graphical upgrade's "Files in use" page. What has to stay
+    true is that an error still reaches the Event Log, not which call makes it."""
+    assert "_write_event" in _func("_event_log_error")
+    body = _func("_write_event")
+    assert "ReportEvent" in body, "errors never reach the Event Log"
+    # The import is inside the function on purpose: this module is also imported
+    # by the CLI and by the tests, which run on Linux.
+    assert "import win32evtlog" in body, (
+        "win32evtlog has to be imported lazily, or importing this module at all "
+        "fails everywhere that is not Windows")
 
 
 def test_event_log_failure_cannot_kill_the_agent():
-    body = _func("_event_log_error")
-    assert "except Exception" in body and "pass" in body, (
-        "failing to write to the Event Log, on permissions or an unregistered "
-        "source, must not bring the agent down with it")
+    body = _func("_write_event")
+    assert body.count("except Exception") >= 2 and "pass" in body, (
+        "failing to write to the Event Log, on permissions, an unregistered "
+        "source, or RPC 1722 inside an MSI transaction, must not bring the "
+        "agent down with it -- that last one once rolled an install back")
 
 
 def test_log_supports_an_error_channel():
