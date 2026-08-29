@@ -381,12 +381,17 @@ def test_configure_script_fails_closed_on_empty_networks():
     host on the network, which is the failure this project exists to avoid.
     """
     body = CONFIGURE.read_text(encoding="utf-8")
-    assert re.search(r"\$nets\.Count\s*-eq\s*0", body), \
-        "the configure script no longer checks for an empty network list"
-    idx = body.index("$nets.Count -eq 0")
-    tail = body[idx:idx + 400]
+    checks = [m.start() for m in re.finditer(r"\$nets\.Count\s*-eq\s*0", body)]
+    assert checks, "the configure script no longer checks for an empty network list"
+    # There is more than one such test now: the earlier ones choose where the
+    # networks come from, and only the last one is the backstop. Anchoring on the
+    # first match made this pass or fail on the order of unrelated branches.
+    tail = body[checks[-1]:checks[-1] + 400]
     assert "exit 1" in tail, \
         "an empty network list must abort the install, not continue"
+    # The backstop has to be the final word: nothing may assign to $nets after it.
+    assert "$nets +=" not in body[checks[-1]:] and "$nets =" not in body[checks[-1]:], \
+        "something still sets the networks after the check that guards them"
 
 
 # ------------------------------------------------- the "Files in use" dialog

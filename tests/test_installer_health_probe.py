@@ -96,3 +96,50 @@ def test_the_check_still_fails_closed(text: str):
     would then assert something nobody verified."""
     tail = text[text.index("if (-not $healthy)"):]
     assert "exit 1" in tail[:400]
+
+
+def test_the_community_already_on_the_machine_is_kept(text: str):
+    """A repair, and an upgrade deployed without properties, supply no
+    COMMUNITY. Before this, the community was then taken from the built-in SNMP
+    service and written over the one in config.json, so the agent came back
+    answering a community the poller does not know.
+
+    Every check still passed -- the service runs, the loopback probe uses the
+    new value, msiexec returns 0 -- and the machine quietly stopped being
+    monitored. Measured on a real machine, where a repair replaced a working
+    community with a stale one left in the built-in service by an earlier test.
+
+    The order that has to hold: the property the operator passed, then what the
+    machine is already using, then what the built-in service can lend."""
+    block = text[text.index("# --- Decide the community"):]
+    block = block[:block.index("# --- Decide the management networks")]
+    from_prop = block.index("$comm = $Community")
+    from_existing = block.index("$prev.community")
+    from_builtin = block.index("$msCfg.communities.Keys")
+    assert from_prop < from_existing < from_builtin, (
+        "the existing configuration must be consulted after the property and "
+        "before the built-in service, or a repair silently changes the "
+        "community and monitoring stops")
+
+
+def test_the_networks_already_on_the_machine_are_kept(text: str):
+    """The community's twin. A repair replaced the configured management
+    networks with the built-in service's PermittedManagers: observed on a domain
+    controller where a graphical upgrade set 192.0.2.0/24 and the repair that
+    followed put back two single addresses. The agent then answers a narrower
+    set than the operator chose, and whichever poller falls outside it sees a
+    host that has stopped responding."""
+    block = text[text.index("# --- Decide the management networks"):]
+    block = block[:block.index("Log \"management networks:")]
+    from_prop = block.index("$ManagementNetworks")
+    from_existing = block.index(".allowed_networks")
+    from_builtin = block.index("$msCfg.permitted_managers.Count -gt 0")
+    assert from_prop < from_existing < from_builtin
+
+
+def test_the_existing_configuration_is_read_before_either_decision(text: str):
+    """COMMUNITY can be supplied while MANAGEMENTNETWORKS is not. If the path is
+    only bound inside the community branch, the networks branch silently skips
+    preservation in exactly that case."""
+    where_defined = text.index("$existingCfg = Join-Path")
+    assert where_defined < text.index("$comm = $Community")

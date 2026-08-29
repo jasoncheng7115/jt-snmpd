@@ -261,7 +261,41 @@ if (Test-Path $MSSNMP_PARAMS) {
 }
 
 # --- Decide the community  ---
+#
+# Order: what the operator passed, then what this machine is already using,
+# then what the built-in service can lend us.
+#
+# The middle step used to be missing, and it cost a working configuration. A
+# repair, and an upgrade deployed without properties, supply no COMMUNITY, so
+# the community was taken from the built-in SNMP service and written over the
+# one in config.json. The agent came back up answering a community the poller
+# does not know, and every check the installer runs still passed: the service
+# is running, the loopback probe uses the new value, msiexec returns 0. The
+# machine simply stops being monitored, quietly. Measured on a real machine on
+# 2026-08-29, where a repair replaced the community with a stale one left in
+# the built-in service by an earlier test.
+#
+# This is the same family as the v3_only reset 1.1.1 fixed: a value the
+# installer does not collect must not be reinvented from somewhere else.
+# Defined before either decision uses it: COMMUNITY may be supplied while
+# MANAGEMENTNETWORKS is not, and the networks branch below needs this too.
+$existingCfg = Join-Path $DATA_DIR 'config.json'
 $comm = $Community
+if (-not $comm) {
+    if (Test-Path $existingCfg) {
+        try {
+            $prev = Get-Content $existingCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($prev.community) {
+                $comm = $prev.community
+                Log "keeping the community already configured on this machine"
+            }
+        } catch {
+            # A malformed file is handled further down, where the agent refuses
+            # to start and says so. Here it simply means no community to keep.
+            Log "[!] could not read the existing configuration to keep its community: $($_.Exception.Message)"
+        }
+    }
+}
 if (-not $comm) {
     foreach ($name in $msCfg.communities.Keys) {
         $access = $msCfg.communities[$name]
@@ -288,10 +322,31 @@ if ($comm -in @('public','private')) {
 }
 
 # --- Decide the management networks ---
+#
+# Same order, and for the same reason, as the community above: what the operator
+# passed, then what this machine is already using, then the built-in service.
+#
+# Without the middle step a repair replaced the configured networks with the
+# built-in service's PermittedManagers. Observed on a domain controller on
+# 2026-08-29: a graphical upgrade set 192.168.1.0/24, and the repair that
+# followed put back the two addresses left in the built-in service. The agent
+# then answers a narrower set than the operator chose, silently, and whichever
+# poller falls outside it sees a host that has stopped responding.
 $nets = @()
 if ($ManagementNetworks) {
     $nets = $ManagementNetworks -split '[,;\s]+' | Where-Object { $_ }
-} elseif ($msCfg.permitted_managers.Count -gt 0) {
+} elseif ($existingCfg -and (Test-Path $existingCfg)) {
+    try {
+        $prevNets = (Get-Content $existingCfg -Raw -Encoding UTF8 | ConvertFrom-Json).allowed_networks
+        if ($prevNets -and @($prevNets).Count -gt 0) {
+            $nets = @($prevNets)
+            Log "keeping the management networks already configured on this machine"
+        }
+    } catch {
+        Log "[!] could not read the existing configuration to keep its networks: $($_.Exception.Message)"
+    }
+}
+if ($nets.Count -eq 0 -and $msCfg.permitted_managers.Count -gt 0) {
     foreach ($m in $msCfg.permitted_managers) {
         if ($m -match '^\d{1,3}(\.\d{1,3}){3}$') { $nets += $m; Log "PermittedManagers $m" }
         else {

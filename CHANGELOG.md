@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A repair silently changed the community and the management networks, and monitoring stopped.** A repair,
+  and an upgrade deployed without properties, pass no `COMMUNITY`. The installer
+  then took one from the built-in Windows SNMP Service and wrote it over the one
+  in `config.json`. The agent came back answering a community the poller does
+  not know, and **every check still passed**: the service is running, the
+  installer's own loopback probe uses the new value, `msiexec` returns 0. The
+  machine just stops being monitored. The community already configured on the
+  machine is now kept, after an explicit `COMMUNITY` and before the built-in
+  service, and the management networks the same way: a repair on a domain
+  controller replaced `192.0.2.0/24` with the two single addresses left in the
+  built-in service, narrowing the ACL without saying so. Same family as the `v3_only` reset 1.1.1 fixed: a value the installer
+  does not collect must not be reinvented from somewhere else.
+
 - **A repair deleted the agent and reported success.**
   `msiexec /i jt-snmpd.msi /qn REINSTALL=ALL REINSTALLMODE=vomus` — the ordinary
   repair, and the first thing an administrator reaches for — removed the
