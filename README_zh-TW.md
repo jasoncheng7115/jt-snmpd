@@ -1,4 +1,4 @@
-# jt-snmpd v1.1.2
+# jt-snmpd v1.1.3
 
 [![License](https://img.shields.io/badge/License-GPL--3.0--or--later-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
@@ -274,7 +274,7 @@ pysnmp（只負責 message / USM / VACM / transport）
 安裝過程以 SYSTEM 身分執行，不會有任何提示。
 
 ```powershell
-msiexec /i jt-snmpd-1.1.2-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=你的community
+msiexec /i jt-snmpd-1.1.3-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNITY=你的community
 ```
 
 以 GPO 派送時，把 MSI 放在網域內的共用資料夾，並確保電腦帳戶對該資料夾有讀取權限。
@@ -303,16 +303,56 @@ msiexec /i jt-snmpd-1.1.2-x64.msi /qn MANAGEMENTNETWORKS=192.168.1.0/24 COMMUNIT
 若 UDP/161 被「非 Microsoft SNMP Service」的程式佔用，安裝程式會**中止並且
 不動它**，而不是去停用第三方 agent。
 
+### 裝完之後:啟用 SNMPv3
+
+**安裝程式不會問 SNMPv3,這是刻意的。** MSI 屬性會被寫進 `msiexec` 的記錄檔,
+也會進 Windows 事件記錄的 **1033 與 11707** —— 密碼一旦傳給安裝程式,
+就會以明文留在每一台被派送的機器上。community 是唯讀的存取權杖,風險等級不同;
+v3 金鑰不是。
+
+安裝程式跑完 SNMPv2c 就能用。SNMPv3 是第二個步驟,在被監控的主機上做,大約一分鐘:
+
+```powershell
+cd "C:\Program Files\jt-snmpd"
+
+.\jt-snmpd.exe user add librenms
+#   authentication passphrase: ****************
+#   confirm:                   ****************
+#   privacy passphrase:        ****************
+#   confirm:                   ****************
+#
+#   added librenms (SHA-256 + AES-128).
+#   Only the localized keys were stored; the passphrases were not.
+
+sc stop jt-snmpd && sc start jt-snmpd
+```
+
+這時候兩種都會回應,而這正是**切換期間該待的狀態**:既有的監控還在運作,
+新的可以逐台驗證。等到所有輪詢端都換過去,再在
+`C:\ProgramData\jt-snmpd\config.json` 設 `"v3_only": true` 並重新啟動服務,
+就完全不接受 SNMPv2c。
+
+**要在很多台上做**,同一道指令可以放進群組原則的啟動指令碼或你的管理工具。
+密碼可以從標準輸入餵,這樣不會出現在處理程序清單裡:
+
+```powershell
+(echo auth-passphrase& echo priv-passphrase) | .\jt-snmpd.exe user add librenms
+```
+
+完整說明、支援的演算法、以及機器被複製之後會怎樣,見
+[SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3_zh-TW.html);
+設定值本身見[事後調整設定](https://jasoncheng7115.github.io/jt-snmpd/configuration_zh-TW.html)。
+
 ### 解除安裝
 
 從「應用程式與功能」移除，或以命令列：
 
 ```powershell
 # 解除安裝（還原內建 SNMP Service，保留設定與狀態）
-msiexec /x jt-snmpd-1.1.2-x64.msi /qn
+msiexec /x jt-snmpd-1.1.3-x64.msi /qn
 
 # 解除安裝並清除全部資料
-msiexec /x jt-snmpd-1.1.2-x64.msi /qn PURGE=1
+msiexec /x jt-snmpd-1.1.3-x64.msi /qn PURGE=1
 ```
 
 萬一安裝或解除安裝走不完，[手動移除](https://jasoncheng7115.github.io/jt-snmpd/manual-removal_zh-TW.html)

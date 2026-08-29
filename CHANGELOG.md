@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.3] - 2026-08-29
+
+### Added
+
+- **SNMPv3 is now findable by someone who installs by double-clicking.** It was
+  supported from 1.1.0, verified on four machines and against a production
+  LibreNMS, and told nobody: the wizard's settings page asks for the networks and
+  a community and stops there, so it reads as a v2c product; the completion page
+  said "Click the Finish button" and nothing else; and the string `user add`
+  appeared in neither README nor on the project page. A capability nobody can
+  discover is close to one that is not there — the same defect 1.1.1 fixed one
+  layer down, where `rate_pps`, `rate_burst` and `v3_only` were live settings
+  missing from the file that lists the settings.
+
+  The completion page now names the command, the settings page says SNMPv3 exists
+  and why it is not asked for there, and both READMEs and the project page carry
+  the provisioning steps and how to do it across many machines from a startup
+  script.
+
+  **The installer still collects no SNMPv3 parameter, and that does not change.**
+  An MSI property is written to the `msiexec` log and to Windows Event IDs 1033
+  and 11707, so a passphrase handed to an installer ends up in plain text on
+  every machine it is deployed to. A community string is a read-only access token
+  and sits at a different risk level; a v3 key does not. What was missing was
+  saying so where the reader is, not the field itself.
+
+---
+
 ## [1.1.2] - 2026-08-27
 
 ### Fixed
