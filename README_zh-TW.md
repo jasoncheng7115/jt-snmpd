@@ -332,8 +332,30 @@ sc stop jt-snmpd && sc start jt-snmpd
 `C:\ProgramData\jt-snmpd\config.json` 設 `"v3_only": true` 並重新啟動服務,
 就完全不接受 SNMPv2c。
 
-**要在很多台上做**,同一道指令可以放進群組原則的啟動指令碼或你的管理工具。
-密碼可以從標準輸入餵,這樣不會出現在處理程序清單裡:
+**要在很多台上做**,改成讓部署工具放一個檔案。代理服務在下次啟動時讀它、
+把密碼轉成綁定該機器的金鑰,然後**覆寫並刪除**:
+
+`C:\ProgramData\jt-snmpd\provision.json`
+
+```json
+{
+  "schema_version": 1,
+  "users": [
+    { "name": "librenms",
+      "auth": "SHA-256", "auth_passphrase": "認證密碼",
+      "priv": "AES-128", "priv_passphrase": "加密密碼" }
+  ]
+}
+```
+
+**即使讀不成功也一樣會刪掉**,所以打錯字不會讓密碼留在磁碟上。
+**怎麼把檔案送到機器上仍然是你要解決的,而且那是最弱的一段** ——
+群組原則喜好設定的檔案複製,來源是網域內每一台電腦都讀得到的共用資料夾。
+取捨與該怎麼處理,寫在
+[SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3_zh-TW.html)。
+
+用啟動指令碼呼叫 `user add` 也可以,密碼從標準輸入餵,不會出現在處理程序清單裡,
+但密碼會留在那個指令碼裡:
 
 ```powershell
 (echo auth-passphrase& echo priv-passphrase) | .\jt-snmpd.exe user add librenms

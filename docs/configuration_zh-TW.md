@@ -69,7 +69,9 @@ C:\ProgramData\jt-snmpd\logs\jt-snmpd.log
 
 ## 2. SNMPv3 帳號
 
-**不在 `config.json` 裡。** 金鑰是加密保存的，用 CLI 管理:
+**不在 `config.json` 裡。** 金鑰是加密保存的，用 CLI 管理 ——
+要在很多台上做的話,改用「代理服務讀一次就刪掉」的布建檔,見
+[SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3_zh-TW.html):
 
 ```
 "C:\Program Files\jt-snmpd\jt-snmpd.exe" user list

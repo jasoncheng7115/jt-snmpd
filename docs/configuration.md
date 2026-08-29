@@ -73,7 +73,9 @@ skipped quietly. This line is the only place that tells you.
 ## 2. SNMPv3 accounts
 
 **Not in `config.json`.** The keys are stored encrypted, and managed with the
-CLI:
+CLI — or, across many machines, by a provisioning file the agent consumes once
+and deletes (see
+[SNMPv3](https://jasoncheng7115.github.io/jt-snmpd/snmpv3.html)):
 
 ```
 "C:\Program Files\jt-snmpd\jt-snmpd.exe" user list

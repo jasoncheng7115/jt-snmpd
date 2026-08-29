@@ -627,6 +627,24 @@ sc stop jt-snmpd &amp;&amp; sc start jt-snmpd</code></pre>
       <a href="configuration.html">Changing settings after installation</a>.</span>
   </p>
 
+  <p class="sub">
+    <span class="zh"><b>要在很多台上做</b>，讓部署工具放一個檔案:
+      <code>C:\ProgramData\jt-snmpd\provision.json</code>。代理服務在下次啟動時讀它、
+      把密碼轉成綁定該機器的金鑰以 DPAPI 保存，然後<b>覆寫並刪除</b> ——
+      <b>即使讀不成功也一樣刪</b>，所以打錯字不會讓密碼留在磁碟上。
+      安裝程式仍然不接受任何 SNMPv3 參數:MSI 屬性會進 <code>msiexec</code> 記錄
+      與事件 1033 / 11707。<b>怎麼把檔案送到機器上仍然是你要解決的，而且那是最弱的一段。</b>
+      格式與取捨見 <a href="snmpv3_zh-TW.html">SNMPv3</a>。</span>
+    <span class="en"><b>Across many machines</b>, have the deployment tool drop a file at
+      <code>C:\ProgramData\jt-snmpd\provision.json</code>. The agent reads it at the next
+      service start, turns the passphrases into keys localized to that machine under DPAPI, and
+      then <b>overwrites and deletes it</b> &mdash; <b>including when it could not be parsed</b>,
+      so a typo does not leave passphrases on disk. The installer still accepts no SNMPv3
+      parameter: an MSI property is written to the <code>msiexec</code> log and to Event IDs 1033
+      and 11707. <b>Getting the file to the machine is still yours to solve, and it is the weak
+      part.</b> The format and the trade-offs are in <a href="snmpv3.html">SNMPv3</a>.</span>
+  </p>
+
   <h3 class="way">
     <span class="zh">在 LibreNMS 啟用 SMART</span>
     <span class="en">Enabling SMART in LibreNMS</span>
