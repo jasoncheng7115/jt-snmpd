@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A repair deleted the agent and reported success.**
+  `msiexec /i jt-snmpd.msi /qn REINSTALL=ALL REINSTALLMODE=vomus` — the ordinary
+  repair, and the first thing an administrator reaches for — removed the
+  service, removed the firewall rules, restored the built-in Windows SNMP
+  Service to Automatic, and **exited 0**. The machine was left with the files on
+  disk and nothing serving SNMP, and nothing said so.
+
+  `REMOVE="ALL"` is not "the product is being uninstalled": Windows Installer
+  sets it during a repair too, because a repair removes and re-adds the
+  components. So the uninstall action ran on its `REMOVE="ALL"` condition and
+  the configure action did not, because its `NOT REMOVE` was false. Both halves
+  were individually reasonable. The conditions now exclude a repair and a major
+  upgrade explicitly, and a test evaluates them over every combination rather
+  than reading them.
+
+  Exit 0 is what makes this serious rather than merely wrong: a failure that
+  reports failure gets retried, and a scheduled GPO repair would have disarmed a
+  fleet quietly.
+
 - **A graphical upgrade asked the operator to close Windows Event Log.** It
   showed two "Files in use" pages, not one. The first listed `jt-snmpd`, which
   is the specified behaviour. The second listed `nxlog` and **Windows Event

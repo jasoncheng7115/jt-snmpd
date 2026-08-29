@@ -183,12 +183,26 @@
                   Return="ignore" />
 
     <InstallExecuteSequence>
-      <!-- Removal has to happen before the files are deleted -->
+      <!-- Removal has to happen before the files are deleted.
+
+           REMOVE="ALL" alone is not "the product is being uninstalled".
+           Windows Installer also sets it during a **repair**: with
+           REINSTALL=ALL REINSTALLMODE=vomus the components are removed and
+           re-added, so REMOVE was ALL, UnconfigureAgent ran, and ConfigureAgent
+           did not, because "NOT REMOVE" was false. The service was deleted, the
+           firewall rules were removed, the built-in SNMP Service was restored
+           to Automatic, and **msiexec returned 0**. A repair left the machine
+           with no agent and said it had succeeded.
+
+           NOT REINSTALL excludes that case. NOT UPGRADINGPRODUCTCODE excludes
+           the other one: during a major upgrade the old package's removal
+           sequence runs, and it must not undo what the new one is installing. -->
       <Custom Action="UnconfigureAgent" Before="RemoveFiles"
-              Condition="REMOVE=&quot;ALL&quot;" />
-      <!-- Configuration has to happen after the files are copied -->
+              Condition="REMOVE=&quot;ALL&quot; AND NOT REINSTALL AND NOT UPGRADINGPRODUCTCODE" />
+      <!-- Configuration has to happen after the files are copied. A repair has
+           to reach this too, which is the other half of the same defect. -->
       <Custom Action="ConfigureAgent" After="InstallFiles"
-              Condition="NOT REMOVE" />
+              Condition="NOT REMOVE OR REINSTALL" />
     </InstallExecuteSequence>
 
 
