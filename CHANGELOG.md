@@ -23,7 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   machine is now kept, after an explicit `COMMUNITY` and before the built-in
   service, and the management networks the same way: a repair on a domain
   controller replaced `192.0.2.0/24` with the two single addresses left in the
-  built-in service, narrowing the ACL without saying so. Same family as the `v3_only` reset 1.1.1 fixed: a value the installer
+  built-in service, narrowing the ACL without saying so.
+
+- **A repair with no properties aborted with 1603.**
+  `msiexec /i jt-snmpd.msi /qn REINSTALL=ALL REINSTALLMODE=vomus` — how a repair
+  is normally run — failed the management-networks launch condition, and so did
+  an unattended upgrade deployed without properties. 1603 says nothing about the
+  cause, and the cause was not a missing value: `config.json` already held the
+  networks. The condition now also passes when the product is installed or an
+  upgrade is being applied. **A first silent install on a fresh machine still
+  has to be told**, and the message says what to pass: deny by default, never
+  Any/Any, is unchanged. Same family as the `v3_only` reset 1.1.1 fixed: a value the installer
   does not collect must not be reinvented from somewhere else.
 
 - **A repair deleted the agent and reported success.**

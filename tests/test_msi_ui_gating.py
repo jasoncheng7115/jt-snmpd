@@ -463,3 +463,26 @@ def test_the_installer_records_which_mode_it_ran_in():
         assert level in cfg, f"UI level {level} has to be distinguished"
     assert "$RestartManagerKey" not in cfg, (
         "the script must not take a value it cannot rely on")
+
+
+def test_a_repair_is_not_blocked_by_the_launch_condition():
+    """`msiexec /i jt-snmpd.msi /qn REINSTALL=ALL REINSTALLMODE=vomus` -- a
+    repair with no properties, which is how a repair is normally run -- failed
+    the management-networks launch condition and aborted with 1603. So did an
+    unattended upgrade deployed without properties.
+
+    1603 says nothing about the cause, and the cause is not a missing value at
+    all: config.json already holds the networks, and the configure script keeps
+    them. Measured on a domain controller on 2026-08-29.
+
+    What must not change is the first silent install on a fresh machine, which
+    still has to be told. Deny by default, never Any/Any."""
+    wxs = WXS.read_text(encoding="utf-8")
+    m = re.search(r'<Launch Condition="([^"]*MANAGEMENTNETWORKS[^"]*)"', wxs)
+    assert m, "the management-networks launch condition is gone"
+    cond = m.group(1)
+    assert "Installed" in cond, "a repair on a configured machine is still refused"
+    assert "WIX_UPGRADE_DETECTED" in cond, (
+        "an unattended upgrade deployed without properties is still refused")
+    assert "MANAGEMENTNETWORKS" in cond, (
+        "the first silent install must still be told where the pollers are")

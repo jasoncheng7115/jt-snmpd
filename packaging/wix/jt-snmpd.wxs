@@ -74,7 +74,19 @@
          (2 = /qn, 3 = /qb, 4 = /qr) shows no wizard, so the condition still has
          to stop the install there. -->
     <Property Id="MANAGEMENTNETWORKS" Secure="yes" />
-    <Launch Condition="MANAGEMENTNETWORKS OR REMOVE OR UILevel &gt; 4"
+    <!-- `Installed` and `WIX_UPGRADE_DETECTED` are here because a machine that
+         is already configured has the answer on disk.
+         `msiexec /i jt-snmpd.msi /qn REINSTALL=ALL REINSTALLMODE=vomus`, a
+         repair with no properties, which is how a repair is normally run,
+         failed this condition and aborted with 1603, an error code that says
+         nothing about the cause. The same for an unattended upgrade deployed
+         without properties. In both cases config.json already holds the
+         networks, and the configure script now keeps them.
+         A genuine first silent install is still refused, and the message says
+         what to pass: deny by default, never Any/Any, is unchanged, and the
+         configure script's own empty-list backstop still aborts if nothing can
+         be found. -->
+    <Launch Condition="MANAGEMENTNETWORKS OR REMOVE OR Installed OR WIX_UPGRADE_DETECTED OR UILevel &gt; 4"
             Message="The management networks must be specified, for example: msiexec /i jt-snmpd.msi /qn MANAGEMENTNETWORKS=10.0.0.0/24" />
 
     <!-- The community is optional; without it the installer tries to migrate one
