@@ -91,3 +91,18 @@ def test_the_project_page_explains_provisioning():
     html = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
     assert "user add" in html
     assert "1033" in html
+
+def test_the_completion_page_does_not_promise_a_shortcut_that_is_not_there(wxs: str):
+    """Written after the first draft of that text said the documentation link
+    was in the Start menu folder. The MSI creates no shortcuts at all: the
+    Shortcut table is empty, so the sentence was simply false, and it would have
+    shipped on the one screen every graphical install ends on.
+
+    Signposting is only worth adding if each signpost points at something. If a
+    Start menu entry is ever added, this test starts allowing the claim."""
+    block = wxs[wxs.index('Id="WIXUI_EXITDIALOGOPTIONALTEXT"'):]
+    block = block[:block.index("/>")]
+    if "Start menu" in block:
+        assert "<Shortcut" in wxs, (
+            "the completion page tells the reader to look in the Start menu, "
+            "and the installer creates no shortcut for them to find")
