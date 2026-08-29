@@ -103,6 +103,12 @@ $args = @(
     "--hidden-import", "win32service",
     "--hidden-import", "win32event",
     "--hidden-import", "servicemanager",
+    # Reached only through _write_event's lazy import, so PyInstaller's static
+    # analysis does not see it. Without these the Event Log write fails on every
+    # start: harmless by design, but it would silently remove the copy of our
+    # errors that field staff and Get-WinEvent actually look at.
+    "--hidden-import", "win32evtlog",
+    "--hidden-import", "win32evtlogutil",
 
     # pysnmp loads MIB modules as **files** at runtime (DirMibSource scans for
     # .py/.pyc), not through import. So collect-all is required to bundle the
