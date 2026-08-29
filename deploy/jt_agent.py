@@ -1424,6 +1424,115 @@ IF_TYPE_SOFTWARE_LOOPBACK = 24
 ENGINE_FILE = os.path.join(STATE_DIR, "state", "engine.json")
 USM_STORE = os.path.join(STATE_DIR, "secrets", "usm.dat")
 
+# Dropped in by a deployment tool, consumed once, then deleted.
+PROVISION_FILE = os.path.join(STATE_DIR, "provision.json")
+
+
+def _consume_provisioning() -> int:
+    """Provision SNMPv3 accounts from a file a deployment tool left behind.
+
+    **Why a file and not an installer property.** Hundreds of machines cannot be
+    visited to run `user add`, so something has to carry the passphrases. An MSI
+    property is written to the msiexec log and to Event IDs 1033 and 11707,
+    where it stays on every machine it reached; that is why the installer
+    accepts no v3 parameter and never will. A startup script keeps the
+    passphrase in SYSVOL, readable by every domain computer, which is the shape
+    of the Group Policy Preferences password problem.
+
+    This bounds the exposure instead of moving it: the file lives in the data
+    directory, whose ACL the installer has already restricted to SYSTEM and
+    Administrators; it is read once at service start; the passphrases are turned
+    into localized keys and stored under DPAPI machine scope; and **the file is
+    then overwritten and deleted**. What remains on disk afterwards is what
+    `user add` would have left, and nothing else.
+
+    The distribution channel is still the operator's problem and the
+    documentation says so. Bounded is not the same as safe.
+
+    Passphrases are never logged. Names and algorithms are, because an operator
+    deploying to hundreds of machines has to be able to answer "did it take?"
+    from `Get-WinEvent` without opening a session on each one.
+    """
+    if not os.path.exists(PROVISION_FILE):
+        return 0
+    log(f"provisioning file found at {PROVISION_FILE}")
+    added = 0
+    try:
+        try:
+            with open(PROVISION_FILE, encoding="utf-8") as fh:
+                doc = json.load(fh)
+            engine_id = _engine_id()
+            existing, _ = usm.load_store(USM_STORE, engine_id)
+            by_name = {u.name: u for u in existing}
+            for entry in doc.get("users", []):
+                name = str(entry.get("name", "")).strip()
+                auth = str(entry.get("auth", usm.DEFAULT_AUTH))
+                priv = str(entry.get("priv", usm.DEFAULT_PRIV))
+                try:
+                    if not name:
+                        raise usm.UsmError("an entry has no name")
+                    if name in by_name:
+                        # Replacing rather than refusing: a rollout that is
+                        # re-run must converge, not fail on the machines it
+                        # already reached.
+                        log(f"provisioning: replacing the existing user {name!r}")
+                    for warning in usm.check_algorithms(auth, priv):
+                        log(f"[!] provisioning {name!r}: {warning}")
+                    auth_pass = str(entry.get("auth_passphrase", ""))
+                    priv_pass = str(entry.get("priv_passphrase", ""))
+                    usm.check_passphrase("authentication", auth_pass)
+                    usm.check_passphrase("privacy", priv_pass)
+                    if auth_pass == priv_pass:
+                        raise usm.UsmError(
+                            "use different passphrases for authentication and "
+                            "privacy; one compromise should not be two")
+                    auth_key, priv_key = usm.localize(auth, priv, auth_pass,
+                                                      priv_pass, engine_id)
+                    by_name[name] = usm.UsmUser(name, auth, priv, auth_key, priv_key)
+                    added += 1
+                    log(f"provisioned SNMPv3 user {name!r} ({auth} + {priv})")
+                except usm.UsmError as exc:
+                    log(f"[!] provisioning {name or '<unnamed>'!r} failed: {exc}",
+                        error=True)
+            if added:
+                usm.save_store(USM_STORE, engine_id, list(by_name.values()))
+                log(f"provisioning: {added} user(s) stored; only the localized "
+                    "keys were kept, the passphrases were not")
+        except Exception as exc:  # noqa: BLE001 - never stop the agent starting
+            # Including a malformed file. The position is quoted the same way
+            # config.json's is, because "it did not work" is not a diagnosis.
+            log(f"[!] the provisioning file could not be used: {exc!r}", error=True)
+    finally:
+        # **Always**, including after a failure. The file exists to be consumed,
+        # and leaving passphrases on disk because parsing failed would turn a
+        # typo into a lasting exposure. The operator has the reason in the log
+        # and can drop a corrected file in.
+        _shred(PROVISION_FILE)
+    return added
+
+
+def _shred(path: str) -> None:
+    """Overwrite then unlink, and say so if it could not be done.
+
+    Overwriting in place is not a guarantee on a journalling filesystem or an
+    SSD that remaps writes, and it is not presented as one. It is one cheap step
+    that removes the plain text from the obvious place; the loud log line is the
+    part that matters, because a file that was meant to be deleted and was not
+    is an exposure nobody would otherwise learn about.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "r+b") as fh:
+            fh.write(b"\x00" * size)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.remove(path)
+        log("provisioning file overwritten and deleted")
+    except Exception as exc:  # noqa: BLE001
+        log(f"[!] the provisioning file at {path} could not be deleted: {exc!r}. "
+            "It still contains the passphrases in plain text. Remove it.",
+            error=True)
+
 
 def _extend_index(token: str) -> tuple[int, ...]:
     """The NET-SNMP-EXTEND-MIB tables are indexed by nsExtendToken, an OCTET
@@ -1690,6 +1799,9 @@ def _register_v3_users(eng) -> int:
     because the symptom at the other end is an authentication failure that says
     nothing about the cause.
     """
+    # Before the store is read, so a machine that has just been deployed to
+    # comes up already serving v3 rather than after a second restart.
+    _consume_provisioning()
     try:
         users, problems = usm.load_store(USM_STORE, _engine_id())
     except Exception as exc:  # noqa: BLE001 - never stop the agent starting
@@ -1717,7 +1829,8 @@ def _register_v3_users(eng) -> int:
         except Exception as exc:  # noqa: BLE001
             log(f"[!] SNMPv3 user {user.name!r} could not be registered: {exc!r}")
     if not users and not problems:
-        log("SNMPv3: no users provisioned; run `jt-snmpd.exe user add` to add one")
+        log("SNMPv3: no users provisioned; run `jt-snmpd.exe user add` to add "
+            f"one, or drop a provisioning file at {PROVISION_FILE}")
     return registered
 
 MAXTEMP_FILE = os.path.join(STATE_DIR, "state", "disk-maxtemp.json")
