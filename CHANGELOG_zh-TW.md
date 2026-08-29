@@ -13,6 +13,21 @@ English version: [CHANGELOG.md](CHANGELOG.md)
 
 ### 修正
 
+- **修復安裝會把代理服務刪掉,然後回報成功。**
+  `msiexec /i jt-snmpd.msi /qn REINSTALL=ALL REINSTALLMODE=vomus` ——
+  也就是一般的修復安裝,系統管理員第一個會想到的動作 —— 會移除服務、
+  移除防火牆規則、把內建 Windows SNMP Service 還原成自動,然後 **`exit 0`**。
+  機器上留著檔案,卻沒有任何東西在服務 SNMP,而且沒有一個地方講。
+
+  `REMOVE="ALL"` 並不等於「這個產品正在被解除安裝」:**修復安裝時
+  Windows Installer 也會設它**,因為修復就是把元件移除再加回去。於是解除安裝那個動作
+  依 `REMOVE="ALL"` 執行了,而設定那個動作因為 `NOT REMOVE` 不成立所以沒執行。
+  兩半各自看起來都合理。現在條件明確排除修復安裝與主要版本升級,
+  並且有測試**逐一代入所有組合去驗證**,而不是用讀的。
+
+  真正嚴重的是 `exit 0`:會回報失敗的失敗還會被重試,
+  而排程的 GPO 修復安裝會**無聲地**把一整批機器解除武裝。
+
 - **圖形升級會要求操作人員關閉 Windows Event Log。** 它跳的是**兩個**
   「使用中的檔案」對話框,不是一個。第一個列 `jt-snmpd`,那是已規範的行為;
   第二個列 `nxlog` 與 **`Windows Event Log`**,而那一頁的預設按鈕會讓
